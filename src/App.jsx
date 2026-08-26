@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Pencil, Trash2, RefreshCw, X, TrendingUp, TrendingDown, MoreVertical, Inbox, Zap } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
 
@@ -163,6 +163,9 @@ export default function PortfolioApp() {
   const [toast, setToast] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [pendingImport, setPendingImport] = useState(null);
+  const [importError, setImportError] = useState('');
+  const fileInputRef = useRef(null);
   const [backendUrl, setBackendUrl] = useState('');
   const [backendDraft, setBackendDraft] = useState('');
   const [fetchingPrices, setFetchingPrices] = useState(false);
@@ -386,6 +389,71 @@ export default function PortfolioApp() {
     }
   };
 
+  const exportData = () => {
+    const payload = {
+      app: 'portfolio-tracker',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      holdings,
+      history,
+      fxRate,
+      backendUrl,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `portfolio-backup-${todayStr()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setMenuOpen(false);
+    showToast('ส่งออกไฟล์สำรองข้อมูลแล้ว');
+  };
+
+  const triggerImport = () => {
+    setMenuOpen(false);
+    setImportError('');
+    if (fileInputRef.current) fileInputRef.current.click();
+  };
+
+  const handleImportFile = (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ''; // allow re-selecting the same file later
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        if (!Array.isArray(data.holdings)) throw new Error('รูปแบบไฟล์ไม่ถูกต้อง');
+        setPendingImport(data);
+        setImportError('');
+      } catch (err) {
+        setImportError('อ่านไฟล์ไม่สำเร็จ — ตรวจสอบว่าเป็นไฟล์สำรองข้อมูลของแอพนี้จริงๆ');
+      }
+    };
+    reader.onerror = () => setImportError('อ่านไฟล์ไม่สำเร็จ');
+    reader.readAsText(file);
+  };
+
+  const confirmImport = async () => {
+    if (!pendingImport) return;
+    await saveHoldings(Array.isArray(pendingImport.holdings) ? pendingImport.holdings : []);
+    await saveHistory(Array.isArray(pendingImport.history) ? pendingImport.history : []);
+    if (typeof pendingImport.fxRate === 'number' && pendingImport.fxRate > 0) {
+      setFxRate(pendingImport.fxRate);
+      try { await window.storage.set('fx-usdthb', String(pendingImport.fxRate), false); } catch (e) { /* ignore */ }
+    }
+    if (typeof pendingImport.backendUrl === 'string') {
+      setBackendUrl(pendingImport.backendUrl);
+      setBackendDraft(pendingImport.backendUrl);
+      try { await window.storage.set('backend-url', pendingImport.backendUrl, false); } catch (e) { /* ignore */ }
+    }
+    setPendingImport(null);
+    showToast('นำเข้าข้อมูลสำเร็จ');
+  };
+
   const clearAll = async () => {
     await saveHoldings([]);
     await saveHistory([]);
@@ -504,11 +572,14 @@ export default function PortfolioApp() {
           {menuOpen && (
             <div className="pf-menu">
               <button onClick={() => { setBackendDraft(backendUrl); setFxDraft(String(fxRate)); setPanel('settings'); setMenuOpen(false); }}>ตั้งค่า</button>
+              <button onClick={exportData}>ส่งออกข้อมูล (สำรอง)</button>
+              <button onClick={triggerImport}>นำเข้าข้อมูล (กู้คืน)</button>
               <button onClick={() => { setConfirmClear(true); setMenuOpen(false); }}>ล้างข้อมูลทั้งหมด</button>
             </div>
           )}
         </div>
       </div>
+      <input ref={fileInputRef} type="file" accept="application/json,.json" style={{ display: 'none' }} onChange={handleImportFile} />
 
       {loading ? (
         <div className="pf-loading">กำลังโหลดข้อมูล...</div>
@@ -516,6 +587,26 @@ export default function PortfolioApp() {
         <div className="pf-empty">โหลดข้อมูลไม่สำเร็จ ลองรีเฟรชอีกครั้ง</div>
       ) : (
         <>
+          {importError && (
+            <div className="pf-confirm">
+              <div style={{ marginBottom: 10, fontSize: 14, color: 'var(--neg)' }}>{importError}</div>
+              <button className="pf-btn pf-btn-ghost" style={{ width: '100%', justifyContent: 'center' }} onClick={() => setImportError('')}>ปิด</button>
+            </div>
+          )}
+
+          {pendingImport && (
+            <div className="pf-confirm">
+              <div style={{ marginBottom: 6, fontSize: 14 }}>
+                พบไฟล์สำรองข้อมูล{pendingImport.exportedAt ? ` (ส่งออกเมื่อ ${thaiDate(pendingImport.exportedAt.slice(0, 10))})` : ''} — มีสินทรัพย์ {Array.isArray(pendingImport.holdings) ? pendingImport.holdings.length : 0} รายการ
+              </div>
+              <div style={{ marginBottom: 10, fontSize: 12.5, color: 'var(--muted)' }}>การนำเข้าจะแทนที่ข้อมูลปัจจุบันทั้งหมดในเครื่องนี้ ถ้าไม่แน่ใจ แนะนำให้กด "ส่งออกข้อมูล" สำรองของปัจจุบันไว้ก่อน</div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button className="pf-btn pf-btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setPendingImport(null)}>ยกเลิก</button>
+                <button className="pf-btn pf-btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={confirmImport}>ยืนยันนำเข้า</button>
+              </div>
+            </div>
+          )}
+
           {confirmClear && (
             <div className="pf-confirm">
               <div style={{ marginBottom: 10, fontSize: 14 }}>ล้างข้อมูลสินทรัพย์และประวัติทั้งหมด? ทำแล้วกู้คืนไม่ได้</div>
