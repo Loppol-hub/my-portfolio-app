@@ -231,9 +231,9 @@ export default function PortfolioApp() {
   };
 
   // หุ้นต่างประเทศและทองคำ: ธนาคาร/แอพอ้างอิง (Dime) มักใช้เรตซื้อที่ต่ำกว่าเรตกลางเล็กน้อย
-  // จึงหักออก 0.5 บาทจากอัตราแลกเปลี่ยนก่อนคำนวณมูลค่าเฉพาะสองประเภทนี้
+  // จึงหักออก 0.05 บาทจากอัตราแลกเปลี่ยนก่อนคำนวณมูลค่าเฉพาะสองประเภทนี้
   const getEffectiveRate = (type, rate) => {
-    if (type === 'foreign_stock' || type === 'gold') return Math.max(0, rate - 0.5);
+    if (type === 'foreign_stock' || type === 'gold') return Math.max(0, rate - 0.05);
     return rate;
   };
 
