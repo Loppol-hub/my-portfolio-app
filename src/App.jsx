@@ -126,7 +126,7 @@ function ExplodedPie3D({ data, rx = 88, depth = 20, explode = 7 }) {
   });
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} width={width} height={height} className="pf-pie3d-svg">
+    <svg viewBox={`0 0 ${width} ${height}`} width={width} height={height} className="pf-pie3d-svg" style={{ background: 'transparent' }}>
       {sidePaths.map((s) => <path key={`side-${s.key}`} d={s.path} fill={s.fill} />)}
       {topPaths.map((s) => <path key={`top-${s.key}`} d={s.path} fill={s.fill} stroke="var(--bg)" strokeWidth="2" />)}
       {topPaths.map((s) => s.showLabel && (
@@ -148,7 +148,7 @@ const thaiDate = (iso) => {
   if (!iso) return '-';
   return new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' });
 };
-const emptyForm = { name: '', ticker: '', type: 'th_stock', quantity: '', avgCost: '', currentPrice: '', currency: 'THB' };
+const emptyForm = { name: '', ticker: '', type: 'th_stock', quantity: '', avgCost: '', currentPrice: '', currency: 'THB', industry: '' };
 
 export default function PortfolioApp() {
   const [holdings, setHoldings] = useState([]);
@@ -166,6 +166,10 @@ export default function PortfolioApp() {
   const [pendingImport, setPendingImport] = useState(null);
   const [importError, setImportError] = useState('');
   const fileInputRef = useRef(null);
+  const [chartModeByType, setChartModeByType] = useState({});
+  const toggleChartMode = (typeKey) => {
+    setChartModeByType((prev) => ({ ...prev, [typeKey]: prev[typeKey] === 'industry' ? 'holding' : 'industry' }));
+  };
   const [backendUrl, setBackendUrl] = useState('');
   const [backendDraft, setBackendDraft] = useState('');
   const [fetchingPrices, setFetchingPrices] = useState(false);
@@ -226,12 +230,19 @@ export default function PortfolioApp() {
     catch (e) { showToast('บันทึกประวัติไม่สำเร็จ'); }
   };
 
+  // หุ้นต่างประเทศและทองคำ: ธนาคาร/แอพอ้างอิง (Dime) มักใช้เรตซื้อที่ต่ำกว่าเรตกลางเล็กน้อย
+  // จึงหักออก 0.5 บาทจากอัตราแลกเปลี่ยนก่อนคำนวณมูลค่าเฉพาะสองประเภทนี้
+  const getEffectiveRate = (type, rate) => {
+    if (type === 'foreign_stock' || type === 'gold') return Math.max(0, rate - 0.5);
+    return rate;
+  };
+
   const enriched = useMemo(() => holdings.map((h) => {
     const qty = parseFloat(h.quantity) || 0;
     const avg = parseFloat(h.avgCost) || 0;
     const price = parseFloat(h.currentPrice) || 0;
     const currency = h.currency === 'USD' ? 'USD' : 'THB';
-    const rate = currency === 'USD' ? fxRate : 1;
+    const rate = currency === 'USD' ? getEffectiveRate(h.type, fxRate) : 1;
     const marketValue = qty * price * rate;
     const costValue = qty * avg * rate;
     const gain = marketValue - costValue;
@@ -262,7 +273,7 @@ export default function PortfolioApp() {
   // ---- form handlers ----
   const openAdd = () => { setForm(emptyForm); setEditingId(null); setFormError(''); setPanel('form'); };
   const openEdit = (h) => {
-    setForm({ name: h.name, ticker: h.ticker || '', type: h.type, quantity: String(h.quantity), avgCost: String(h.avgCost), currentPrice: String(h.currentPrice), currency: h.currency === 'USD' ? 'USD' : 'THB' });
+    setForm({ name: h.name, ticker: h.ticker || '', type: h.type, quantity: String(h.quantity), avgCost: String(h.avgCost), currentPrice: String(h.currentPrice), currency: h.currency === 'USD' ? 'USD' : 'THB', industry: h.industry || '' });
     setEditingId(h.id); setFormError(''); setPanel('form');
   };
   const closePanel = () => { setPanel(null); setEditingId(null); setUpdateDraft({}); };
@@ -280,12 +291,13 @@ export default function PortfolioApp() {
     if (!isCash && (isNaN(avg) || avg < 0)) { setFormError('ราคาต้นทุนไม่ถูกต้อง'); return; }
     if (!isCash && (isNaN(price) || price < 0)) { setFormError('ราคาปัจจุบันไม่ถูกต้อง'); return; }
     const currency = form.currency === 'USD' ? 'USD' : 'THB';
+    const industry = form.industry.trim();
     if (editingId) {
-      const next = holdings.map((h) => h.id === editingId ? { ...h, name: form.name.trim(), ticker: form.ticker.trim(), type: form.type, quantity: qty, avgCost: avg, currentPrice: price, currency } : h);
+      const next = holdings.map((h) => h.id === editingId ? { ...h, name: form.name.trim(), ticker: form.ticker.trim(), type: form.type, quantity: qty, avgCost: avg, currentPrice: price, currency, industry } : h);
       saveHoldings(next);
       showToast('แก้ไขรายการแล้ว');
     } else {
-      const next = [...holdings, { id: Date.now().toString(), name: form.name.trim(), ticker: form.ticker.trim(), type: form.type, quantity: qty, avgCost: avg, currentPrice: price, currency, lastUpdated: todayStr() }];
+      const next = [...holdings, { id: Date.now().toString(), name: form.name.trim(), ticker: form.ticker.trim(), type: form.type, quantity: qty, avgCost: avg, currentPrice: price, currency, industry, lastUpdated: todayStr() }];
       saveHoldings(next);
       showToast('เพิ่มสินทรัพย์แล้ว');
     }
@@ -304,7 +316,24 @@ export default function PortfolioApp() {
     setPanel('update');
   };
 
-  const submitUpdatePrices = () => {
+  const fetchFxRateValue = async () => {
+    if (!backendUrl) return null;
+    try {
+      const res = await fetch(backendUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: [{ id: '__fx__', ticker: 'USDTHB', market: 'fx' }] }),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const r = (data.results || []).find((x) => x.id === '__fx__');
+      return r && typeof r.price === 'number' ? r.price : null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const submitUpdatePrices = async () => {
     const today = todayStr();
     const next = holdings.map((h) => {
       const v = parseFloat(updateDraft[h.id]);
@@ -312,10 +341,27 @@ export default function PortfolioApp() {
       return { ...h, currentPrice: v, lastUpdated: today };
     });
     saveHoldings(next);
-    const newTotal = next.reduce((s, h) => s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0), 0);
+
+    // ดึงอัตราแลกเปลี่ยนล่าสุดมาพร้อมกันในขั้นตอนบันทึกเดียว ไม่ต้องกดแยกในเมนูตั้งค่า
+    let rate = fxRate;
+    if (backendUrl) {
+      const fetched = await fetchFxRateValue();
+      if (fetched) {
+        rate = fetched;
+        setFxRate(fetched);
+        setFxDraft(String(fetched));
+        try { await window.storage.set('fx-usdthb', String(fetched), false); } catch (e) { /* ignore */ }
+      }
+    }
+
+    const newTotal = next.reduce((s, h) => {
+      const currency = h.currency === 'USD' ? 'USD' : 'THB';
+      const effRate = currency === 'USD' ? getEffectiveRate(h.type, rate) : 1;
+      return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0) * effRate;
+    }, 0);
     const histNext = [...history.filter((p) => p.date !== today), { date: today, value: newTotal }].sort((a, b) => a.date.localeCompare(b.date));
     saveHistory(histNext);
-    showToast('บันทึกราคาวันนี้แล้ว');
+    showToast(backendUrl ? 'บันทึกราคาและอัตราแลกเปลี่ยนวันนี้แล้ว' : 'บันทึกราคาวันนี้แล้ว');
     closePanel();
   };
 
@@ -367,26 +413,14 @@ export default function PortfolioApp() {
   const fetchFxRate = async () => {
     if (!backendUrl) { showToast('ยังไม่ได้ตั้งค่า Backend URL'); return; }
     setFetchingFx(true);
-    try {
-      const res = await fetch(backendUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: [{ id: '__fx__', ticker: 'USDTHB', market: 'fx' }] }),
-      });
-      if (!res.ok) throw new Error('bad response');
-      const data = await res.json();
-      const r = (data.results || []).find((x) => x.id === '__fx__');
-      if (r && typeof r.price === 'number') {
-        setFxDraft(String(r.price));
-        showToast(`ดึงอัตราแลกเปลี่ยนแล้ว: 1 USD ≈ ฿${fmt(r.price)}`);
-      } else {
-        showToast('ดึงอัตราแลกเปลี่ยนไม่สำเร็จ');
-      }
-    } catch (e) {
+    const price = await fetchFxRateValue();
+    if (price) {
+      setFxDraft(String(price));
+      showToast(`ดึงอัตราแลกเปลี่ยนแล้ว: 1 USD ≈ ฿${fmt(price)}`);
+    } else {
       showToast('เชื่อมต่อ Backend ไม่สำเร็จ');
-    } finally {
-      setFetchingFx(false);
     }
+    setFetchingFx(false);
   };
 
   const exportData = () => {
@@ -491,12 +525,15 @@ export default function PortfolioApp() {
         .pf-updated { color: var(--muted); font-size: 12px; margin-top: 10px; }
         .pf-section-label { color: var(--muted); font-size: 12px; letter-spacing: 0.6px; text-transform: uppercase; margin: 20px 2px 10px; }
         .pf-donut-row { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; margin-bottom: 4px; }
-        .pf-pie3d-svg { overflow: visible; filter: drop-shadow(0 10px 14px rgba(0,0,0,0.45)); flex-shrink: 0; }
+        .pf-pie3d-svg { overflow: visible; filter: drop-shadow(0 10px 14px rgba(0,0,0,0.45)); flex-shrink: 0; background: transparent; }
         .pf-pie3d-label { font-family: 'Inter', sans-serif; font-weight: 800; font-size: 15px; fill: #fff; paint-order: stroke; stroke: rgba(0,0,0,0.4); stroke-width: 3px; stroke-linejoin: round; }
         .pf-pie-empty { border-radius: 50%; border: 1px dashed var(--divider); flex-shrink: 0; }
         .pf-legend-col { flex-direction: column; gap: 8px; flex: 1; min-width: 170px; }
         .pf-type-section { background: var(--surface); border: 1px solid var(--divider); border-radius: 16px; padding: 18px 16px; margin-bottom: 20px; }
         .pf-type-section-head { display: flex; align-items: center; gap: 18px; }
+        .pf-pie-tap { display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; }
+        .pf-pie-tap-hint { font-size: 10px; color: var(--muted); text-align: center; }
+        .pf-type-breakdown-caption { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 2px; }
         .pf-type-section-info { flex: 1; min-width: 0; }
         .pf-type-section-title { display: flex; align-items: center; gap: 7px; font-family: 'Fraunces', serif; font-weight: 600; font-size: 15.5px; margin-bottom: 5px; }
         .pf-type-section-value { font-size: 21px; font-weight: 600; }
@@ -566,7 +603,7 @@ export default function PortfolioApp() {
       `}</style>
 
       <div className="pf-header">
-        <div className="pf-title">พอร์ตของฉัน</div>
+        <div className="pf-title">Moon Shot</div>
         <div className="pf-menu-wrap">
           <button className="pf-icon-btn" aria-label="เมนู" onClick={() => setMenuOpen((v) => !v)}><MoreVertical size={17} /></button>
           {menuOpen && (
@@ -667,23 +704,52 @@ export default function PortfolioApp() {
                 const shades = shadeSet(t.color, typeHoldings.length);
                 const colorById = {};
                 typeHoldings.forEach((h, i) => { colorById[h.id] = shades[i]; });
-                // Keep the wedge count readable (max 6) — group the smallest holdings into "อื่นๆ" for the chart only;
-                // the full breakdown list below still shows every holding individually.
+
+                const canToggleIndustry = t.key === 'th_stock' || t.key === 'foreign_stock';
+                const viewMode = canToggleIndustry && chartModeByType[t.key] === 'industry' ? 'industry' : 'holding';
+
                 let chartData;
-                if (typeHoldings.length > 6) {
-                  const top = typeHoldings.slice(0, 5);
-                  const othersValue = typeHoldings.slice(5).reduce((s, h) => s + h.marketValue, 0);
-                  chartData = [
-                    ...top.map((h) => ({ key: h.id, label: h.name, color: colorById[h.id], value: h.marketValue })),
-                    { key: '__others__', label: `อื่นๆ (${typeHoldings.length - 5} รายการ)`, color: '#5B6779', value: othersValue },
-                  ];
+                let breakdownItems;
+                if (viewMode === 'industry') {
+                  const groups = {};
+                  typeHoldings.forEach((h) => {
+                    const ind = (h.industry && h.industry.trim()) || 'อื่นๆ';
+                    groups[ind] = (groups[ind] || 0) + h.marketValue;
+                  });
+                  const industryNames = Object.keys(groups).sort((a, b) => groups[b] - groups[a]);
+                  const industryColors = shadeSet(t.color, industryNames.length);
+                  const industryColorById = {};
+                  industryNames.forEach((name, i) => { industryColorById[name] = industryColors[i]; });
+                  chartData = industryNames.map((name) => ({ key: name, label: name, color: industryColorById[name], value: groups[name] }));
+                  breakdownItems = chartData;
                 } else {
-                  chartData = typeHoldings.map((h) => ({ key: h.id, label: h.name, color: colorById[h.id], value: h.marketValue }));
+                  // Keep the wedge count readable (max 6) — group the smallest holdings into "อื่นๆ" for the chart only;
+                  // the full breakdown list below still shows every holding individually.
+                  if (typeHoldings.length > 6) {
+                    const top = typeHoldings.slice(0, 5);
+                    const othersValue = typeHoldings.slice(5).reduce((s, h) => s + h.marketValue, 0);
+                    chartData = [
+                      ...top.map((h) => ({ key: h.id, label: h.name, color: colorById[h.id], value: h.marketValue })),
+                      { key: '__others__', label: `อื่นๆ (${typeHoldings.length - 5} รายการ)`, color: '#5B6779', value: othersValue },
+                    ];
+                  } else {
+                    chartData = typeHoldings.map((h) => ({ key: h.id, label: h.name, color: colorById[h.id], value: h.marketValue }));
+                  }
+                  breakdownItems = typeHoldings.map((h) => ({ key: h.id, label: h.name, color: colorById[h.id], value: h.marketValue }));
                 }
                 return (
                   <div className="pf-type-section" key={t.key}>
                     <div className="pf-type-section-head">
-                      <ExplodedPie3D data={chartData} rx={62} depth={14} explode={5} />
+                      <div
+                        onClick={canToggleIndustry ? () => toggleChartMode(t.key) : undefined}
+                        className={canToggleIndustry ? 'pf-pie-tap' : undefined}
+                        role={canToggleIndustry ? 'button' : undefined}
+                        tabIndex={canToggleIndustry ? 0 : undefined}
+                        onKeyDown={canToggleIndustry ? (e) => { if (e.key === 'Enter') toggleChartMode(t.key); } : undefined}
+                      >
+                        <ExplodedPie3D data={chartData} rx={62} depth={14} explode={5} />
+                        {canToggleIndustry && <div className="pf-pie-tap-hint">{viewMode === 'industry' ? 'แตะดูรายตัว' : 'แตะดูอุตสาหกรรม'}</div>}
+                      </div>
                       <div className="pf-type-section-info">
                         <div className="pf-type-section-title"><span className="pf-dot" style={{ background: t.color }} />{t.label}</div>
                         <div className="pf-type-section-value pf-mono">฿{fmt(t.value, 0)}</div>
@@ -695,13 +761,14 @@ export default function PortfolioApp() {
                         <div className="pf-type-section-pct pf-mono">{fmt((t.value / totalValue) * 100, 1)}% ของพอร์ตรวม</div>
                       </div>
                     </div>
-                    {typeHoldings.length > 1 && (
-                      <div className={`pf-type-breakdown ${typeHoldings.length > 8 ? 'pf-type-breakdown-scroll' : ''}`}>
-                        {typeHoldings.map((h) => (
-                          <div className="pf-type-breakdown-item" key={h.id}>
-                            <span className="pf-dot" style={{ background: colorById[h.id] }} />
-                            <span className="pf-type-breakdown-name">{h.name}</span>
-                            <span className="pf-mono pf-type-breakdown-pct">{fmt((h.marketValue / t.value) * 100, 1)}%</span>
+                    {breakdownItems.length > 1 && (
+                      <div className={`pf-type-breakdown ${breakdownItems.length > 8 ? 'pf-type-breakdown-scroll' : ''}`}>
+                        {viewMode === 'industry' && <div className="pf-type-breakdown-caption">สัดส่วนตามอุตสาหกรรม</div>}
+                        {breakdownItems.map((b) => (
+                          <div className="pf-type-breakdown-item" key={b.key}>
+                            <span className="pf-dot" style={{ background: b.color }} />
+                            <span className="pf-type-breakdown-name">{b.label}</span>
+                            <span className="pf-mono pf-type-breakdown-pct">{fmt((b.value / t.value) * 100, 1)}%</span>
                           </div>
                         ))}
                       </div>
@@ -712,7 +779,7 @@ export default function PortfolioApp() {
                           <div className="pf-row-top">
                             <div className="pf-row-name">
                               <span className="pf-dot" style={{ background: colorById[h.id] }} />
-                              <span className="pf-row-name-text">{h.name}{h.ticker ? ` · ${h.ticker}` : ''}</span>
+                              <span className="pf-row-name-text">{h.name}</span>
                             </div>
                             <div className="pf-row-actions">
                               <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
@@ -772,7 +839,14 @@ export default function PortfolioApp() {
             {form.type !== 'cash' && (
               <div className="pf-field">
                 <label className="pf-label">สัญลักษณ์ {typeInfo(form.type).market ? '(ใส่เพื่อดึงราคาอัตโนมัติได้)' : '(ถ้ามี)'}</label>
-                <input className="pf-input" value={form.ticker} onChange={(e) => setForm({ ...form, ticker: e.target.value })} placeholder={TICKER_HINT[form.type] || 'ไม่บังคับ'} />
+                <input className="pf-input" value={form.ticker} onChange={(e) => setForm({ ...form, ticker: e.target.value.toUpperCase() })} placeholder={TICKER_HINT[form.type] || 'ไม่บังคับ'} />
+              </div>
+            )}
+            {(form.type === 'th_stock' || form.type === 'foreign_stock') && (
+              <div className="pf-field">
+                <label className="pf-label">กลุ่มอุตสาหกรรม (ถ้ามี)</label>
+                <input className="pf-input" value={form.industry} onChange={(e) => setForm({ ...form, industry: e.target.value })} placeholder="เช่น พลังงาน, เทคโนโลยี, ธนาคาร" />
+                <div className="pf-currency-hint">ใส่ไว้เพื่อดูสัดส่วนพอร์ตแบ่งตามอุตสาหกรรมได้ — แตะที่กราฟวงกลมของหุ้นไทย/หุ้นต่างประเทศเพื่อสลับมุมมอง</div>
               </div>
             )}
             <div className="pf-field">
