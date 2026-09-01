@@ -231,9 +231,9 @@ export default function PortfolioApp() {
   };
 
   // หุ้นต่างประเทศและทองคำ: ธนาคาร/แอพอ้างอิง (Dime) มักใช้เรตซื้อที่ต่ำกว่าเรตกลางเล็กน้อย
-  // จึงหักออก 0.5 บาทจากอัตราแลกเปลี่ยนก่อนคำนวณมูลค่าเฉพาะสองประเภทนี้
+  // จึงหักออก 0.05 บาทจากอัตราแลกเปลี่ยนก่อนคำนวณมูลค่าเฉพาะสองประเภทนี้
   const getEffectiveRate = (type, rate) => {
-    if (type === 'foreign_stock' || type === 'gold') return Math.max(0, rate - 0.5);
+    if (type === 'foreign_stock' || type === 'gold') return Math.max(0, rate - 0.05);
     return rate;
   };
 
@@ -512,7 +512,7 @@ export default function PortfolioApp() {
         .pf-mono { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
         .pf-display { font-family: 'Fraunces', serif; }
         .pf-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
-        .pf-title { font-family: 'Fraunces', serif; font-size: 20px; font-weight: 600; letter-spacing: 0.2px; }
+        .pf-title { font-family: 'Fraunces', serif; font-size: 40px; font-weight: 600; letter-spacing: 0.2px; }
         .pf-icon-btn { background: var(--surface); border: 1px solid var(--divider); color: var(--text); border-radius: 10px; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
         .pf-icon-btn:hover { background: var(--surface-alt); }
         .pf-icon-btn:focus-visible, .pf-btn:focus-visible, .pf-input:focus-visible, .pf-select:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
