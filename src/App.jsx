@@ -232,8 +232,10 @@ export default function PortfolioApp() {
 
   // หุ้นต่างประเทศและทองคำ: ธนาคาร/แอพอ้างอิง (Dime) มักใช้เรตซื้อที่ต่ำกว่าเรตกลางเล็กน้อย
   // จึงหักออก 0.05 บาทจากอัตราแลกเปลี่ยนก่อนคำนวณมูลค่าเฉพาะสองประเภทนี้
+  // คริปโต: เทียบกับ Bitkub ที่ซื้อขายเป็นบาทตรงๆ หักออก 0.1 บาทเมื่อบันทึกเป็น USD
   const getEffectiveRate = (type, rate) => {
     if (type === 'foreign_stock' || type === 'gold') return Math.max(0, rate - 0.05);
+    if (type === 'crypto') return Math.max(0, rate - 0.1);
     return rate;
   };
 
