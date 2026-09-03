@@ -176,6 +176,8 @@ export default function PortfolioApp() {
   const [fxRate, setFxRate] = useState(36.5);
   const [fxDraft, setFxDraft] = useState('36.5');
   const [fetchingFx, setFetchingFx] = useState(false);
+  const [initialCapital, setInitialCapital] = useState(0);
+  const [initialCapitalDraft, setInitialCapitalDraft] = useState('');
 
   useEffect(() => { load(); }, []);
 
@@ -205,12 +207,19 @@ export default function PortfolioApp() {
         const r4 = await window.storage.get('fx-usdthb', false);
         if (r4 && r4.value) fx = parseFloat(r4.value) || 36.5;
       } catch (e) { /* not set yet */ }
+      let capital = 0;
+      try {
+        const r5 = await window.storage.get('initial-capital', false);
+        if (r5 && r5.value) capital = parseFloat(r5.value) || 0;
+      } catch (e) { /* not set yet */ }
       setHoldings(Array.isArray(h) ? h : []);
       setHistory(Array.isArray(hist) ? hist : []);
       setBackendUrl(url);
       setBackendDraft(url);
       setFxRate(fx);
       setFxDraft(String(fx));
+      setInitialCapital(capital);
+      setInitialCapitalDraft(capital > 0 ? String(capital) : '');
     } catch (e) {
       setLoadError(true);
     } finally {
@@ -370,6 +379,7 @@ export default function PortfolioApp() {
   const saveBackendUrl = async () => {
     const url = backendDraft.trim();
     const fx = parseFloat(fxDraft);
+    const capital = parseFloat(initialCapitalDraft);
     setBackendUrl(url);
     try { await window.storage.set('backend-url', url, false); }
     catch (e) { showToast('บันทึก Backend URL ไม่สำเร็จ'); }
@@ -378,6 +388,10 @@ export default function PortfolioApp() {
       try { await window.storage.set('fx-usdthb', String(fx), false); }
       catch (e) { showToast('บันทึกอัตราแลกเปลี่ยนไม่สำเร็จ'); }
     }
+    const nextCapital = !isNaN(capital) && capital >= 0 ? capital : 0;
+    setInitialCapital(nextCapital);
+    try { await window.storage.set('initial-capital', String(nextCapital), false); }
+    catch (e) { showToast('บันทึกทุนเริ่มต้นไม่สำเร็จ'); }
     showToast('บันทึกการตั้งค่าแล้ว');
     closePanel();
   };
@@ -525,6 +539,11 @@ export default function PortfolioApp() {
         .pf-chip-pos { color: var(--pos); } .pf-chip-neg { color: var(--neg); }
         .pf-spark { height: 44px; margin-top: 14px; }
         .pf-updated { color: var(--muted); font-size: 12px; margin-top: 10px; }
+        .pf-capital-card { background: var(--surface); border: 1px solid var(--divider); border-radius: 16px; padding: 18px 16px; margin-bottom: 16px; }
+        .pf-capital-row { display: flex; align-items: center; justify-content: space-between; font-size: 13.5px; padding: 6px 0; }
+        .pf-capital-bar { width: 100%; height: 8px; border-radius: 5px; background: var(--surface-alt); overflow: hidden; margin: 6px 0 2px; }
+        .pf-capital-bar-fill { height: 100%; background: var(--gold); border-radius: 5px; }
+        .pf-capital-highlight { margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--divider); font-weight: 600; font-size: 14.5px; }
         .pf-section-label { color: var(--muted); font-size: 12px; letter-spacing: 0.6px; text-transform: uppercase; margin: 20px 2px 10px; }
         .pf-donut-row { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; margin-bottom: 4px; }
         .pf-pie3d-svg { overflow: visible; filter: drop-shadow(0 10px 14px rgba(0,0,0,0.45)); flex-shrink: 0; background: transparent; }
@@ -610,7 +629,7 @@ export default function PortfolioApp() {
           <button className="pf-icon-btn" aria-label="เมนู" onClick={() => setMenuOpen((v) => !v)}><MoreVertical size={17} /></button>
           {menuOpen && (
             <div className="pf-menu">
-              <button onClick={() => { setBackendDraft(backendUrl); setFxDraft(String(fxRate)); setPanel('settings'); setMenuOpen(false); }}>ตั้งค่า</button>
+              <button onClick={() => { setBackendDraft(backendUrl); setFxDraft(String(fxRate)); setInitialCapitalDraft(initialCapital > 0 ? String(initialCapital) : ''); setPanel('settings'); setMenuOpen(false); }}>ตั้งค่า</button>
               <button onClick={exportData}>ส่งออกข้อมูล (สำรอง)</button>
               <button onClick={triggerImport}>นำเข้าข้อมูล (กู้คืน)</button>
               <button onClick={() => { setConfirmClear(true); setMenuOpen(false); }}>ล้างข้อมูลทั้งหมด</button>
@@ -674,6 +693,32 @@ export default function PortfolioApp() {
             )}
             <div className="pf-updated">อัปเดตล่าสุด: {lastUpdated ? thaiDate(lastUpdated) : 'ยังไม่มีการอัปเดต'}</div>
           </div>
+
+          {initialCapital > 0 && (() => {
+            const totalInvestedCost = enriched.filter((h) => h.type !== 'cash').reduce((s, h) => s + h.costValue, 0);
+            const remainingCash = initialCapital - totalInvestedCost;
+            const investedPct = initialCapital > 0 ? Math.min(100, (totalInvestedCost / initialCapital) * 100) : 0;
+            return (
+              <div className="pf-capital-card">
+                <div className="pf-section-label" style={{ margin: '0 0 12px' }}>สรุปเงินทุน</div>
+                <div className="pf-capital-row">
+                  <span>ทุนเริ่มต้น</span>
+                  <span className="pf-mono">฿{fmt(initialCapital, 0)}</span>
+                </div>
+                <div className="pf-capital-row">
+                  <span>ลงทุนไปแล้ว (ต้นทุนรวม)</span>
+                  <span className="pf-mono">฿{fmt(totalInvestedCost, 0)}</span>
+                </div>
+                <div className="pf-capital-bar">
+                  <div className="pf-capital-bar-fill" style={{ width: `${investedPct}%` }} />
+                </div>
+                <div className={`pf-capital-row pf-capital-highlight ${remainingCash < 0 ? 'pf-chip-neg' : 'pf-chip-pos'}`}>
+                  <span>{remainingCash < 0 ? 'ลงทุนเกินทุนเริ่มต้น' : 'เงินสดคงเหลือ (ยังไม่ได้ลงทุน)'}</span>
+                  <span className="pf-mono">฿{fmt(Math.abs(remainingCash), 0)}</span>
+                </div>
+              </div>
+            );
+          })()}
 
           {holdings.length === 0 ? (
             <div className="pf-empty">
@@ -800,6 +845,7 @@ export default function PortfolioApp() {
                               <span>จำนวน <b>{fmt(h.qty, h.qty % 1 === 0 ? 0 : 2)}</b></span>
                               <span>ทุนเฉลี่ย <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.avg)}</b></span>
                               <span>ราคาล่าสุด <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.price)}</b></span>
+                              <span>ต้นทุนรวม <b>฿{fmt(h.costValue)}</b></span>
                               <span>มูลค่า <b>฿{fmt(h.marketValue)}</b>{h.currency === 'USD' ? <span style={{ opacity: 0.7 }}> (${fmt(h.qty * h.price)})</span> : null}</span>
                               {typeHoldings.length > 1 && <span>สัดส่วนในหมวด <b>{fmt((h.marketValue / t.value) * 100, 1)}%</b></span>}
                               <span className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
@@ -945,6 +991,11 @@ export default function PortfolioApp() {
                 </button>
               </div>
               <div className="pf-currency-hint">ใช้แปลงมูลค่าสินทรัพย์ที่บันทึกเป็นดอลลาร์ให้เป็นบาทตอนคำนวณพอร์ตรวม อัปเดตเป็นครั้งคราวก็พอ ไม่จำเป็นต้องเป๊ะทุกวัน</div>
+            </div>
+            <div className="pf-field">
+              <label className="pf-label">ทุนเริ่มต้นทั้งหมด (บาท)</label>
+              <input className="pf-input pf-mono" inputMode="decimal" value={initialCapitalDraft} onChange={(e) => setInitialCapitalDraft(e.target.value)} placeholder="เช่น 100000" />
+              <div className="pf-currency-hint">ใส่จำนวนเงินทุนทั้งหมดที่ตั้งใจจะลงทุน ระบบจะเอาไปหักลบกับต้นทุนที่ลงทุนไปแล้ว แล้วโชว์ส่วนที่เหลือเป็น "เงินสดที่ยังไม่ได้ลงทุน" ให้อัตโนมัติ ปล่อยว่างไว้ได้ถ้าไม่ต้องการใช้ฟีเจอร์นี้</div>
             </div>
             <div className="pf-panel-actions">
               <button className="pf-btn pf-btn-ghost" onClick={closePanel}>ยกเลิก</button>
