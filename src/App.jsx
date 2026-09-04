@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Pencil, Trash2, RefreshCw, X, TrendingUp, TrendingDown, MoreVertical, Inbox, Zap } from 'lucide-react';
+import { Plus, Pencil, Trash2, RefreshCw, X, TrendingUp, TrendingDown, MoreVertical, Inbox, Zap, Wallet, ChevronRight } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
 
 const ASSET_TYPES = [
@@ -148,7 +148,13 @@ const thaiDate = (iso) => {
   if (!iso) return '-';
   return new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' });
 };
-const emptyForm = { name: '', ticker: '', type: 'th_stock', quantity: '', avgCost: '', currentPrice: '', currency: 'THB', industry: '' };
+const emptyForm = { name: '', ticker: '', type: 'th_stock', quantity: '', avgCost: '', currentPrice: '', currency: 'THB', industry: '', instrumentType: 'stock' };
+const INSTRUMENT_TYPES = [
+  { key: 'stock', label: 'หุ้นรายตัว' },
+  { key: 'dr', label: 'DR (Depositary Receipt)' },
+  { key: 'etf', label: 'ETF' },
+];
+const INSTRUMENT_RANK = { stock: 0, dr: 1, etf: 2 };
 
 export default function PortfolioApp() {
   const [holdings, setHoldings] = useState([]);
@@ -162,11 +168,13 @@ export default function PortfolioApp() {
   const [updateDraft, setUpdateDraft] = useState({});
   const [toast, setToast] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
+  const [confirmDeleteTarget, setConfirmDeleteTarget] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [pendingImport, setPendingImport] = useState(null);
   const [importError, setImportError] = useState('');
   const fileInputRef = useRef(null);
   const [chartModeByType, setChartModeByType] = useState({});
+  const [sortModeByType, setSortModeByType] = useState({});
   const toggleChartMode = (typeKey) => {
     setChartModeByType((prev) => ({ ...prev, [typeKey]: prev[typeKey] === 'industry' ? 'holding' : 'industry' }));
   };
@@ -287,6 +295,8 @@ export default function PortfolioApp() {
   const totalCapital = initialCapital + capitalAdjTotal;
   const cashActive = initialCapital > 0 || ledger.length > 0;
   const computedCash = cashActive ? (totalCapital - totalInvestedCost + cashAdjTotal) : 0;
+  const legacyCashHoldings = useMemo(() => holdings.filter((h) => h.type === 'cash'), [holdings]);
+  const recentLedger = useMemo(() => ledger.slice().sort((a, b) => b.id.localeCompare(a.id)), [ledger]);
 
   const totalValue = totalInvestedValue + (cashActive ? Math.max(0, computedCash) : 0);
   const totalCost = totalInvestedCost;
@@ -314,7 +324,7 @@ export default function PortfolioApp() {
   // ---- form handlers ----
   const openAdd = () => { setForm(emptyForm); setEditingId(null); setFormError(''); setPanel('form'); };
   const openEdit = (h) => {
-    setForm({ name: h.name, ticker: h.ticker || '', type: h.type, quantity: String(h.quantity), avgCost: String(h.avgCost), currentPrice: String(h.currentPrice), currency: h.currency === 'USD' ? 'USD' : 'THB', industry: h.industry || '' });
+    setForm({ name: h.name, ticker: h.ticker || '', type: h.type, quantity: String(h.quantity), avgCost: String(h.avgCost), currentPrice: String(h.currentPrice), currency: h.currency === 'USD' ? 'USD' : 'THB', industry: h.industry || '', instrumentType: h.instrumentType || 'stock' });
     setEditingId(h.id); setFormError(''); setPanel('form');
   };
   const closePanel = () => { setPanel(null); setEditingId(null); setUpdateDraft({}); };
@@ -333,12 +343,13 @@ export default function PortfolioApp() {
     if (!isCash && (isNaN(price) || price < 0)) { setFormError('ราคาปัจจุบันไม่ถูกต้อง'); return; }
     const currency = form.currency === 'USD' ? 'USD' : 'THB';
     const industry = form.industry.trim();
+    const instrumentType = (form.type === 'th_stock' || form.type === 'foreign_stock') ? (form.instrumentType || 'stock') : 'stock';
     if (editingId) {
-      const next = holdings.map((h) => h.id === editingId ? { ...h, name: form.name.trim(), ticker: form.ticker.trim(), type: form.type, quantity: qty, avgCost: avg, currentPrice: price, currency, industry } : h);
+      const next = holdings.map((h) => h.id === editingId ? { ...h, name: form.name.trim(), ticker: form.ticker.trim(), type: form.type, quantity: qty, avgCost: avg, currentPrice: price, currency, industry, instrumentType } : h);
       saveHoldings(next);
       showToast('แก้ไขรายการแล้ว');
     } else {
-      const next = [...holdings, { id: Date.now().toString(), name: form.name.trim(), ticker: form.ticker.trim(), type: form.type, quantity: qty, avgCost: avg, currentPrice: price, currency, industry, lastUpdated: todayStr() }];
+      const next = [...holdings, { id: Date.now().toString(), name: form.name.trim(), ticker: form.ticker.trim(), type: form.type, quantity: qty, avgCost: avg, currentPrice: price, currency, industry, instrumentType, lastUpdated: todayStr() }];
       saveHoldings(next);
       showToast('เพิ่มสินทรัพย์แล้ว');
     }
@@ -348,6 +359,15 @@ export default function PortfolioApp() {
   const deleteHolding = (id) => {
     saveHoldings(holdings.filter((h) => h.id !== id));
     showToast('ลบรายการแล้ว');
+  };
+
+  const requestDelete = (type, id, label) => setConfirmDeleteTarget({ type, id, label });
+
+  const performDelete = () => {
+    if (!confirmDeleteTarget) return;
+    if (confirmDeleteTarget.type === 'holding') deleteHolding(confirmDeleteTarget.id);
+    else if (confirmDeleteTarget.type === 'ledger') deleteLedgerEntry(confirmDeleteTarget.id);
+    setConfirmDeleteTarget(null);
   };
 
   const openUpdatePrices = () => {
@@ -571,7 +591,7 @@ export default function PortfolioApp() {
     const entry = { id: Date.now().toString(), type: ledgerType, amount: amt, date: todayStr() };
     saveLedger([...ledger, entry]);
     showToast(`บันทึก${LEDGER_LABELS[ledgerType]}แล้ว`);
-    closePanel();
+    setPanel('cashManage');
   };
 
   const deleteLedgerEntry = (id) => {
@@ -609,7 +629,7 @@ export default function PortfolioApp() {
         .pf-icon-btn:focus-visible, .pf-btn:focus-visible, .pf-input:focus-visible, .pf-select:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
         .pf-hero { background: var(--surface); border: 1px solid var(--divider); border-radius: 16px; padding: 22px 20px; margin-bottom: 16px; }
         .pf-hero-label { color: var(--muted); font-size: 12px; letter-spacing: 0.4px; margin-bottom: 6px; }
-        .pf-hero-value { font-size: 34px; font-weight: 600; line-height: 1.1; }
+        .pf-hero-value { font-size: 38px; font-weight: 800; line-height: 1.1; letter-spacing: -0.3px; }
         .pf-hero-sub { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 13px; }
         .pf-chip-pos { color: var(--pos); } .pf-chip-neg { color: var(--neg); }
         .pf-spark { height: 44px; margin-top: 14px; }
@@ -618,9 +638,12 @@ export default function PortfolioApp() {
         .pf-capital-row { display: flex; align-items: center; justify-content: space-between; font-size: 13.5px; padding: 6px 0; }
         .pf-capital-bar { width: 100%; height: 8px; border-radius: 5px; background: var(--surface-alt); overflow: hidden; margin: 6px 0 2px; }
         .pf-capital-bar-fill { height: 100%; background: var(--gold); border-radius: 5px; }
-        .pf-capital-highlight { margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--divider); font-weight: 600; font-size: 14.5px; }
+        .pf-capital-highlight { margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--divider); font-weight: 700; font-size: 17px; }
         .pf-cash-ledger { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--divider); }
         .pf-cash-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+        .pf-cash-manage-btn { width: 100%; display: flex; align-items: center; gap: 8px; background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 12px; padding: 12px 14px; font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 16px; }
+        .pf-cash-manage-btn:hover { background: var(--divider); }
+        .pf-capital-subnote { font-size: 11px; color: var(--muted); margin-top: -3px; margin-bottom: 4px; }
         .pf-cash-action-btn { flex: 1; min-width: 90px; background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 10px; padding: 9px 10px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
         .pf-cash-action-btn:hover { background: var(--divider); }
         .pf-legacy-note { font-size: 11.5px; color: var(--muted); margin: 12px 0 6px; }
@@ -637,9 +660,12 @@ export default function PortfolioApp() {
         .pf-type-breakdown-caption { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 2px; }
         .pf-type-section-info { flex: 1; min-width: 0; }
         .pf-type-section-title { display: flex; align-items: center; gap: 7px; font-family: 'Fraunces', serif; font-weight: 600; font-size: 15.5px; margin-bottom: 5px; }
-        .pf-type-section-value { font-size: 21px; font-weight: 600; }
+        .pf-type-section-value { font-size: 25px; font-weight: 800; letter-spacing: -0.2px; }
         .pf-type-section-gain { font-size: 12.5px; margin-top: 3px; }
         .pf-type-section-pct { color: var(--muted); font-size: 12px; margin-top: 5px; }
+        .pf-type-section-cost { color: var(--muted); font-size: 12px; margin-top: 3px; }
+        .pf-sort-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 12px; color: var(--muted); }
+        .pf-sort-select { background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 8px; padding: 5px 8px; font-size: 12px; }
         .pf-type-breakdown { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--divider); }
         .pf-type-breakdown-scroll { max-height: 240px; overflow-y: auto; padding-right: 4px; }
         .pf-type-breakdown-item { display: flex; align-items: center; gap: 8px; font-size: 13px; }
@@ -670,6 +696,8 @@ export default function PortfolioApp() {
         .pf-btn-primary { background: var(--gold); color: #1A1400; border: none; }
         .pf-btn-ghost { background: var(--surface); color: var(--text); }
         .pf-overlay { position: fixed; inset: 0; background: rgba(6,10,16,0.6); display: flex; justify-content: flex-end; z-index: 40; }
+        .pf-modal-overlay { position: fixed; inset: 0; background: rgba(6,10,16,0.65); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
+        .pf-confirm-modal { background: var(--surface); border: 1px solid var(--divider); border-radius: 16px; padding: 20px; width: 100%; max-width: 340px; }
         .pf-panel { background: var(--bg); border-left: 1px solid var(--divider); width: 100%; max-width: 400px; height: 100%; overflow-y: auto; padding: 20px; animation: pf-slide 0.18s ease-out; }
         @keyframes pf-slide { from { transform: translateX(24px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         .pf-panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
@@ -800,8 +828,6 @@ export default function PortfolioApp() {
               {byType.map((t) => {
                 if (t.key === 'cash') {
                   const investedPct = totalCapital > 0 ? Math.min(100, (totalInvestedCost / totalCapital) * 100) : 0;
-                  const recentLedger = ledger.slice().sort((a, b) => b.id.localeCompare(a.id));
-                  const legacyCashHoldings = holdings.filter((h) => h.type === 'cash');
                   return (
                     <div className="pf-type-section" key="cash">
                       <div className="pf-type-section-head">
@@ -814,14 +840,11 @@ export default function PortfolioApp() {
 
                       <div className="pf-cash-ledger">
                         <div className="pf-capital-row">
-                          <span>ทุนเริ่มต้น</span>
-                          <span className="pf-mono">฿{fmt(initialCapital, 0)}</span>
+                          <span>ทุนเริ่มต้น{capitalAdjTotal !== 0 ? ' (รวมเพิ่ม/ลดทุนแล้ว)' : ''}</span>
+                          <span className="pf-mono">฿{fmt(totalCapital, 0)}</span>
                         </div>
                         {capitalAdjTotal !== 0 && (
-                          <div className="pf-capital-row">
-                            <span>ทุนที่เพิ่ม/ลด สะสม</span>
-                            <span className={`pf-mono ${capitalAdjTotal >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>{capitalAdjTotal >= 0 ? '+' : ''}฿{fmt(capitalAdjTotal, 0)}</span>
-                          </div>
+                          <div className="pf-capital-subnote pf-mono">ตั้งต้น ฿{fmt(initialCapital, 0)} {capitalAdjTotal >= 0 ? '+' : '-'} ปรับทุนสุทธิ ฿{fmt(Math.abs(capitalAdjTotal), 0)}</div>
                         )}
                         <div className="pf-capital-row">
                           <span>ลงทุนไปแล้ว (ต้นทุนรวม)</span>
@@ -842,59 +865,21 @@ export default function PortfolioApp() {
                         </div>
                       </div>
 
-                      <div className="pf-cash-actions">
-                        <button className="pf-cash-action-btn" onClick={() => openLedgerForm('capital_add')}>+ เพิ่มทุน</button>
-                        <button className="pf-cash-action-btn" onClick={() => openLedgerForm('capital_reduce')}>- ลดทุน</button>
-                        <button className="pf-cash-action-btn" onClick={() => openLedgerForm('profit')}>+ กำไร</button>
-                        <button className="pf-cash-action-btn" onClick={() => openLedgerForm('loss')}>- ขาดทุน</button>
-                        <button className="pf-cash-action-btn" onClick={() => openLedgerForm('dividend')}>+ ปันผล</button>
-                      </div>
-
-                      {legacyCashHoldings.length > 0 && (
-                        <div className="pf-type-section-holdings">
-                          <div className="pf-legacy-note">รายการเงินสดแบบเก่า (กรอกเองก่อนหน้านี้) — ไม่ถูกนับในยอดคำนวณอัตโนมัติด้านบนแล้ว แนะนำให้ลบแล้วใช้ปุ่ม "เพิ่มทุน" แทน</div>
-                          {legacyCashHoldings.map((h) => (
-                            <div className="pf-subrow" key={h.id}>
-                              <div className="pf-row-top">
-                                <div className="pf-row-name">
-                                  <span className="pf-row-name-text">{h.name}</span>
-                                </div>
-                                <div className="pf-row-actions">
-                                  <button aria-label="ลบ" onClick={() => deleteHolding(h.id)}><Trash2 size={15} /></button>
-                                </div>
-                              </div>
-                              <div className="pf-row-meta pf-mono">
-                                <span>จำนวนเงิน <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.quantity)}</b></span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {recentLedger.length > 0 && (
-                        <div className="pf-type-section-holdings">
-                          {recentLedger.map((e) => (
-                            <div className="pf-subrow" key={e.id}>
-                              <div className="pf-row-top">
-                                <div className="pf-row-name">
-                                  <span className="pf-row-name-text">{LEDGER_LABELS[e.type]}</span>
-                                </div>
-                                <div className="pf-row-actions">
-                                  <button aria-label="ลบ" onClick={() => deleteLedgerEntry(e.id)}><Trash2 size={15} /></button>
-                                </div>
-                              </div>
-                              <div className="pf-row-meta pf-mono">
-                                <span>จำนวน <b>฿{fmt(e.amount)}</b></span>
-                                <span style={{ marginLeft: 'auto' }}>{thaiDate(e.date)}</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      <button className="pf-cash-manage-btn" onClick={() => setPanel('cashManage')}>
+                        <Wallet size={15} /> จัดการเงินสด (เพิ่ม/ลดทุน · กำไร/ขาดทุน · ปันผล · ประวัติ)
+                        <ChevronRight size={15} style={{ marginLeft: 'auto', opacity: 0.6 }} />
+                      </button>
                     </div>
                   );
                 }
-                const typeHoldings = enriched.filter((h) => h.type === t.key).sort((a, b) => b.marketValue - a.marketValue);
+                const sortMode = sortModeByType[t.key] || 'value';
+                const typeHoldings = enriched.filter((h) => h.type === t.key).sort((a, b) => {
+                  const rankA = INSTRUMENT_RANK[a.instrumentType] ?? 0;
+                  const rankB = INSTRUMENT_RANK[b.instrumentType] ?? 0;
+                  if (rankA !== rankB) return rankA - rankB;
+                  if (sortMode === 'name') return a.name.localeCompare(b.name, 'th');
+                  return b.marketValue - a.marketValue;
+                });
                 const typeCost = typeHoldings.reduce((s, h) => s + h.costValue, 0);
                 const typeGain = t.value - typeCost;
                 const typeGainPct = typeCost > 0 ? (typeGain / typeCost) * 100 : 0;
@@ -950,6 +935,9 @@ export default function PortfolioApp() {
                       <div className="pf-type-section-info">
                         <div className="pf-type-section-title"><span className="pf-dot" style={{ background: t.color }} />{t.label}</div>
                         <div className="pf-type-section-value pf-mono">฿{fmt(t.value, 0)}</div>
+                        {typeCost > 0 && (
+                          <div className="pf-type-section-cost pf-mono">ต้นทุนรวม ฿{fmt(typeCost, 0)}</div>
+                        )}
                         {t.key !== 'cash' && typeCost > 0 && (
                           <div className={`pf-type-section-gain pf-mono ${typeGain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
                             {typeGain >= 0 ? '+' : ''}{fmt(typeGain, 0)} ({typeGain >= 0 ? '+' : ''}{fmt(typeGainPct, 1)}%)
@@ -958,6 +946,15 @@ export default function PortfolioApp() {
                         <div className="pf-type-section-pct pf-mono">{fmt((t.value / totalValue) * 100, 1)}% ของพอร์ตรวม</div>
                       </div>
                     </div>
+                    {typeHoldings.length > 1 && (
+                      <div className="pf-sort-row">
+                        <span>เรียงตาม</span>
+                        <select className="pf-sort-select" value={sortMode} onChange={(e) => setSortModeByType((prev) => ({ ...prev, [t.key]: e.target.value }))}>
+                          <option value="value">มูลค่า/เปอร์เซ็นต์ (มาก→น้อย)</option>
+                          <option value="name">ชื่อ (ก-ฮ / A-Z)</option>
+                        </select>
+                      </div>
+                    )}
                     {breakdownItems.length > 1 && (
                       <div className={`pf-type-breakdown ${breakdownItems.length > 8 ? 'pf-type-breakdown-scroll' : ''}`}>
                         {viewMode === 'industry' && <div className="pf-type-breakdown-caption">สัดส่วนตามอุตสาหกรรม</div>}
@@ -980,14 +977,13 @@ export default function PortfolioApp() {
                             </div>
                             <div className="pf-row-actions">
                               <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
-                              <button aria-label="ลบ" onClick={() => deleteHolding(h.id)}><Trash2 size={15} /></button>
+                              <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)}><Trash2 size={15} /></button>
                             </div>
                           </div>
                           {h.type === 'cash' ? (
                             <div className="pf-row-meta pf-mono">
                               <span>จำนวนเงิน <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.qty)}</b></span>
                               {h.currency === 'USD' && <span>≈ <b>฿{fmt(h.marketValue)}</b></span>}
-                              {typeHoldings.length > 1 && <span>สัดส่วนในหมวด <b>{fmt((h.marketValue / t.value) * 100, 1)}%</b></span>}
                               <span style={{ marginLeft: 'auto' }}>อัปเดต {thaiDate(h.lastUpdated)}</span>
                             </div>
                           ) : (
@@ -997,7 +993,6 @@ export default function PortfolioApp() {
                               <span>ราคาล่าสุด <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.price)}</b></span>
                               <span>ต้นทุนรวม <b>฿{fmt(h.costValue)}</b></span>
                               <span>มูลค่า <b>฿{fmt(h.marketValue)}</b>{h.currency === 'USD' ? <span style={{ opacity: 0.7 }}> (${fmt(h.qty * h.price)})</span> : null}</span>
-                              {typeHoldings.length > 1 && <span>สัดส่วนในหมวด <b>{fmt((h.marketValue / t.value) * 100, 1)}%</b></span>}
                               <span className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
                                 {h.gain >= 0 ? '+' : ''}{fmt(h.gain)} ({h.gain >= 0 ? '+' : ''}{fmt(h.gainPct, 1)}%)
                               </span>
@@ -1038,6 +1033,15 @@ export default function PortfolioApp() {
               <div className="pf-field">
                 <label className="pf-label">สัญลักษณ์ {typeInfo(form.type).market ? '(ใส่เพื่อดึงราคาอัตโนมัติได้)' : '(ถ้ามี)'}</label>
                 <input className="pf-input" value={form.ticker} onChange={(e) => setForm({ ...form, ticker: e.target.value.toUpperCase() })} placeholder={TICKER_HINT[form.type] || 'ไม่บังคับ'} />
+              </div>
+            )}
+            {(form.type === 'th_stock' || form.type === 'foreign_stock') && (
+              <div className="pf-field">
+                <label className="pf-label">ประเภทตราสาร</label>
+                <select className="pf-select" value={form.instrumentType} onChange={(e) => setForm({ ...form, instrumentType: e.target.value })}>
+                  {INSTRUMENT_TYPES.map((it) => <option value={it.key} key={it.key}>{it.label}</option>)}
+                </select>
+                <div className="pf-currency-hint">ในรายการจะเรียงหุ้นรายตัวขึ้นก่อนเสมอ ตามด้วย DR และ ETF</div>
               </div>
             )}
             {(form.type === 'th_stock' || form.type === 'foreign_stock') && (
@@ -1156,11 +1160,11 @@ export default function PortfolioApp() {
       )}
 
       {panel === 'ledger' && (
-        <div className="pf-overlay" onClick={closePanel}>
+        <div className="pf-overlay" onClick={() => setPanel('cashManage')}>
           <div className="pf-panel" onClick={(e) => e.stopPropagation()}>
             <div className="pf-panel-head">
               <div className="pf-panel-title">{LEDGER_LABELS[ledgerType]}</div>
-              <button className="pf-icon-btn" onClick={closePanel} aria-label="ปิด"><X size={16} /></button>
+              <button className="pf-icon-btn" onClick={() => setPanel('cashManage')} aria-label="ปิด"><X size={16} /></button>
             </div>
             {ledgerError && <div className="pf-error">{ledgerError}</div>}
             <div className="pf-field">
@@ -1175,8 +1179,87 @@ export default function PortfolioApp() {
               </div>
             </div>
             <div className="pf-panel-actions">
-              <button className="pf-btn pf-btn-ghost" onClick={closePanel}>ยกเลิก</button>
+              <button className="pf-btn pf-btn-ghost" onClick={() => setPanel('cashManage')}>ยกเลิก</button>
               <button className="pf-btn pf-btn-primary" onClick={submitLedger}>บันทึก</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {panel === 'cashManage' && (
+        <div className="pf-overlay" onClick={closePanel}>
+          <div className="pf-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="pf-panel-head">
+              <div className="pf-panel-title">จัดการเงินสด</div>
+              <button className="pf-icon-btn" onClick={closePanel} aria-label="ปิด"><X size={16} /></button>
+            </div>
+
+            <div className="pf-cash-actions">
+              <button className="pf-cash-action-btn" onClick={() => openLedgerForm('capital_add')}>+ เพิ่มทุน</button>
+              <button className="pf-cash-action-btn" onClick={() => openLedgerForm('capital_reduce')}>- ลดทุน</button>
+              <button className="pf-cash-action-btn" onClick={() => openLedgerForm('profit')}>+ กำไร</button>
+              <button className="pf-cash-action-btn" onClick={() => openLedgerForm('loss')}>- ขาดทุน</button>
+              <button className="pf-cash-action-btn" onClick={() => openLedgerForm('dividend')}>+ ปันผล</button>
+            </div>
+
+            <div className="pf-section-label" style={{ margin: '18px 0 8px' }}>ประวัติ ({recentLedger.length})</div>
+            {recentLedger.length === 0 ? (
+              <div style={{ color: 'var(--muted)', fontSize: 13, padding: '10px 0' }}>ยังไม่มีประวัติการปรับเงินสด</div>
+            ) : (
+              <div className="pf-type-section-holdings" style={{ borderTop: 'none', marginTop: 0, paddingTop: 0 }}>
+                {recentLedger.map((e) => (
+                  <div className="pf-subrow" key={e.id}>
+                    <div className="pf-row-top">
+                      <div className="pf-row-name">
+                        <span className="pf-row-name-text">{LEDGER_LABELS[e.type]}</span>
+                      </div>
+                      <div className="pf-row-actions">
+                        <button aria-label="ลบ" onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type])}><Trash2 size={15} /></button>
+                      </div>
+                    </div>
+                    <div className="pf-row-meta pf-mono">
+                      <span>จำนวน <b>฿{fmt(e.amount)}</b></span>
+                      <span style={{ marginLeft: 'auto' }}>{thaiDate(e.date)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {legacyCashHoldings.length > 0 && (
+              <>
+                <div className="pf-section-label" style={{ margin: '18px 0 8px' }}>รายการเงินสดแบบเก่า</div>
+                <div className="pf-legacy-note">กรอกเองก่อนหน้านี้ — ไม่ถูกนับในยอดคำนวณอัตโนมัติแล้ว แนะนำให้ลบแล้วใช้ปุ่ม "เพิ่มทุน" แทน</div>
+                <div className="pf-type-section-holdings" style={{ borderTop: 'none', marginTop: 8, paddingTop: 0 }}>
+                  {legacyCashHoldings.map((h) => (
+                    <div className="pf-subrow" key={h.id}>
+                      <div className="pf-row-top">
+                        <div className="pf-row-name">
+                          <span className="pf-row-name-text">{h.name}</span>
+                        </div>
+                        <div className="pf-row-actions">
+                          <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)}><Trash2 size={15} /></button>
+                        </div>
+                      </div>
+                      <div className="pf-row-meta pf-mono">
+                        <span>จำนวนเงิน <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.quantity)}</b></span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteTarget && (
+        <div className="pf-modal-overlay" onClick={() => setConfirmDeleteTarget(null)}>
+          <div className="pf-confirm-modal" onClick={(e) => e.stopPropagation()}>
+            <div style={{ marginBottom: 16, fontSize: 14.5 }}>ยืนยันลบ "{confirmDeleteTarget.label}"? ทำแล้วกู้คืนไม่ได้</div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="pf-btn pf-btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setConfirmDeleteTarget(null)}>ยกเลิก</button>
+              <button className="pf-btn" style={{ flex: 1, justifyContent: 'center', background: 'var(--neg)', color: '#fff', border: 'none' }} onClick={performDelete}>ยืนยันลบ</button>
             </div>
           </div>
         </div>
