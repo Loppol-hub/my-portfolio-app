@@ -299,6 +299,20 @@ export default function PortfolioApp() {
   const computedCash = cashActive ? (totalCapital - totalInvestedCost + cashAdjTotal) : 0;
   const legacyCashHoldings = useMemo(() => holdings.filter((h) => h.type === 'cash'), [holdings]);
   const recentLedger = useMemo(() => ledger.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.id.localeCompare(a.id)), [ledger]);
+  const buddhistYear = (y) => (parseInt(y, 10) || 0) + 543;
+  const yearlySummary = useMemo(() => {
+    const map = {};
+    ledger.forEach((e) => {
+      const year = (e.date || '').slice(0, 4) || '0000';
+      if (!map[year]) map[year] = { capital_add: 0, capital_reduce: 0, profit: 0, loss: 0, dividend: 0 };
+      map[year][e.type] = (map[year][e.type] || 0) + e.amount;
+    });
+    return Object.keys(map).sort((a, b) => b.localeCompare(a)).map((year) => {
+      const d = map[year];
+      const net = d.capital_add - d.capital_reduce + d.profit - d.loss + d.dividend;
+      return { year, ...d, net };
+    });
+  }, [ledger]);
 
   const totalValue = totalInvestedValue + (cashActive ? Math.max(0, computedCash) : 0);
   const totalCost = totalInvestedCost;
@@ -573,6 +587,13 @@ export default function PortfolioApp() {
     loss: 'ขาดทุน',
     dividend: 'ปันผล',
   };
+  const LEDGER_SIGN = {
+    capital_add: 1,
+    capital_reduce: -1,
+    profit: 1,
+    loss: -1,
+    dividend: 1,
+  };
 
   const saveLedger = async (next) => {
     setLedger(next);
@@ -648,6 +669,8 @@ export default function PortfolioApp() {
         .pf-cash-manage-btn { display: inline-flex; align-items: center; gap: 8px; background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 20px; padding: 6px 14px 6px 6px; font-size: 12.5px; font-weight: 600; cursor: pointer; margin-top: 16px; }
         .pf-cash-manage-btn:hover { background: var(--divider); }
         .pf-cash-manage-icon { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: var(--gold); color: #1A1400; flex-shrink: 0; }
+        .pf-year-card { background: var(--surface-alt); border: 1px solid var(--divider); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
+        .pf-year-title { font-family: 'Fraunces', serif; font-weight: 600; font-size: 14px; margin-bottom: 6px; }
         .pf-capital-subnote { font-size: 11px; color: var(--muted); margin-top: -3px; margin-bottom: 4px; }
         .pf-cash-action-btn { flex: 1; min-width: 90px; background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 10px; padding: 9px 10px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
         .pf-cash-action-btn:hover { background: var(--divider); }
@@ -669,7 +692,7 @@ export default function PortfolioApp() {
         .pf-type-section-gain { font-size: 12.5px; margin-top: 3px; }
         .pf-type-section-pct { color: var(--muted); font-size: 12px; margin-top: 5px; }
         .pf-type-section-cost { color: var(--muted); font-size: 12px; margin-top: 3px; }
-        .pf-sort-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 12px; color: var(--muted); }
+        .pf-sort-row { display: flex; align-items: center; justify-content: flex-end; margin-top: 12px; }
         .pf-sort-toggle { display: flex; background: var(--surface-alt); border: 1px solid var(--divider); border-radius: 8px; padding: 2px; gap: 2px; }
         .pf-sort-toggle button { display: flex; align-items: center; justify-content: center; width: 26px; height: 24px; border-radius: 6px; background: transparent; border: none; color: var(--muted); cursor: pointer; }
         .pf-sort-toggle button.pf-sort-toggle-active { background: var(--gold); color: #1A1400; }
@@ -956,7 +979,6 @@ export default function PortfolioApp() {
                     </div>
                     {typeHoldings.length > 1 && (
                       <div className="pf-sort-row">
-                        <span>เรียงตาม</span>
                         <div className="pf-sort-toggle">
                           <button
                             className={sortMode === 'value' ? 'pf-sort-toggle-active' : ''}
@@ -1232,6 +1254,26 @@ export default function PortfolioApp() {
               <button className="pf-cash-action-btn" onClick={() => openLedgerForm('dividend')}>+ ปันผล</button>
             </div>
 
+            {yearlySummary.length > 0 && (
+              <>
+                <div className="pf-section-label" style={{ margin: '18px 0 8px' }}>สรุปรายปี</div>
+                {yearlySummary.map((y) => (
+                  <div className="pf-year-card" key={y.year}>
+                    <div className="pf-year-title">ปี {buddhistYear(y.year)}</div>
+                    {y.capital_add > 0 && <div className="pf-capital-row"><span>เพิ่มทุน</span><span className="pf-mono pf-chip-pos">+฿{fmt(y.capital_add, 0)}</span></div>}
+                    {y.capital_reduce > 0 && <div className="pf-capital-row"><span>ลดทุน</span><span className="pf-mono pf-chip-neg">-฿{fmt(y.capital_reduce, 0)}</span></div>}
+                    {y.profit > 0 && <div className="pf-capital-row"><span>กำไร</span><span className="pf-mono pf-chip-pos">+฿{fmt(y.profit, 0)}</span></div>}
+                    {y.loss > 0 && <div className="pf-capital-row"><span>ขาดทุน</span><span className="pf-mono pf-chip-neg">-฿{fmt(y.loss, 0)}</span></div>}
+                    {y.dividend > 0 && <div className="pf-capital-row"><span>ปันผล</span><span className="pf-mono pf-chip-pos">+฿{fmt(y.dividend, 0)}</span></div>}
+                    <div className={`pf-capital-row pf-capital-highlight ${y.net >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
+                      <span>สุทธิรวมปีนี้</span>
+                      <span className="pf-mono">{y.net >= 0 ? '+' : '-'}฿{fmt(Math.abs(y.net), 0)}</span>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+
             <div className="pf-section-label" style={{ margin: '18px 0 8px' }}>ประวัติ ({recentLedger.length})</div>
             {recentLedger.length === 0 ? (
               <div style={{ color: 'var(--muted)', fontSize: 13, padding: '10px 0' }}>ยังไม่มีประวัติการปรับเงินสด</div>
@@ -1248,7 +1290,9 @@ export default function PortfolioApp() {
                       </div>
                     </div>
                     <div className="pf-row-meta pf-mono">
-                      <span>จำนวน <b>฿{fmt(e.amount)}</b></span>
+                      <span className={LEDGER_SIGN[e.type] > 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
+                        <b>{LEDGER_SIGN[e.type] > 0 ? '+' : '-'}฿{fmt(e.amount)}</b>
+                      </span>
                       <span style={{ marginLeft: 'auto' }}>{thaiDate(e.date)}</span>
                     </div>
                   </div>
