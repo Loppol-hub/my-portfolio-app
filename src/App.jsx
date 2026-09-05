@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Pencil, Trash2, RefreshCw, X, TrendingUp, TrendingDown, MoreVertical, Inbox, Zap, Wallet, ChevronRight } from 'lucide-react';
+import { Plus, Pencil, Trash2, RefreshCw, X, TrendingUp, TrendingDown, MoreVertical, Inbox, Zap, Wallet, ChevronRight, ArrowDownWideNarrow, ArrowDownAZ } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
 
 const ASSET_TYPES = [
@@ -190,6 +190,8 @@ export default function PortfolioApp() {
   const [ledgerType, setLedgerType] = useState(null);
   const [ledgerAmount, setLedgerAmount] = useState('');
   const [ledgerError, setLedgerError] = useState('');
+  const [ledgerNote, setLedgerNote] = useState('');
+  const [ledgerDate, setLedgerDate] = useState('');
 
   useEffect(() => { load(); }, []);
 
@@ -296,7 +298,7 @@ export default function PortfolioApp() {
   const cashActive = initialCapital > 0 || ledger.length > 0;
   const computedCash = cashActive ? (totalCapital - totalInvestedCost + cashAdjTotal) : 0;
   const legacyCashHoldings = useMemo(() => holdings.filter((h) => h.type === 'cash'), [holdings]);
-  const recentLedger = useMemo(() => ledger.slice().sort((a, b) => b.id.localeCompare(a.id)), [ledger]);
+  const recentLedger = useMemo(() => ledger.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.id.localeCompare(a.id)), [ledger]);
 
   const totalValue = totalInvestedValue + (cashActive ? Math.max(0, computedCash) : 0);
   const totalCost = totalInvestedCost;
@@ -581,6 +583,8 @@ export default function PortfolioApp() {
   const openLedgerForm = (type) => {
     setLedgerType(type);
     setLedgerAmount('');
+    setLedgerNote('');
+    setLedgerDate(todayStr());
     setLedgerError('');
     setPanel('ledger');
   };
@@ -588,7 +592,7 @@ export default function PortfolioApp() {
   const submitLedger = () => {
     const amt = parseFloat(ledgerAmount);
     if (isNaN(amt) || amt <= 0) { setLedgerError('กรอกจำนวนเงินให้ถูกต้อง (มากกว่า 0)'); return; }
-    const entry = { id: Date.now().toString(), type: ledgerType, amount: amt, date: todayStr() };
+    const entry = { id: Date.now().toString(), type: ledgerType, amount: amt, date: ledgerDate || todayStr(), note: ledgerNote.trim() };
     saveLedger([...ledger, entry]);
     showToast(`บันทึก${LEDGER_LABELS[ledgerType]}แล้ว`);
     setPanel('cashManage');
@@ -641,8 +645,9 @@ export default function PortfolioApp() {
         .pf-capital-highlight { margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--divider); font-weight: 700; font-size: 17px; }
         .pf-cash-ledger { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--divider); }
         .pf-cash-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
-        .pf-cash-manage-btn { width: 100%; display: flex; align-items: center; gap: 8px; background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 12px; padding: 12px 14px; font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 16px; }
+        .pf-cash-manage-btn { display: inline-flex; align-items: center; gap: 8px; background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 20px; padding: 6px 14px 6px 6px; font-size: 12.5px; font-weight: 600; cursor: pointer; margin-top: 16px; }
         .pf-cash-manage-btn:hover { background: var(--divider); }
+        .pf-cash-manage-icon { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: var(--gold); color: #1A1400; flex-shrink: 0; }
         .pf-capital-subnote { font-size: 11px; color: var(--muted); margin-top: -3px; margin-bottom: 4px; }
         .pf-cash-action-btn { flex: 1; min-width: 90px; background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 10px; padding: 9px 10px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
         .pf-cash-action-btn:hover { background: var(--divider); }
@@ -665,7 +670,9 @@ export default function PortfolioApp() {
         .pf-type-section-pct { color: var(--muted); font-size: 12px; margin-top: 5px; }
         .pf-type-section-cost { color: var(--muted); font-size: 12px; margin-top: 3px; }
         .pf-sort-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 12px; color: var(--muted); }
-        .pf-sort-select { background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 8px; padding: 5px 8px; font-size: 12px; }
+        .pf-sort-toggle { display: flex; background: var(--surface-alt); border: 1px solid var(--divider); border-radius: 8px; padding: 2px; gap: 2px; }
+        .pf-sort-toggle button { display: flex; align-items: center; justify-content: center; width: 26px; height: 24px; border-radius: 6px; background: transparent; border: none; color: var(--muted); cursor: pointer; }
+        .pf-sort-toggle button.pf-sort-toggle-active { background: var(--gold); color: #1A1400; }
         .pf-type-breakdown { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--divider); }
         .pf-type-breakdown-scroll { max-height: 240px; overflow-y: auto; padding-right: 4px; }
         .pf-type-breakdown-item { display: flex; align-items: center; gap: 8px; font-size: 13px; }
@@ -866,8 +873,9 @@ export default function PortfolioApp() {
                       </div>
 
                       <button className="pf-cash-manage-btn" onClick={() => setPanel('cashManage')}>
-                        <Wallet size={15} /> จัดการเงินสด (เพิ่ม/ลดทุน · กำไร/ขาดทุน · ปันผล · ประวัติ)
-                        <ChevronRight size={15} style={{ marginLeft: 'auto', opacity: 0.6 }} />
+                        <span className="pf-cash-manage-icon"><Wallet size={16} /></span>
+                        <span>จัดการเงินสด</span>
+                        <ChevronRight size={14} style={{ opacity: 0.5 }} />
                       </button>
                     </div>
                   );
@@ -949,10 +957,24 @@ export default function PortfolioApp() {
                     {typeHoldings.length > 1 && (
                       <div className="pf-sort-row">
                         <span>เรียงตาม</span>
-                        <select className="pf-sort-select" value={sortMode} onChange={(e) => setSortModeByType((prev) => ({ ...prev, [t.key]: e.target.value }))}>
-                          <option value="value">มูลค่า/เปอร์เซ็นต์ (มาก→น้อย)</option>
-                          <option value="name">ชื่อ (ก-ฮ / A-Z)</option>
-                        </select>
+                        <div className="pf-sort-toggle">
+                          <button
+                            className={sortMode === 'value' ? 'pf-sort-toggle-active' : ''}
+                            onClick={() => setSortModeByType((prev) => ({ ...prev, [t.key]: 'value' }))}
+                            aria-label="เรียงตามมูลค่า"
+                            title="เรียงตามมูลค่า/เปอร์เซ็นต์"
+                          >
+                            <ArrowDownWideNarrow size={14} />
+                          </button>
+                          <button
+                            className={sortMode === 'name' ? 'pf-sort-toggle-active' : ''}
+                            onClick={() => setSortModeByType((prev) => ({ ...prev, [t.key]: 'name' }))}
+                            aria-label="เรียงตามชื่อ"
+                            title="เรียงตามชื่อ ก-ฮ / A-Z"
+                          >
+                            <ArrowDownAZ size={14} />
+                          </button>
+                        </div>
                       </div>
                     )}
                     {breakdownItems.length > 1 && (
@@ -1178,6 +1200,14 @@ export default function PortfolioApp() {
                 {ledgerType === 'dividend' && 'เงินปันผลที่ได้รับ จะถูกบวกเพิ่มเข้าเงินสด'}
               </div>
             </div>
+            <div className="pf-field">
+              <label className="pf-label">วันที่</label>
+              <input className="pf-input pf-mono" type="date" value={ledgerDate} onChange={(e) => setLedgerDate(e.target.value)} />
+            </div>
+            <div className="pf-field">
+              <label className="pf-label">รายละเอียด (ถ้ามี)</label>
+              <input className="pf-input" value={ledgerNote} onChange={(e) => setLedgerNote(e.target.value)} placeholder="เช่น ขายหุ้น PTT, โบนัสประจำปี, ปันผลจาก VOO" />
+            </div>
             <div className="pf-panel-actions">
               <button className="pf-btn pf-btn-ghost" onClick={() => setPanel('cashManage')}>ยกเลิก</button>
               <button className="pf-btn pf-btn-primary" onClick={submitLedger}>บันทึก</button>
@@ -1211,7 +1241,7 @@ export default function PortfolioApp() {
                   <div className="pf-subrow" key={e.id}>
                     <div className="pf-row-top">
                       <div className="pf-row-name">
-                        <span className="pf-row-name-text">{LEDGER_LABELS[e.type]}</span>
+                        <span className="pf-row-name-text">{LEDGER_LABELS[e.type]}{e.note ? ` · ${e.note}` : ''}</span>
                       </div>
                       <div className="pf-row-actions">
                         <button aria-label="ลบ" onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type])}><Trash2 size={15} /></button>
