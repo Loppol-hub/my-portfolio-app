@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Pencil, Trash2, RefreshCw, X, TrendingUp, TrendingDown, MoreVertical, Inbox, Zap, Wallet, ChevronRight, ArrowDownWideNarrow, ArrowDownAZ } from 'lucide-react';
+import { Plus, Pencil, Trash2, RefreshCw, X, TrendingUp, TrendingDown, MoreVertical, Inbox, Zap, Wallet, ChevronRight, ArrowDownWideNarrow, ArrowDownAZ, PlusCircle, MinusCircle, Gift } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
 
 const ASSET_TYPES = [
@@ -181,9 +181,18 @@ export default function PortfolioApp() {
   const [backendUrl, setBackendUrl] = useState('');
   const [backendDraft, setBackendDraft] = useState('');
   const [fetchingPrices, setFetchingPrices] = useState(false);
+  const [fetchIssues, setFetchIssues] = useState([]);
   const [fxRate, setFxRate] = useState(36.5);
   const [fxDraft, setFxDraft] = useState('36.5');
   const [fetchingFx, setFetchingFx] = useState(false);
+  const holdingsRef = useRef(holdings);
+  const historyRef = useRef(history);
+  const fxRateRef = useRef(fxRate);
+  const backendUrlRef = useRef(backendUrl);
+  useEffect(() => { holdingsRef.current = holdings; }, [holdings]);
+  useEffect(() => { historyRef.current = history; }, [history]);
+  useEffect(() => { fxRateRef.current = fxRate; }, [fxRate]);
+  useEffect(() => { backendUrlRef.current = backendUrl; }, [backendUrl]);
   const [initialCapital, setInitialCapital] = useState(0);
   const [initialCapitalDraft, setInitialCapitalDraft] = useState('');
   const [ledger, setLedger] = useState([]);
@@ -194,6 +203,29 @@ export default function PortfolioApp() {
   const [ledgerDate, setLedgerDate] = useState('');
 
   useEffect(() => { load(); }, []);
+
+  // ดึงราคาอัตโนมัติทุกครั้งที่เปิดเว็บแอพ (ถ้าตั้งค่า Backend URL ไว้แล้ว)
+  useEffect(() => {
+    if (loading) return;
+    runAutoPriceUpdate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
+  // และดึงซ้ำอัตโนมัติอีกครั้งเมื่อนาฬิกาเข้าเวลา 1 ทุ่ม หากเปิดแอพค้างไว้
+  const eveningFiredRef = useRef(null);
+  useEffect(() => {
+    const checkEvening = () => {
+      const now = new Date();
+      const todayKey = todayStr();
+      if (now.getHours() === 19 && eveningFiredRef.current !== todayKey) {
+        eveningFiredRef.current = todayKey;
+        runAutoPriceUpdate();
+      }
+    };
+    const interval = setInterval(checkEvening, 60000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2200); };
 
@@ -291,7 +323,7 @@ export default function PortfolioApp() {
   ), [ledger]);
   const cashAdjTotal = useMemo(() => (
     ledger.filter((e) => e.type === 'profit').reduce((s, e) => s + e.amount, 0)
-    - ledger.filter((e) => e.type === 'loss').reduce((s, e) => s + e.amount, 0)
+    + ledger.filter((e) => e.type === 'loss').reduce((s, e) => s + e.amount, 0)
     + ledger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0)
   ), [ledger]);
   const totalCapital = initialCapital + capitalAdjTotal;
@@ -300,19 +332,26 @@ export default function PortfolioApp() {
   const legacyCashHoldings = useMemo(() => holdings.filter((h) => h.type === 'cash'), [holdings]);
   const recentLedger = useMemo(() => ledger.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.id.localeCompare(a.id)), [ledger]);
   const buddhistYear = (y) => (parseInt(y, 10) || 0) + 543;
-  const yearlySummary = useMemo(() => {
-    const map = {};
-    ledger.forEach((e) => {
-      const year = (e.date || '').slice(0, 4) || '0000';
-      if (!map[year]) map[year] = { capital_add: 0, capital_reduce: 0, profit: 0, loss: 0, dividend: 0 };
-      map[year][e.type] = (map[year][e.type] || 0) + e.amount;
-    });
-    return Object.keys(map).sort((a, b) => b.localeCompare(a)).map((year) => {
-      const d = map[year];
-      const net = d.capital_add - d.capital_reduce + d.profit - d.loss + d.dividend;
-      return { year, ...d, net };
-    });
-  }, [ledger]);
+  const currentYearKey = String(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState(currentYearKey);
+  const yearOptions = useMemo(() => {
+    const set = new Set([currentYearKey, ...ledger.map((e) => (e.date || '').slice(0, 4)).filter(Boolean)]);
+    return Array.from(set).sort((a, b) => b.localeCompare(a)).slice(0, 5);
+  }, [ledger, currentYearKey]);
+  useEffect(() => {
+    if (!yearOptions.includes(selectedYear)) setSelectedYear(yearOptions[0] || currentYearKey);
+  }, [yearOptions]);
+  const yearSummary = useMemo(() => {
+    const d = { capital_add: 0, capital_reduce: 0, profit: 0, loss: 0, dividend: 0 };
+    ledger.forEach((e) => { if ((e.date || '').slice(0, 4) === selectedYear) d[e.type] = (d[e.type] || 0) + e.amount; });
+    // loss ยังถือเป็นเงินสดที่ได้รับกลับมา (แค่ได้น้อยกว่าทุน) จึงบวกเช่นเดียวกับกำไร
+    const net = d.capital_add - d.capital_reduce + d.profit + d.loss + d.dividend;
+    const totalIn = d.capital_add + d.profit + d.loss + d.dividend;
+    const totalOut = d.capital_reduce;
+    const totalFlow = totalIn + totalOut;
+    const inPct = totalFlow > 0 ? (totalIn / totalFlow) * 100 : 0;
+    return { ...d, net, totalIn, totalOut, inPct };
+  }, [ledger, selectedYear]);
 
   const totalValue = totalInvestedValue + (cashActive ? Math.max(0, computedCash) : 0);
   const totalCost = totalInvestedCost;
@@ -410,6 +449,63 @@ export default function PortfolioApp() {
     }
   };
 
+  // ดึงราคา + อัตราแลกเปลี่ยนพร้อมกันในคำขอเดียว แล้วบันทึกทันที (ไม่ต้องเปิดหน้าต่างอัปเดตราคา)
+  // ใช้ทั้งตอนเปิดเว็บแอพทุกครั้ง และตอนนาฬิกาเข้าเวลา 1 ทุ่ม — อ่านค่าจาก ref เสมอเพื่อไม่ให้ข้อมูลเก่าค้างในตัวจับเวลา
+  const runAutoPriceUpdate = async () => {
+    const url = backendUrlRef.current;
+    if (!url) return;
+    const currentHoldings = holdingsRef.current;
+    const eligible = currentHoldings.filter((h) => typeInfo(h.type).market && h.ticker);
+    if (eligible.length === 0) return;
+    try {
+      const items = eligible.map((h) => ({ id: h.id, ticker: h.ticker, market: typeInfo(h.type).market }));
+      items.push({ id: '__fx__', ticker: 'USDTHB', market: 'fx' });
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items }),
+      });
+      if (!res.ok) throw new Error('bad response');
+      const data = await res.json();
+      const results = data.results || [];
+      const priceById = {};
+      const failedNames = [];
+      results.forEach((r) => {
+        if (r.id === '__fx__') return;
+        if (typeof r.price === 'number') priceById[r.id] = r.price;
+        else {
+          const h = eligible.find((x) => x.id === r.id);
+          failedNames.push(h ? h.name : r.id);
+        }
+      });
+      const fxResult = results.find((r) => r.id === '__fx__');
+      let rate = fxRateRef.current;
+      if (fxResult && typeof fxResult.price === 'number') {
+        rate = fxResult.price;
+        setFxRate(rate);
+        setFxDraft(String(rate));
+        try { await window.storage.set('fx-usdthb', String(rate), false); } catch (e) { /* ignore */ }
+      }
+      const today = todayStr();
+      const nextHoldings = currentHoldings.map((h) => (
+        priceById[h.id] !== undefined ? { ...h, currentPrice: priceById[h.id], lastUpdated: today } : h
+      ));
+      await saveHoldings(nextHoldings);
+      const newTotal = nextHoldings.reduce((s, h) => {
+        const currency = h.currency === 'USD' ? 'USD' : 'THB';
+        const effRate = currency === 'USD' ? getEffectiveRate(h.type, rate) : 1;
+        return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0) * effRate;
+      }, 0);
+      const histNext = [...historyRef.current.filter((p) => p.date !== today), { date: today, value: newTotal }].sort((a, b) => a.date.localeCompare(b.date));
+      await saveHistory(histNext);
+      setFetchIssues(failedNames);
+      const okCount = Object.keys(priceById).length;
+      showToast(`อัปเดตราคาอัตโนมัติแล้ว ${okCount} รายการ${failedNames.length ? ` · พลาด ${failedNames.length} รายการ` : ''}`);
+    } catch (e) {
+      // เงียบไว้ถ้าเป็นการรันเบื้องหลัง ไม่รบกวนด้วย error ทุกครั้งที่เข้าเว็บ
+    }
+  };
+
   const submitUpdatePrices = async () => {
     const today = todayStr();
     const next = holdings.map((h) => {
@@ -464,12 +560,11 @@ export default function PortfolioApp() {
 
   const fetchAutoPrices = async () => {
     if (!backendUrl) { showToast('ยังไม่ได้ตั้งค่า Backend URL ในเมนู'); return; }
-    const items = holdings
-      .filter((h) => typeInfo(h.type).market && h.ticker)
-      .map((h) => ({ id: h.id, ticker: h.ticker, market: typeInfo(h.type).market }));
-    if (items.length === 0) { showToast('ไม่มีรายการที่ใส่สัญลักษณ์ไว้สำหรับดึงราคาอัตโนมัติ'); return; }
+    const eligible = holdings.filter((h) => typeInfo(h.type).market && h.ticker);
+    if (eligible.length === 0) { showToast('ไม่มีรายการที่ใส่สัญลักษณ์ไว้สำหรับดึงราคาอัตโนมัติ'); return; }
     setFetchingPrices(true);
     try {
+      const items = eligible.map((h) => ({ id: h.id, ticker: h.ticker, market: typeInfo(h.type).market }));
       const res = await fetch(backendUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -478,13 +573,18 @@ export default function PortfolioApp() {
       if (!res.ok) throw new Error('bad response');
       const data = await res.json();
       const next = { ...updateDraft };
-      let okCount = 0, failCount = 0;
+      const failedNames = [];
       (data.results || []).forEach((r) => {
-        if (typeof r.price === 'number') { next[r.id] = String(r.price); okCount += 1; }
-        else failCount += 1;
+        if (typeof r.price === 'number') { next[r.id] = String(r.price); }
+        else {
+          const h = eligible.find((x) => x.id === r.id);
+          failedNames.push(h ? h.name : r.id);
+        }
       });
       setUpdateDraft(next);
-      showToast(`ดึงราคาอัตโนมัติสำเร็จ ${okCount} รายการ${failCount ? ` · พลาด ${failCount} รายการ` : ''}`);
+      setFetchIssues(failedNames);
+      const okCount = eligible.length - failedNames.length;
+      showToast(`ดึงราคาอัตโนมัติสำเร็จ ${okCount} รายการ${failedNames.length ? ` · พลาด ${failedNames.length} รายการ` : ''}`);
     } catch (e) {
       showToast('เชื่อมต่อ Backend ไม่สำเร็จ');
     } finally {
@@ -591,7 +691,7 @@ export default function PortfolioApp() {
     capital_add: 1,
     capital_reduce: -1,
     profit: 1,
-    loss: -1,
+    loss: 1,
     dividend: 1,
   };
 
@@ -669,8 +769,22 @@ export default function PortfolioApp() {
         .pf-cash-manage-btn { display: inline-flex; align-items: center; gap: 8px; background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 20px; padding: 6px 14px 6px 6px; font-size: 12.5px; font-weight: 600; cursor: pointer; margin-top: 16px; }
         .pf-cash-manage-btn:hover { background: var(--divider); }
         .pf-cash-manage-icon { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: var(--gold); color: #1A1400; flex-shrink: 0; }
-        .pf-year-card { background: var(--surface-alt); border: 1px solid var(--divider); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
-        .pf-year-title { font-family: 'Fraunces', serif; font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+        .pf-year-picker { display: flex; gap: 8px; margin-bottom: 12px; overflow-x: auto; }
+        .pf-year-pill, .pf-year-pill-active { flex-shrink: 0; border-radius: 20px; padding: 7px 16px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid var(--divider); background: var(--surface-alt); color: var(--muted); }
+        .pf-year-pill-active { background: var(--gold); color: #1A1400; border-color: var(--gold); }
+        .pf-year-card { background: var(--surface); border: 1px solid var(--divider); border-radius: 16px; padding: 18px 16px; margin-bottom: 10px; }
+        .pf-year-net { text-align: center; margin-bottom: 16px; }
+        .pf-year-net-label { color: var(--muted); font-size: 12px; letter-spacing: 0.4px; margin-bottom: 4px; }
+        .pf-year-net-value { font-size: 32px; font-weight: 800; letter-spacing: -0.3px; }
+        .pf-year-flow-bar { display: flex; width: 100%; height: 10px; border-radius: 6px; overflow: hidden; background: var(--surface-alt); }
+        .pf-year-flow-in { height: 100%; background: var(--gold); }
+        .pf-year-flow-out { height: 100%; background: #5B6779; }
+        .pf-year-flow-legend { display: flex; justify-content: space-between; gap: 10px; margin-top: 8px; font-size: 11.5px; color: var(--muted); }
+        .pf-year-flow-legend span { display: flex; align-items: center; gap: 5px; }
+        .pf-year-rows { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--divider); display: flex; flex-direction: column; gap: 10px; }
+        .pf-year-row { display: flex; align-items: center; gap: 9px; font-size: 13px; }
+        .pf-year-row-icon { color: var(--gold); flex-shrink: 0; }
+        .pf-year-row span:nth-child(2) { flex: 1; color: var(--text); }
         .pf-capital-subnote { font-size: 11px; color: var(--muted); margin-top: -3px; margin-bottom: 4px; }
         .pf-cash-action-btn { flex: 1; min-width: 90px; background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 10px; padding: 9px 10px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
         .pf-cash-action-btn:hover { background: var(--divider); }
@@ -754,6 +868,8 @@ export default function PortfolioApp() {
         .pf-menu button { width: 100%; text-align: left; background: transparent; border: none; color: var(--text); padding: 9px 10px; border-radius: 7px; font-size: 13.5px; cursor: pointer; }
         .pf-menu button:hover { background: var(--surface-alt); }
         .pf-confirm { background: var(--surface); border: 1px solid var(--divider); border-radius: 14px; padding: 16px; margin-top: 8px; }
+        .pf-issue-banner { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; background: rgba(217,112,90,0.12); border: 1px solid var(--neg); color: var(--text); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; font-size: 12.5px; line-height: 1.5; }
+        .pf-issue-banner button { background: transparent; border: none; color: var(--muted); cursor: pointer; flex-shrink: 0; }
         .pf-loading { display: flex; align-items: center; justify-content: center; height: 60vh; color: var(--muted); }
         @media (min-width: 640px) {
           .pf-root { padding: 32px 28px 90px; max-width: 720px; margin: 0 auto; }
@@ -810,6 +926,15 @@ export default function PortfolioApp() {
                 <button className="pf-btn pf-btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setConfirmClear(false)}>ยกเลิก</button>
                 <button className="pf-btn" style={{ flex: 1, justifyContent: 'center', background: 'var(--neg)', color: '#fff', border: 'none' }} onClick={clearAll}>ยืนยันล้างข้อมูล</button>
               </div>
+            </div>
+          )}
+
+          {fetchIssues.length > 0 && (
+            <div className="pf-issue-banner">
+              <div>
+                <b>ดึงราคาไม่สำเร็จ:</b> {fetchIssues.join(', ')}
+              </div>
+              <button aria-label="ปิด" onClick={() => setFetchIssues([])}><X size={15} /></button>
             </div>
           )}
 
@@ -1218,7 +1343,7 @@ export default function PortfolioApp() {
                 {ledgerType === 'capital_add' && 'จะถูกบวกเพิ่มเข้าไปในทุนเริ่มต้น'}
                 {ledgerType === 'capital_reduce' && 'จะถูกหักออกจากทุนเริ่มต้น (เช่น ถอนเงินออกจากพอร์ต)'}
                 {ledgerType === 'profit' && 'กำไรที่รับรู้แล้ว จะถูกบวกเพิ่มเข้าเงินสด'}
-                {ledgerType === 'loss' && 'ขาดทุนที่รับรู้แล้ว จะถูกหักออกจากเงินสด'}
+                {ledgerType === 'loss' && 'ใส่จำนวนเงินที่ได้รับกลับมาจริง (แม้ขายขาดทุน ก็ยังได้เงินสดเข้ามา) จะถูกบวกเพิ่มเข้าเงินสด'}
                 {ledgerType === 'dividend' && 'เงินปันผลที่ได้รับ จะถูกบวกเพิ่มเข้าเงินสด'}
               </div>
             </div>
@@ -1254,25 +1379,58 @@ export default function PortfolioApp() {
               <button className="pf-cash-action-btn" onClick={() => openLedgerForm('dividend')}>+ ปันผล</button>
             </div>
 
-            {yearlySummary.length > 0 && (
-              <>
-                <div className="pf-section-label" style={{ margin: '18px 0 8px' }}>สรุปรายปี</div>
-                {yearlySummary.map((y) => (
-                  <div className="pf-year-card" key={y.year}>
-                    <div className="pf-year-title">ปี {buddhistYear(y.year)}</div>
-                    {y.capital_add > 0 && <div className="pf-capital-row"><span>เพิ่มทุน</span><span className="pf-mono pf-chip-pos">+฿{fmt(y.capital_add, 0)}</span></div>}
-                    {y.capital_reduce > 0 && <div className="pf-capital-row"><span>ลดทุน</span><span className="pf-mono pf-chip-neg">-฿{fmt(y.capital_reduce, 0)}</span></div>}
-                    {y.profit > 0 && <div className="pf-capital-row"><span>กำไร</span><span className="pf-mono pf-chip-pos">+฿{fmt(y.profit, 0)}</span></div>}
-                    {y.loss > 0 && <div className="pf-capital-row"><span>ขาดทุน</span><span className="pf-mono pf-chip-neg">-฿{fmt(y.loss, 0)}</span></div>}
-                    {y.dividend > 0 && <div className="pf-capital-row"><span>ปันผล</span><span className="pf-mono pf-chip-pos">+฿{fmt(y.dividend, 0)}</span></div>}
-                    <div className={`pf-capital-row pf-capital-highlight ${y.net >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
-                      <span>สุทธิรวมปีนี้</span>
-                      <span className="pf-mono">{y.net >= 0 ? '+' : '-'}฿{fmt(Math.abs(y.net), 0)}</span>
-                    </div>
+            <div className="pf-section-label" style={{ margin: '18px 0 8px' }}>สรุปรายปี</div>
+            <div className="pf-year-picker">
+              {yearOptions.map((y) => (
+                <button
+                  key={y}
+                  className={y === selectedYear ? 'pf-year-pill-active' : 'pf-year-pill'}
+                  onClick={() => setSelectedYear(y)}
+                >
+                  {buddhistYear(y)}
+                </button>
+              ))}
+            </div>
+            <div className="pf-year-card">
+              <div className="pf-year-net">
+                <div className="pf-year-net-label">รวมสุทธิ</div>
+                <div className="pf-year-net-value pf-mono">{yearSummary.net >= 0 ? '+' : '-'}฿{fmt(Math.abs(yearSummary.net), 0)}</div>
+              </div>
+
+              {(yearSummary.totalIn > 0 || yearSummary.totalOut > 0) && (
+                <>
+                  <div className="pf-year-flow-bar">
+                    <div className="pf-year-flow-in" style={{ width: `${yearSummary.inPct}%` }} />
+                    <div className="pf-year-flow-out" style={{ width: `${100 - yearSummary.inPct}%` }} />
                   </div>
-                ))}
-              </>
-            )}
+                  <div className="pf-year-flow-legend">
+                    <span><span className="pf-dot" style={{ background: 'var(--gold)' }} /> เงินเข้า ฿{fmt(yearSummary.totalIn, 0)}</span>
+                    <span><span className="pf-dot" style={{ background: '#5B6779' }} /> เงินออก ฿{fmt(yearSummary.totalOut, 0)}</span>
+                  </div>
+                </>
+              )}
+
+              <div className="pf-year-rows">
+                {yearSummary.capital_add > 0 && (
+                  <div className="pf-year-row"><PlusCircle size={15} className="pf-year-row-icon" /><span>เพิ่มทุน</span><span className="pf-mono">฿{fmt(yearSummary.capital_add, 0)}</span></div>
+                )}
+                {yearSummary.capital_reduce > 0 && (
+                  <div className="pf-year-row"><MinusCircle size={15} className="pf-year-row-icon" /><span>ลดทุน</span><span className="pf-mono">฿{fmt(yearSummary.capital_reduce, 0)}</span></div>
+                )}
+                {yearSummary.profit > 0 && (
+                  <div className="pf-year-row"><TrendingUp size={15} className="pf-year-row-icon" /><span>กำไร</span><span className="pf-mono">฿{fmt(yearSummary.profit, 0)}</span></div>
+                )}
+                {yearSummary.loss > 0 && (
+                  <div className="pf-year-row"><TrendingDown size={15} className="pf-year-row-icon" /><span>ขาดทุน (ได้เงินคืน)</span><span className="pf-mono">฿{fmt(yearSummary.loss, 0)}</span></div>
+                )}
+                {yearSummary.dividend > 0 && (
+                  <div className="pf-year-row"><Gift size={15} className="pf-year-row-icon" /><span>ปันผล</span><span className="pf-mono">฿{fmt(yearSummary.dividend, 0)}</span></div>
+                )}
+                {yearSummary.capital_add === 0 && yearSummary.capital_reduce === 0 && yearSummary.profit === 0 && yearSummary.loss === 0 && yearSummary.dividend === 0 && (
+                  <div style={{ color: 'var(--muted)', fontSize: 12.5, padding: '6px 0' }}>ยังไม่มีรายการในปีนี้</div>
+                )}
+              </div>
+            </div>
 
             <div className="pf-section-label" style={{ margin: '18px 0 8px' }}>ประวัติ ({recentLedger.length})</div>
             {recentLedger.length === 0 ? (
