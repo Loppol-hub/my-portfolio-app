@@ -175,6 +175,7 @@ export default function PortfolioApp() {
   const fileInputRef = useRef(null);
   const [chartModeByType, setChartModeByType] = useState({});
   const [sortModeByType, setSortModeByType] = useState({});
+  const [excludedTypes, setExcludedTypes] = useState({});
   const toggleChartMode = (typeKey) => {
     setChartModeByType((prev) => ({ ...prev, [typeKey]: prev[typeKey] === 'industry' ? 'holding' : 'industry' }));
   };
@@ -263,6 +264,11 @@ export default function PortfolioApp() {
         const r6 = await window.storage.get('cash-ledger', false);
         if (r6 && r6.value) ledgerData = JSON.parse(r6.value);
       } catch (e) { /* not set yet */ }
+      let excluded = {};
+      try {
+        const r7 = await window.storage.get('excluded-types', false);
+        if (r7 && r7.value) excluded = JSON.parse(r7.value);
+      } catch (e) { /* not set yet */ }
       setHoldings(Array.isArray(h) ? h : []);
       setHistory(Array.isArray(hist) ? hist : []);
       setBackendUrl(url);
@@ -272,6 +278,7 @@ export default function PortfolioApp() {
       setInitialCapital(capital);
       setInitialCapitalDraft(capital > 0 ? String(capital) : '');
       setLedger(Array.isArray(ledgerData) ? ledgerData : []);
+      setExcludedTypes(excluded && typeof excluded === 'object' ? excluded : {});
     } catch (e) {
       setLoadError(true);
     } finally {
@@ -368,6 +375,12 @@ export default function PortfolioApp() {
     }
     return list.sort((a, b) => b.value - a.value);
   }, [enriched, cashActive, computedCash]);
+
+  // เฉพาะประเภทที่ "เลือกไว้" (ไม่ได้ถูกกาออก) เท่านั้นที่นับรวมในมูลค่าพอร์ตรวม/กราฟวงกลมด้านบน
+  const displayByType = useMemo(() => byType.filter((t) => !excludedTypes[t.key]), [byType, excludedTypes]);
+  const displayTotalValue = useMemo(() => displayByType.reduce((s, t) => s + t.value, 0), [displayByType]);
+  const heroProfitAmount = displayTotalValue - totalCapital;
+  const heroProfitPct = totalCapital > 0 ? (heroProfitAmount / totalCapital) * 100 : null;
 
   const lastUpdated = useMemo(() => {
     const dates = holdings.map((h) => h.lastUpdated).filter(Boolean).sort();
@@ -723,6 +736,14 @@ export default function PortfolioApp() {
     saveLedger(ledger.filter((e) => e.id !== id));
   };
 
+  const toggleTypeInclusion = (typeKey) => {
+    setExcludedTypes((prev) => {
+      const next = { ...prev, [typeKey]: !prev[typeKey] };
+      window.storage.set('excluded-types', JSON.stringify(next), false).catch(() => {});
+      return next;
+    });
+  };
+
   const clearAll = async () => {
     await saveHoldings([]);
     await saveHistory([]);
@@ -755,10 +776,15 @@ export default function PortfolioApp() {
         .pf-hero { background: var(--surface); border: 1px solid var(--divider); border-radius: 16px; padding: 22px 20px; margin-bottom: 16px; }
         .pf-hero-label { color: var(--muted); font-size: 12px; letter-spacing: 0.4px; margin-bottom: 6px; }
         .pf-hero-value { font-size: 38px; font-weight: 800; line-height: 1.1; letter-spacing: -0.3px; }
-        .pf-hero-sub { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 13px; }
+        .pf-hero-sub { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 13px; flex-wrap: wrap; }
+        .pf-hero-sub-label { color: var(--muted); font-size: 11.5px; font-weight: 400; }
+        .pf-hero-sub-hint { color: var(--muted); font-size: 11.5px; margin-top: 8px; line-height: 1.5; }
+        .pf-hero-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+        .pf-invest-chip { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-alt); border-radius: 20px; padding: 4px 10px; font-size: 11.5px; }
+        .pf-invest-chip-label { color: var(--muted); font-weight: 400; }
         .pf-chip-pos { color: var(--pos); } .pf-chip-neg { color: var(--neg); }
         .pf-spark { height: 44px; margin-top: 14px; }
-        .pf-updated { color: var(--muted); font-size: 12px; margin-top: 10px; }
+        .pf-updated { color: var(--muted); font-size: 12px; }
         .pf-capital-card { background: var(--surface); border: 1px solid var(--divider); border-radius: 16px; padding: 18px 16px; margin-bottom: 16px; }
         .pf-capital-row { display: flex; align-items: center; justify-content: space-between; font-size: 13.5px; padding: 6px 0; }
         .pf-capital-bar { width: 100%; height: 8px; border-radius: 5px; background: var(--surface-alt); overflow: hidden; margin: 6px 0 2px; }
@@ -820,6 +846,10 @@ export default function PortfolioApp() {
         .pf-subrow:last-child { border-bottom: none; padding-bottom: 0; }
         .pf-legend { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-top: 12px; }
         .pf-legend-item { display: flex; align-items: center; gap: 7px; font-size: 12.5px; }
+        .pf-legend-toggle { background: transparent; border: none; padding: 2px 0; cursor: pointer; text-align: left; font-family: inherit; }
+        .pf-legend-name-included { color: var(--gold); font-weight: 600; }
+        .pf-legend-name-excluded { color: var(--muted); text-decoration: line-through; }
+        .pf-legend-hint { color: var(--muted); font-size: 11px; margin: -4px 0 10px; }
         .pf-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
         .pf-legend-val { color: var(--muted); }
         .pf-empty { text-align: center; padding: 50px 20px; color: var(--muted); border: 1px dashed var(--divider); border-radius: 16px; }
@@ -940,11 +970,16 @@ export default function PortfolioApp() {
 
           <div className="pf-hero">
             <div className="pf-hero-label">มูลค่าพอร์ตรวม</div>
-            <div className="pf-hero-value pf-mono">฿{fmt(totalValue)}</div>
-            <div className={`pf-hero-sub ${totalGain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
-              {totalGain >= 0 ? <TrendingUp size={15} /> : <TrendingDown size={15} />}
-              <span className="pf-mono">{totalGain >= 0 ? '+' : ''}{fmt(totalGain)} บาท ({totalGain >= 0 ? '+' : ''}{fmt(totalGainPct)}%)</span>
-            </div>
+            <div className="pf-hero-value pf-mono">฿{fmt(displayTotalValue)}</div>
+            {heroProfitPct === null ? (
+              <div className="pf-hero-sub-hint">ตั้งค่าทุนเริ่มต้นในเมนู "..." เพื่อดู % กำไรเทียบกับทุน</div>
+            ) : (
+              <div className={`pf-hero-sub ${heroProfitAmount >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
+                {heroProfitAmount >= 0 ? <TrendingUp size={15} /> : <TrendingDown size={15} />}
+                <span className="pf-mono">{heroProfitAmount >= 0 ? '+' : ''}{fmt(heroProfitAmount)} บาท ({heroProfitAmount >= 0 ? '+' : ''}{fmt(heroProfitPct)}%)</span>
+                <span className="pf-hero-sub-label">เทียบกับทุนเริ่มต้น</span>
+              </div>
+            )}
             {chartData.length > 1 && (
               <div className="pf-spark">
                 <ResponsiveContainer width="100%" height="100%">
@@ -954,7 +989,14 @@ export default function PortfolioApp() {
                 </ResponsiveContainer>
               </div>
             )}
-            <div className="pf-updated">อัปเดตล่าสุด: {lastUpdated ? thaiDate(lastUpdated) : 'ยังไม่มีการอัปเดต'}</div>
+            <div className="pf-hero-footer">
+              <div className={`pf-invest-chip ${totalGain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
+                {totalGain >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                <span className="pf-mono">{totalGain >= 0 ? '+' : ''}{fmt(totalGainPct, 1)}%</span>
+                <span className="pf-invest-chip-label">กำไรจากการลงทุน</span>
+              </div>
+              <div className="pf-updated">อัปเดตล่าสุด: {lastUpdated ? thaiDate(lastUpdated) : 'ยังไม่มีการอัปเดต'}</div>
+            </div>
           </div>
 
           {holdings.length === 0 && !cashActive ? (
@@ -966,16 +1008,22 @@ export default function PortfolioApp() {
           ) : (
             <>
               <div className="pf-section-label">สัดส่วนสินทรัพย์รวม</div>
+              <div className="pf-legend-hint">แตะชื่อสินทรัพย์เพื่อเลือก/ไม่นับรวมในมูลค่าพอร์ตรวมและกราฟ</div>
               <div className="pf-donut-row">
-                <ExplodedPie3D data={byType.map((t) => ({ key: t.key, label: t.label, color: t.color, value: t.value }))} rx={100} />
+                <ExplodedPie3D data={displayByType.map((t) => ({ key: t.key, label: t.label, color: t.color, value: t.value }))} rx={100} />
                 <div className="pf-legend pf-legend-col">
-                  {byType.map((t) => (
-                    <div className="pf-legend-item" key={t.key}>
-                      <span className="pf-dot" style={{ background: t.color }} />
-                      <span>{t.label}</span>
-                      <span className="pf-legend-val pf-mono">{fmt((t.value / totalValue) * 100, 1)}% · ฿{fmt(t.value, 0)}</span>
-                    </div>
-                  ))}
+                  {byType.map((t) => {
+                    const isExcluded = !!excludedTypes[t.key];
+                    return (
+                      <button className="pf-legend-item pf-legend-toggle" key={t.key} onClick={() => toggleTypeInclusion(t.key)}>
+                        <span className="pf-dot" style={{ background: isExcluded ? '#5B6779' : t.color }} />
+                        <span className={isExcluded ? 'pf-legend-name-excluded' : 'pf-legend-name-included'}>{t.label}</span>
+                        <span className="pf-legend-val pf-mono">
+                          {isExcluded ? `฿${fmt(t.value, 0)}` : `${fmt((t.value / (displayTotalValue || 1)) * 100, 1)}% · ฿${fmt(t.value, 0)}`}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
