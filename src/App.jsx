@@ -330,7 +330,7 @@ export default function PortfolioApp() {
   ), [ledger]);
   const cashAdjTotal = useMemo(() => (
     ledger.filter((e) => e.type === 'profit').reduce((s, e) => s + e.amount, 0)
-    + ledger.filter((e) => e.type === 'loss').reduce((s, e) => s + e.amount, 0)
+    - ledger.filter((e) => e.type === 'loss').reduce((s, e) => s + e.amount, 0)
     + ledger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0)
   ), [ledger]);
   const totalCapital = initialCapital + capitalAdjTotal;
@@ -351,10 +351,9 @@ export default function PortfolioApp() {
   const yearSummary = useMemo(() => {
     const d = { capital_add: 0, capital_reduce: 0, profit: 0, loss: 0, dividend: 0 };
     ledger.forEach((e) => { if ((e.date || '').slice(0, 4) === selectedYear) d[e.type] = (d[e.type] || 0) + e.amount; });
-    // loss ยังถือเป็นเงินสดที่ได้รับกลับมา (แค่ได้น้อยกว่าทุน) จึงบวกเช่นเดียวกับกำไร
-    const net = d.capital_add - d.capital_reduce + d.profit + d.loss + d.dividend;
-    const totalIn = d.capital_add + d.profit + d.loss + d.dividend;
-    const totalOut = d.capital_reduce;
+    const net = d.capital_add - d.capital_reduce + d.profit - d.loss + d.dividend;
+    const totalIn = d.capital_add + d.profit + d.dividend;
+    const totalOut = d.capital_reduce + d.loss;
     const totalFlow = totalIn + totalOut;
     const inPct = totalFlow > 0 ? (totalIn / totalFlow) * 100 : 0;
     return { ...d, net, totalIn, totalOut, inPct };
@@ -704,7 +703,7 @@ export default function PortfolioApp() {
     capital_add: 1,
     capital_reduce: -1,
     profit: 1,
-    loss: 1,
+    loss: -1,
     dividend: 1,
   };
 
@@ -1391,7 +1390,7 @@ export default function PortfolioApp() {
                 {ledgerType === 'capital_add' && 'จะถูกบวกเพิ่มเข้าไปในทุนเริ่มต้น'}
                 {ledgerType === 'capital_reduce' && 'จะถูกหักออกจากทุนเริ่มต้น (เช่น ถอนเงินออกจากพอร์ต)'}
                 {ledgerType === 'profit' && 'กำไรที่รับรู้แล้ว จะถูกบวกเพิ่มเข้าเงินสด'}
-                {ledgerType === 'loss' && 'ใส่จำนวนเงินที่ได้รับกลับมาจริง (แม้ขายขาดทุน ก็ยังได้เงินสดเข้ามา) จะถูกบวกเพิ่มเข้าเงินสด'}
+                {ledgerType === 'loss' && 'ขาดทุนที่รับรู้แล้ว จะถูกหักออกจากเงินสด'}
                 {ledgerType === 'dividend' && 'เงินปันผลที่ได้รับ จะถูกบวกเพิ่มเข้าเงินสด'}
               </div>
             </div>
@@ -1469,7 +1468,7 @@ export default function PortfolioApp() {
                   <div className="pf-year-row"><TrendingUp size={15} className="pf-year-row-icon" /><span>กำไร</span><span className="pf-mono">฿{fmt(yearSummary.profit, 0)}</span></div>
                 )}
                 {yearSummary.loss > 0 && (
-                  <div className="pf-year-row"><TrendingDown size={15} className="pf-year-row-icon" /><span>ขาดทุน (ได้เงินคืน)</span><span className="pf-mono">฿{fmt(yearSummary.loss, 0)}</span></div>
+                  <div className="pf-year-row"><TrendingDown size={15} className="pf-year-row-icon" /><span>ขาดทุน</span><span className="pf-mono">฿{fmt(yearSummary.loss, 0)}</span></div>
                 )}
                 {yearSummary.dividend > 0 && (
                   <div className="pf-year-row"><Gift size={15} className="pf-year-row-icon" /><span>ปันผล</span><span className="pf-mono">฿{fmt(yearSummary.dividend, 0)}</span></div>
