@@ -863,6 +863,7 @@ export default function PortfolioApp() {
         .pf-row-actions button:hover { color: var(--text); background: var(--surface-alt); }
         .pf-row-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 10px; font-size: 12.5px; color: var(--muted); }
         .pf-row-meta b { color: var(--text); font-weight: 500; }
+        .pf-ledger-amount { font-weight: 700; }
         .pf-fab { position: fixed; right: 20px; bottom: 24px; display: flex; gap: 10px; }
         .pf-btn { border-radius: 12px; padding: 11px 16px; font-size: 14px; font-weight: 600; cursor: pointer; border: 1px solid var(--divider); display: flex; align-items: center; gap: 6px; }
         .pf-btn:disabled { opacity: 0.55; cursor: default; }
@@ -1495,8 +1496,8 @@ export default function PortfolioApp() {
                       </div>
                     </div>
                     <div className="pf-row-meta pf-mono">
-                      <span className={LEDGER_SIGN[e.type] > 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
-                        <b>{LEDGER_SIGN[e.type] > 0 ? '+' : '-'}฿{fmt(e.amount)}</b>
+                      <span className={`pf-ledger-amount ${LEDGER_SIGN[e.type] > 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
+                        {LEDGER_SIGN[e.type] > 0 ? '+' : '-'}฿{fmt(e.amount)}
                       </span>
                       <span style={{ marginLeft: 'auto' }}>{thaiDate(e.date)}</span>
                     </div>
