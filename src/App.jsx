@@ -7,7 +7,7 @@ const ASSET_TYPES = [
   { key: 'foreign_stock', label: 'หุ้นต่างประเทศ', color: '#6E8CB0', market: 'us', defaultCurrency: 'USD' },
   { key: 'crypto', label: 'คริปโต', color: '#967ACC', market: 'crypto', defaultCurrency: 'USD' },
   { key: 'gold', label: 'ทองคำ', color: '#D9823F', market: 'gold', defaultCurrency: 'USD' },
-  { key: 'fund', label: 'กองทุน', color: '#C17B86', market: null, defaultCurrency: 'THB' },
+  { key: 'fund', label: 'กองทุน', color: '#C17B86', market: 'fund', defaultCurrency: 'THB' },
   { key: 'cash', label: 'เงินสด', color: '#7C8B9E', market: null, defaultCurrency: 'THB' },
   { key: 'other', label: 'อื่นๆ', color: '#4F9E93', market: null, defaultCurrency: 'THB' },
 ];
