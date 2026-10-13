@@ -298,8 +298,9 @@ export default function PortfolioApp() {
     catch (e) { showToast('บันทึกประวัติไม่สำเร็จ'); }
   };
 
-  // หุ้นต่างประเทศและทองคำ: ธนาคาร/แอพอ้างอิง (Dime) มักใช้เรตซื้อที่ต่ำกว่าเรตกลางเล็กน้อย
+  // หุ้นต่างประเทศ: ธนาคาร/แอพอ้างอิง (Dime) มักใช้เรตซื้อที่ต่ำกว่าเรตกลางเล็กน้อย
   // จึงหักออก 0.05 บาทจากอัตราแลกเปลี่ยนก่อนคำนวณมูลค่าเฉพาะสองประเภทนี้
+  // ทองคำหักออก 25 เพื่อให้ใกล้เคียงกับ (Dime)
   // คริปโต: เทียบกับ Bitkub ที่ซื้อขายเป็นบาทตรงๆ หักออก 0.1 บาทเมื่อบันทึกเป็น USD
   const getEffectiveRate = (type, rate) => {
     if (type === 'foreign_stock' || type === 'gold') return Math.max(0, rate - 0.05);
@@ -310,7 +311,10 @@ export default function PortfolioApp() {
   const enriched = useMemo(() => holdings.map((h) => {
     const qty = parseFloat(h.quantity) || 0;
     const avg = parseFloat(h.avgCost) || 0;
-    const price = parseFloat(h.currentPrice) || 0;
+    let price = parseFloat(h.currentPrice) || 0;
+    if (h.type === 'gold') {
+    price = Math.max(0, price - 25);
+}
     const currency = h.currency === 'USD' ? 'USD' : 'THB';
     const rate = currency === 'USD' ? getEffectiveRate(h.type, fxRate) : 1;
     const marketValue = qty * price * rate;
