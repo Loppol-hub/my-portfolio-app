@@ -499,9 +499,22 @@ export default function PortfolioApp() {
         try { await window.storage.set('fx-usdthb', String(rate), false); } catch (e) { /* ignore */ }
       }
       const today = todayStr();
-      const nextHoldings = currentHoldings.map((h) => (
-        priceById[h.id] !== undefined ? { ...h, currentPrice: priceById[h.id], lastUpdated: today } : h
-      ));
+      const nextHoldings = currentHoldings.map((h) => {
+  if (priceById[h.id] === undefined) return h;
+
+  let updatedPrice = priceById[h.id];
+
+  // คริปโตที่บันทึกเป็นเงินบาท
+  if (h.type === 'crypto' && h.currency === 'THB') {
+    updatedPrice = updatedPrice * rate;
+  }
+
+  return {
+    ...h,
+    currentPrice: updatedPrice,
+    lastUpdated: today,
+  };
+});
       await saveHoldings(nextHoldings);
       const newTotal = nextHoldings.reduce((s, h) => {
         const currency = h.currency === 'USD' ? 'USD' : 'THB';
@@ -587,7 +600,22 @@ export default function PortfolioApp() {
       const next = { ...updateDraft };
       const failedNames = [];
       (data.results || []).forEach((r) => {
-        if (typeof r.price === 'number') { next[r.id] = String(r.price); }
+        if (typeof r.price === 'number') {
+  const holding = eligible.find((x) => x.id === r.id);
+
+  let updatedPrice = r.price;
+
+  // แปลงคริปโตเป็นเงินบาทเฉพาะกรณีที่เลือก THB
+  if (
+    holding &&
+    holding.type === 'crypto' &&
+    holding.currency === 'THB'
+  ) {
+    updatedPrice = r.price * fxRate;
+  }
+
+  next[r.id] = String(updatedPrice);
+}
         else {
           const h = eligible.find((x) => x.id === r.id);
           failedNames.push(h ? h.name : r.id);
