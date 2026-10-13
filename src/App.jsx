@@ -139,7 +139,16 @@ function ExplodedPie3D({ data, rx = 88, depth = 20, explode = 7 }) {
 }
 
 
-const fmt = (n, digits = 2) => {
+const fmtTrunc = (n, digits = 4) => {
+  if (n === null || n === undefined || isNaN(n)) return '-';
+const factor = Math.pow(10, digits);
+const truncated =
+    Math.trunc(Number(n) * factor) / factor;
+    return new Intl.NumberFormat('th-TH', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits
+  }).format(truncated);
+};
   if (n === null || n === undefined || isNaN(n)) return '-';
   return new Intl.NumberFormat('th-TH', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
 };
