@@ -167,6 +167,14 @@ export default function PortfolioApp() {
   const [formError, setFormError] = useState('');
   const [updateDraft, setUpdateDraft] = useState({});
   const [toast, setToast] = useState('');
+  const [moonOpen, setMoonOpen] = useState(false);
+  const [thaiStocksOpen, setThaiStocksOpen] = useState(false);
+  const [moonMessages, setMoonMessages] = useState([
+  {
+    role: 'moon',
+    text: 'สวัสดีครับ 🌙 วันนี้อยากให้ช่วยวิเคราะห์พอร์ตหรือหุ้นไทยตัวไหน'
+  }
+  ]);
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmDeleteTarget, setConfirmDeleteTarget] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
