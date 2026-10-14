@@ -970,7 +970,59 @@ const chartData = useMemo(() =>
           .pf-root { padding: 32px 28px 90px; max-width: 720px; margin: 0 auto; }
           .pf-hero-value { font-size: 40px; }
         }
-      `}</style>
+      `}.moon-float {
+
+  position: fixed;
+
+  right: 24px;
+
+  bottom: 24px;
+
+  width: 60px;
+
+  height: 60px;
+
+  border-radius: 50%;
+
+  background: linear-gradient(135deg, #F8E38A, #C7A344);
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  font-size: 30px;
+
+  cursor: grab;
+
+  z-index: 999;
+
+  box-shadow: 0 0 18px rgba(199,163,68,.45), 0 10px 30px rgba(0,0,0,.35);
+
+  animation: moonFloat 3s ease-in-out infinite;
+
+  user-select: none;
+
+  touch-action: none;
+
+}
+
+.moon-float:active {
+
+  cursor: grabbing;
+
+}
+
+@keyframes moonFloat {
+
+  0% { transform: translateY(0px); }
+
+  50% { transform: translateY(-8px); }
+
+  100% { transform: translateY(0px); }
+
+}</style>
 
       <div className="pf-header">
         <div className="pf-title">Moon Shot</div>
