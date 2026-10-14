@@ -1609,7 +1609,12 @@ const chartData = useMemo(() =>
           </div>
         </div>
       )}
-
+ <div 
+        className="moon-float"
+        onClick={() => showToast('สวัสดีจ้า 🌙 ฉันคือผู้ช่วย Moon')}
+      >
+        🌙
+      </div>
       {toast && <div className="pf-toast">{toast}</div>}
     </div>
   );
