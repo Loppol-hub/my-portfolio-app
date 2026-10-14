@@ -1666,7 +1666,7 @@ const chartData = useMemo(() =>
           </div>
         </div>
       )}
-       <div className="moon-float" style={{ position: 'fixed', right: '24px', bottom: '24px', touchAction: 'none' }} onPointerDown={(e) => {
+        <div className="moon-float" style={{ position: 'fixed', right: '24px', bottom: '24px', touchAction: 'none' }} onPointerDown={(e) => {
         const el = e.currentTarget; el.setPointerCapture(e.pointerId);
         const startX = e.clientX, startY = e.clientY, rect = el.getBoundingClientRect();
         const onPointerMove = (m) => {
