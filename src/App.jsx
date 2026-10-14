@@ -974,12 +974,12 @@ const chartData = useMemo(() =>
 
         }
 
-                .moon-float {
+         .moon-float {
           position: fixed;
           right: 24px;
           bottom: 24px;
-          width: 75px;
-          height: 75px;
+          width: 85px;
+          height: 85px;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -1637,7 +1637,7 @@ const chartData = useMemo(() =>
           </div>
         </div>
       )}
-                    <div className="moon-float" style={{ position: 'fixed', right: '24px', bottom: '24px', touchAction: 'none' }} onPointerDown={(e) => {
+        <div className="moon-float" style={{ position: 'fixed', right: '24px', bottom: '24px', touchAction: 'none' }} onPointerDown={(e) => {
         const el = e.currentTarget; el.setPointerCapture(e.pointerId);
         const startX = e.clientX, startY = e.clientY, rect = el.getBoundingClientRect();
         const onPointerMove = (m) => {
@@ -1648,7 +1648,7 @@ const chartData = useMemo(() =>
         const onPointerUp = (u) => { el.releasePointerCapture(u.pointerId); window.removeEventListener('pointermove', onPointerMove); window.removeEventListener('pointerup', onPointerUp); };
         window.addEventListener('pointermove', onPointerMove); window.addEventListener('pointerup', onPointerUp);
       }} onClick={(e) => { e.stopPropagation(); showToast('สวัสดีจ้า 🌙 ฉันคือผู้ช่วย Moon'); }}>
-        <img src="https://cdn-icons-png.flaticon.com/512/3069/3069172.png" alt="Moon Assistant" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 5px 10px rgba(0,0,0,0.3))' }} />
+        <img src="/moon.png" alt="Moon Assistant" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 5px 15px rgba(0,0,0,0.5))' }} />
       </div>
     </div>
   );
