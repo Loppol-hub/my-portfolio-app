@@ -411,11 +411,19 @@ export default function PortfolioApp() {
   const heroProfitPct = totalCapital > 0 ? (heroProfitAmount / totalCapital) * 100 : null;
 
   const lastUpdated = useMemo(() => {
-    const dates = holdings.map((h) => h.lastUpdated).filter(Boolean).sort();
-    return dates.length ? dates[dates.length - 1] : null;
-  }, [holdings]);
-
-  const chartData = useMemo(() => history.slice(-30).map((p) => ({ date: p.date, value: p.value })), [history]);
+  const dates = holdings.map((h) => h.lastUpdated).filter(Boolean).sort();
+  return dates.length ? dates[dates.length - 1] : null;
+}, [holdings]);
+  const thaiStockList = useMemo(
+  () =>
+    enriched
+      .filter((h) => h.type === 'th_stock')
+      .sort((a, b) => b.marketValue - a.marketValue),
+  [enriched]
+);
+const chartData = useMemo(() =>
+  history.slice(-30).map((p) => ({ date: p.date, value: p.value })),
+[history]);
 
   // ---- form handlers ----
   const openAdd = () => { setForm(emptyForm); setEditingId(null); setFormError(''); setPanel('form'); };
