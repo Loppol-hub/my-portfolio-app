@@ -974,18 +974,18 @@ const chartData = useMemo(() =>
 
         }
 
-         .moon-float {
+          .moon-float {
           position: fixed;
           right: 24px;
           bottom: 24px;
-          width: 85px;
-          height: 85px;
+          width: 110px;
+          height: 110px;
           display: flex;
           align-items: center;
           justify-content: center;
           cursor: grab;
           z-index: 999;
-          animation: moonFloat 3s ease-in-out infinite;
+          animation: moonFloat 2.5s ease-in-out infinite;
           user-select: none;
           touch-action: none;
         }
@@ -994,10 +994,9 @@ const chartData = useMemo(() =>
         }
         @keyframes moonFloat {
           0% { transform: translateY(0px); }
-          50% { transform: translateY(-8px); }
+          50% { transform: translateY(-16px); }
           100% { transform: translateY(0px); }
         }
-
       `}</style>
 
       <div className="pf-header">
