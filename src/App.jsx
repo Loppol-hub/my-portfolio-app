@@ -970,7 +970,7 @@ const chartData = useMemo(() =>
           .pf-root { padding: 32px 28px 90px; max-width: 720px; margin: 0 auto; }
           .pf-hero-value { font-size: 40px; }
         }
-      `}.moon-float {
+      `.moon-float {
 
   position: fixed;
 
@@ -1022,7 +1022,7 @@ const chartData = useMemo(() =>
 
   100% { transform: translateY(0px); }
 
-}</style>
+}}</style>
 
       <div className="pf-header">
         <div className="pf-title">Moon Shot</div>
