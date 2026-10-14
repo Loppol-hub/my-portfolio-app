@@ -974,57 +974,28 @@ const chartData = useMemo(() =>
 
         }
 
-        .moon-float {
-
+                .moon-float {
           position: fixed;
-
           right: 24px;
-
           bottom: 24px;
-
-          width: 60px;
-
-          height: 60px;
-
-          border-radius: 50%;
-
-          background: linear-gradient(135deg, #F8E38A, #C7A344);
-
+          width: 75px;
+          height: 75px;
           display: flex;
-
           align-items: center;
-
           justify-content: center;
-
-          font-size: 30px;
-
           cursor: grab;
-
           z-index: 999;
-
-          box-shadow: 0 0 18px rgba(199,163,68,.45), 0 10px 30px rgba(0,0,0,.35);
-
           animation: moonFloat 3s ease-in-out infinite;
-
           user-select: none;
-
           touch-action: none;
-
         }
-
         .moon-float:active {
-
           cursor: grabbing;
-
         }
-
         @keyframes moonFloat {
-
           0% { transform: translateY(0px); }
-
           50% { transform: translateY(-8px); }
-         100% { transform: translateY(0px); }
-
+          100% { transform: translateY(0px); }
         }
 
       `}</style>
@@ -1666,7 +1637,7 @@ const chartData = useMemo(() =>
           </div>
         </div>
       )}
-              <div className="moon-float" style={{ position: 'fixed', right: '24px', bottom: '24px', touchAction: 'none' }} onPointerDown={(e) => {
+                    <div className="moon-float" style={{ position: 'fixed', right: '24px', bottom: '24px', touchAction: 'none' }} onPointerDown={(e) => {
         const el = e.currentTarget; el.setPointerCapture(e.pointerId);
         const startX = e.clientX, startY = e.clientY, rect = el.getBoundingClientRect();
         const onPointerMove = (m) => {
@@ -1677,7 +1648,7 @@ const chartData = useMemo(() =>
         const onPointerUp = (u) => { el.releasePointerCapture(u.pointerId); window.removeEventListener('pointermove', onPointerMove); window.removeEventListener('pointerup', onPointerUp); };
         window.addEventListener('pointermove', onPointerMove); window.addEventListener('pointerup', onPointerUp);
       }} onClick={(e) => { e.stopPropagation(); showToast('สวัสดีจ้า 🌙 ฉันคือผู้ช่วย Moon'); }}>
-        🌙
+        <img src="https://cdn-icons-png.flaticon.com/512/3069/3069172.png" alt="Moon Assistant" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 5px 10px rgba(0,0,0,0.3))' }} />
       </div>
     </div>
   );
