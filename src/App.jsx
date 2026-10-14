@@ -1667,12 +1667,81 @@ const chartData = useMemo(() =>
         </div>
       )}
  <div 
+
         className="moon-float"
-        onClick={() => showToast('สวัสดีจ้า 🌙 ฉันคือผู้ช่วย Moon')}
+
+        style={{
+
+          position: 'fixed',
+
+          left: 'var(--moon-x, auto)',
+
+          top: 'var(--moon-y, auto)',
+
+          right: '24px',
+
+          bottom: '24px',
+
+          touchAction: 'none'
+
+        }}
+
+        onPointerDown={(e) => {
+
+          const el = e.currentTarget;
+
+          el.setPointerCapture(e.pointerId);
+
+          const startX = e.clientX;
+
+          const startY = e.clientY;
+
+          const rect = el.getBoundingClientRect();
+
+          
+
+          const onPointerMove = (moveEvent) => {
+
+            const dx = moveEvent.clientX - startX;
+
+            const dy = moveEvent.clientY - startY;
+
+            el.style.right = 'auto';
+
+            el.style.bottom = 'auto';
+
+            el.style.left = `${rect.left + dx}px`;
+
+            el.style.top = `${rect.top + dy}px`;
+
+          };
+
+           const onPointerUp = (upEvent) => {
+
+            el.releasePointerCapture(upEvent.pointerId);
+
+            window.removeEventListener('pointermove', onPointerMove);
+            window.removeEventListener('pointerup', onPointerUp);
+
+          };
+
+           window.addEventListener('pointermove', onPointerMove);
+           window.addEventListener('pointerup', onPointerUp);
+
+        }}
+
+        onClick={(e) => {
+
+          e.stopPropagation();
+
+          showToast('สวัสดีจ้า 🌙 ฉันคือผู้ช่วย Moon');
+
+        }}
+
       >
+
         🌙
+
       </div>
-      {toast && <div className="pf-toast">{toast}</div>}
-    </div>
   );
 }
