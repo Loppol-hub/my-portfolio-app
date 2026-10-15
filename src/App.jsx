@@ -1000,11 +1000,23 @@ const chartData = useMemo(() =>
       `}</style>
 
       <div className="pf-header">
-            <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', marginBottom: '8px' }}>
+                  <div style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 1000,
+        backgroundColor: '#070913', // โทนสีมืดกลมกลืนกับโลโก้
+        width: '100%',
+        padding: '14px 20px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'flex-start',
+        boxSizing: 'border-box',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.08)'
+      }}>
         <img 
           src={new URL('../Logo.jpg', import.meta.url).href} 
           alt="Moon Shot Logo" 
-          style={{ height: '48px', width: 'auto', objectFit: 'contain', display: 'block' }} 
+          style={{ height: '42px', width: 'auto', objectFit: 'contain', display: 'block' }} 
         />
       </div>
 
