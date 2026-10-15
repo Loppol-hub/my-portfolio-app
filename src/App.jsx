@@ -1000,15 +1000,15 @@ const chartData = useMemo(() =>
       `}</style>
 
       <div className="pf-header">
-            <div style={{ display: 'flex', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', marginBottom: '8px' }}>
         <img 
           src={new URL('../Logo.jpg', import.meta.url).href} 
           alt="Moon Shot Logo" 
-          style={{ height: '32px', width: 'auto', objectFit: 'contain', display: 'block' }} 
+          style={{ height: '48px', width: 'auto', objectFit: 'contain', display: 'block' }} 
         />
       </div>
 
-      <div className="pf-menu-wrap">
+        <div className="pf-menu-wrap">
           <button className="pf-icon-btn" aria-label="เมนู" onClick={() => setMenuOpen((v) => !v)}><MoreVertical size={17} /></button>
           {menuOpen && (
             <div className="pf-menu">
