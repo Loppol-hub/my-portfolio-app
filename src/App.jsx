@@ -1016,7 +1016,7 @@ const chartData = useMemo(() =>
         <img 
           src={new URL('../Logo.jpg', import.meta.url).href} 
           alt="Moon Shot Logo" 
-          style={{ height: '60px', width: 'auto', objectFit: 'contain', display: 'block' }} 
+          style={{ height: '80px', width: 'auto', objectFit: 'contain', display: 'block' }} 
         />
       </div>
 
