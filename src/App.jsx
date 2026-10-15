@@ -974,12 +974,12 @@ const chartData = useMemo(() =>
 
         }
 
-          .moon-float {
+            .moon-float {
           position: fixed;
-          right: 24px;
-          bottom: 24px;
-          width: 110px;
-          height: 110px;
+          top: 16px;
+          right: 20px;
+          width: 80px;
+          height: 80px;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -994,7 +994,7 @@ const chartData = useMemo(() =>
         }
         @keyframes moonFloat {
           0% { transform: translateY(0px); }
-          50% { transform: translateY(-16px); }
+          50% { transform: translateY(-8px); }
           100% { transform: translateY(0px); }
         }
       `}</style>
