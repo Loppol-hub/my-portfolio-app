@@ -978,8 +978,8 @@ const chartData = useMemo(() =>
           position: fixed;
           top: 16px;
           right: 20px;
-          width: 80px;
-          height: 80px;
+          width: 110px;
+          height: 110px;
           display: flex;
           align-items: center;
           justify-content: center;
