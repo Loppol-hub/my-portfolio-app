@@ -153,7 +153,7 @@ const INSTRUMENT_TYPES = [
 const INSTRUMENT_RANK = { stock: 0, dr: 1, etf: 2 };
 
 export default function PortfolioApp() {
-  const [activeTab, setActiveTab] = useState(3); // เริ่มต้นที่หน้าพอร์ตรวม (ตรงกลาง)
+  const [activeTab, setActiveTab] = useState(3);
   const [holdings, setHoldings] = useState([]);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -328,28 +328,7 @@ export default function PortfolioApp() {
   const computedCash = cashActive ? (totalCapital - totalInvestedCost + cashAdjTotal) : 0;
   const legacyCashHoldings = useMemo(() => holdings.filter((h) => h.type === 'cash'), [holdings]);
   const recentLedger = useMemo(() => ledger.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.id.localeCompare(a.id)), [ledger]);
-  const buddhistYear = (y) => (parseInt(y, 10) || 0) + 543;
-  const currentYearKey = String(new Date().getFullYear());
-  const [selectedYear, setSelectedYear] = useState(currentYearKey);
-  const yearOptions = useMemo(() => {
-    const set = new Set([currentYearKey, ...ledger.map((e) => (e.date || '').slice(0, 4)).filter(Boolean)]);
-    return Array.from(set).sort((a, b) => b.localeCompare(a)).slice(0, 5);
-  }, [ledger, currentYearKey]);
-  useEffect(() => {
-    if (!yearOptions.includes(selectedYear)) setSelectedYear(yearOptions[0] || currentYearKey);
-  }, [yearOptions]);
-  const yearSummary = useMemo(() => {
-    const d = { capital_add: 0, capital_reduce: 0, profit: 0, loss: 0, dividend: 0 };
-    ledger.forEach((e) => { if ((e.date || '').slice(0, 4) === selectedYear) d[e.type] = (d[e.type] || 0) + e.amount; });
-    const net = d.capital_add - d.capital_reduce + d.profit - d.loss + d.dividend;
-    const totalIn = d.capital_add + d.profit + d.dividend;
-    const totalOut = d.capital_reduce + d.loss;
-    const totalFlow = totalIn + totalOut;
-    const inPct = totalFlow > 0 ? (totalIn / totalFlow) * 100 : 0;
-    return { ...d, net, totalIn, totalOut, inPct };
-  }, [ledger, selectedYear]);
 
-  const totalValue = totalInvestedValue + (cashActive ? Math.max(0, computedCash) : 0);
   const totalGain = totalInvestedValue - totalInvestedCost;
   const totalGainPct = totalInvestedCost > 0 ? (totalGain / totalInvestedCost) * 100 : 0;
 
@@ -724,29 +703,8 @@ export default function PortfolioApp() {
         .pf-chip-pos { color: var(--pos); } .pf-chip-neg { color: var(--neg); }
         .pf-spark { height: 44px; margin-top: 14px; }
         .pf-updated { color: var(--muted); font-size: 12px; }
-        .pf-capital-card { background: var(--surface); border: 1px solid var(--divider); border-radius: 16px; padding: 18px 16px; margin-bottom: 16px; }
-        .pf-capital-row { display: flex; align-items: center; justify-content: space-between; font-size: 13.5px; padding: 6px 0; }
-        .pf-capital-bar { width: 100%; height: 8px; border-radius: 5px; background: var(--surface-alt); overflow: hidden; margin: 6px 0 2px; }
-        .pf-capital-bar-fill { height: 100%; background: var(--gold); border-radius: 5px; }
-        .pf-capital-highlight { margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--divider); font-weight: 700; font-size: 17px; }
-        .pf-cash-ledger { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--divider); }
-        .pf-cash-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
         .pf-cash-manage-btn { display: inline-flex; align-items: center; gap: 8px; background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 20px; padding: 6px 14px 6px 6px; font-size: 12.5px; font-weight: 600; cursor: pointer; margin-top: 16px; }
         .pf-cash-manage-icon { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: var(--gold); color: #1A1400; flex-shrink: 0; }
-        .pf-year-picker { display: flex; gap: 8px; margin-bottom: 12px; overflow-x: auto; }
-        .pf-year-pill, .pf-year-pill-active { flex-shrink: 0; border-radius: 20px; padding: 7px 16px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid var(--divider); background: var(--surface-alt); color: var(--muted); }
-        .pf-year-pill-active { background: var(--gold); color: #1A1400; border-color: var(--gold); }
-        .pf-year-card { background: var(--surface); border: 1px solid var(--divider); border-radius: 16px; padding: 18px 16px; margin-bottom: 10px; }
-        .pf-year-net { text-align: center; margin-bottom: 16px; }
-        .pf-year-net-label { color: var(--muted); font-size: 12px; letter-spacing: 0.4px; margin-bottom: 4px; }
-        .pf-year-net-value { font-size: 32px; font-weight: 800; letter-spacing: -0.3px; }
-        .pf-year-flow-bar { display: flex; width: 100%; height: 10px; border-radius: 6px; overflow: hidden; background: var(--surface-alt); }
-        .pf-year-flow-in { height: 100%; background: var(--gold); }
-        .pf-year-flow-out { height: 100%; background: #5B6779; }
-        .pf-year-flow-legend { display: flex; justify-content: space-between; gap: 10px; margin-top: 8px; font-size: 11.5px; color: var(--muted); }
-        .pf-year-rows { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--divider); display: flex; flex-direction: column; gap: 10px; }
-        .pf-year-row { display: flex; align-items: center; gap: 9px; font-size: 13px; }
-        .pf-year-row-icon { color: var(--gold); flex-shrink: 0; }
         .pf-cash-action-btn { flex: 1; min-width: 90px; background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 10px; padding: 9px 10px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
         .pf-section-label { color: var(--muted); font-size: 12px; letter-spacing: 0.6px; text-transform: uppercase; margin: 20px 2px 10px; }
         .pf-donut-row { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; margin-bottom: 4px; }
@@ -758,21 +716,11 @@ export default function PortfolioApp() {
         .pf-type-section-head { display: flex; align-items: center; gap: 18px; }
         .pf-pie-tap { display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; }
         .pf-pie-tap-hint { font-size: 10px; color: var(--muted); text-align: center; }
-        .pf-type-breakdown-caption { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 2px; }
         .pf-type-section-info { flex: 1; min-width: 0; }
         .pf-type-section-title { display: flex; align-items: center; gap: 7px; font-family: 'Fraunces', serif; font-weight: 600; font-size: 15.5px; margin-bottom: 5px; }
         .pf-type-section-value { font-size: 25px; font-weight: 800; letter-spacing: -0.2px; }
         .pf-type-section-gain { font-size: 12.5px; margin-top: 3px; }
-        .pf-type-section-pct { color: var(--muted); font-size: 12px; margin-top: 5px; }
         .pf-type-section-cost { color: var(--muted); font-size: 12px; margin-top: 3px; }
-        .pf-sort-row { display: flex; align-items: center; justify-content: flex-end; margin-top: 12px; }
-        .pf-sort-toggle { display: flex; background: var(--surface-alt); border: 1px solid var(--divider); border-radius: 8px; padding: 2px; gap: 2px; }
-        .pf-sort-toggle button { display: flex; align-items: center; justify-content: center; width: 26px; height: 24px; border-radius: 6px; background: transparent; border: none; color: var(--muted); cursor: pointer; }
-        .pf-sort-toggle button.pf-sort-toggle-active { background: var(--gold); color: #1A1400; }
-        .pf-type-breakdown { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--divider); }
-        .pf-type-breakdown-item { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-        .pf-type-breakdown-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
-        .pf-type-breakdown-pct { color: var(--gold); font-weight: 600; font-size: 13px; }
         .pf-type-section-holdings { border-top: 1px solid var(--divider); margin-top: 16px; padding-top: 6px; }
         .pf-subrow { padding: 14px 0; border-bottom: 1px solid var(--divider); }
         .pf-subrow:last-child { border-bottom: none; padding-bottom: 0; }
@@ -825,20 +773,18 @@ export default function PortfolioApp() {
         .pf-issue-banner { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; background: rgba(252,165,165,0.12); border: 1px solid var(--neg); color: var(--text); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; font-size: 12.5px; line-height: 1.5; }
         .pf-loading { display: flex; align-items: center; justify-content: center; height: 60vh; color: var(--muted); }
         
-        /* Bottom Navigation Bar Styles */
         .pf-bottom-nav {
           position: fixed;
           bottom: 0;
           left: 0;
           width: 100%;
-          backgroundColor: #0b0f19;
+          background-color: #0b0f19;
           border-top: 1px solid rgba(255, 255, 255, 0.08);
           display: flex;
           justify-content: space-around;
           align-items: center;
           padding: 8px 0;
           z-index: 1000;
-          background-color: #0b0f19;
         }
         .pf-nav-item {
           background: none;
@@ -879,7 +825,6 @@ export default function PortfolioApp() {
           color: #000;
         }
 
-        /* AI Moon Float (ขนาด 110x110 มุมขวาบน) */
         .moon-float {
           position: fixed;
           top: 16px;
@@ -909,7 +854,6 @@ export default function PortfolioApp() {
         }
       `}</style>
 
-      {/* โลโก้มุมซ้ายบน (ขนาด 80px) */}
       <div className="pf-header">
         <div style={{ display: 'flex', alignItems: 'center' }}>
           <img 
@@ -920,7 +864,6 @@ export default function PortfolioApp() {
         </div>
       </div>
 
-      {/* ตัว AI นักบินอวกาศ มุมขวาบน (ขนาด 110x110px) */}
       <div className="moon-float" onPointerDown={(e) => {
         const el = e.currentTarget; el.setPointerCapture(e.pointerId);
         const startX = e.clientX, startY = e.clientY, rect = el.getBoundingClientRect();
@@ -980,11 +923,7 @@ export default function PortfolioApp() {
             </div>
           )}
 
-          {/* =========================================
-              เนื้อหาแต่ละหน้าต่าง (5 Tabs) ตามที่คุณออกแบบ
-              ========================================= */}
-
-          {/* หน้าต่างที่ 1: หุ้นไทย (Thai Stocks) */}
+          {/* 1. หุ้นไทย */}
           {activeTab === 1 && (
             <div>
               <div className="pf-section-label" style={{ marginTop: 0 }}>หุ้นไทย (Thai Stocks)</div>
@@ -996,48 +935,18 @@ export default function PortfolioApp() {
                 </div>
               ) : (
                 byType.filter((t) => t.key === 'th_stock').map((t) => {
-                  const sortMode = sortModeByType[t.key] || 'value';
-                  const typeHoldings = enriched.filter((h) => h.type === t.key).sort((a, b) => {
-                    const rankA = INSTRUMENT_RANK[a.instrumentType] ?? 0;
-                    const rankB = INSTRUMENT_RANK[b.instrumentType] ?? 0;
-                    if (rankA !== rankB) return rankA - rankB;
-                    if (sortMode === 'name') return a.name.localeCompare(b.name, 'th');
-                    return b.marketValue - a.marketValue;
-                  });
+                  const typeHoldings = enriched.filter((h) => h.type === t.key);
                   const typeCost = typeHoldings.reduce((s, h) => s + h.costValue, 0);
                   const typeGain = t.value - typeCost;
                   const typeGainPct = typeCost > 0 ? (typeGain / typeCost) * 100 : 0;
                   const shades = shadeSet(t.color, typeHoldings.length);
                   const colorById = {};
                   typeHoldings.forEach((h, i) => { colorById[h.id] = shades[i]; });
-                  const viewMode = chartModeByType[t.key] === 'industry' ? 'industry' : 'holding';
-
-                  let chartData;
-                  let breakdownItems;
-                  if (viewMode === 'industry') {
-                    const groups = {};
-                    typeHoldings.forEach((h) => {
-                      const ind = (h.industry && h.industry.trim()) || 'อื่นๆ';
-                      groups[ind] = (groups[ind] || 0) + h.marketValue;
-                    });
-                    const industryNames = Object.keys(groups).sort((a, b) => groups[b] - groups[a]);
-                    const industryColors = shadeSet(t.color, industryNames.length);
-                    const industryColorById = {};
-                    industryNames.forEach((name, i) => { industryColorById[name] = industryColors[i]; });
-                    chartData = industryNames.map((name) => ({ key: name, label: name, color: industryColorById[name], value: groups[name] }));
-                    breakdownItems = chartData;
-                  } else {
-                    chartData = typeHoldings.map((h) => ({ key: h.id, label: h.name, color: colorById[h.id], value: h.marketValue }));
-                    breakdownItems = typeHoldings.map((h) => ({ key: h.id, label: h.name, color: colorById[h.id], value: h.marketValue }));
-                  }
 
                   return (
                     <div className="pf-type-section" key={t.key}>
                       <div className="pf-type-section-head">
-                        <div onClick={() => toggleChartMode(t.key)} className="pf-pie-tap" role="button" tabIndex={0}>
-                          <ExplodedPie3D data={chartData} rx={62} depth={14} explode={5} />
-                          <div className="pf-pie-tap-hint">{viewMode === 'industry' ? 'แตะดูรายตัว' : 'แตะดูอุตสาหกรรม'}</div>
-                        </div>
+                        <ExplodedPie3D data={typeHoldings.map((h) => ({ key: h.id, label: h.name, color: colorById[h.id], value: h.marketValue }))} rx={55} depth={12} explode={4} />
                         <div className="pf-type-section-info">
                           <div className="pf-type-section-title"><span className="pf-dot" style={{ background: t.color }} />{t.label}</div>
                           <div className="pf-type-section-value pf-mono">฿{fmt(t.value, 0)}</div>
@@ -1081,7 +990,7 @@ export default function PortfolioApp() {
             </div>
           )}
 
-          {/* หน้าต่างที่ 2: หุ้นต่างประเทศ & DR (Global Stocks & DR) */}
+          {/* 2. หุ้นต่างประเทศ & DR */}
           {activeTab === 2 && (
             <div>
               <div className="pf-section-label" style={{ marginTop: 0 }}>หุ้นต่างประเทศ & DR (Global Stocks & DR)</div>
@@ -1093,48 +1002,18 @@ export default function PortfolioApp() {
                 </div>
               ) : (
                 byType.filter((t) => t.key === 'foreign_stock').map((t) => {
-                  const sortMode = sortModeByType[t.key] || 'value';
-                  const typeHoldings = enriched.filter((h) => h.type === t.key).sort((a, b) => {
-                    const rankA = INSTRUMENT_RANK[a.instrumentType] ?? 0;
-                    const rankB = INSTRUMENT_RANK[b.instrumentType] ?? 0;
-                    if (rankA !== rankB) return rankA - rankB;
-                    if (sortMode === 'name') return a.name.localeCompare(b.name, 'th');
-                    return b.marketValue - a.marketValue;
-                  });
+                  const typeHoldings = enriched.filter((h) => h.type === t.key);
                   const typeCost = typeHoldings.reduce((s, h) => s + h.costValue, 0);
                   const typeGain = t.value - typeCost;
                   const typeGainPct = typeCost > 0 ? (typeGain / typeCost) * 100 : 0;
                   const shades = shadeSet(t.color, typeHoldings.length);
                   const colorById = {};
                   typeHoldings.forEach((h, i) => { colorById[h.id] = shades[i]; });
-                  const viewMode = chartModeByType[t.key] === 'industry' ? 'industry' : 'holding';
-
-                  let chartData;
-                  let breakdownItems;
-                  if (viewMode === 'industry') {
-                    const groups = {};
-                    typeHoldings.forEach((h) => {
-                      const ind = (h.industry && h.industry.trim()) || 'อื่นๆ';
-                      groups[ind] = (groups[ind] || 0) + h.marketValue;
-                    });
-                    const industryNames = Object.keys(groups).sort((a, b) => groups[b] - groups[a]);
-                    const industryColors = shadeSet(t.color, industryNames.length);
-                    const industryColorById = {};
-                    industryNames.forEach((name, i) => { industryColorById[name] = industryColors[i]; });
-                    chartData = industryNames.map((name) => ({ key: name, label: name, color: industryColorById[name], value: groups[name] }));
-                    breakdownItems = chartData;
-                  } else {
-                    chartData = typeHoldings.map((h) => ({ key: h.id, label: h.name, color: colorById[h.id], value: h.marketValue }));
-                    breakdownItems = typeHoldings.map((h) => ({ key: h.id, label: h.name, color: colorById[h.id], value: h.marketValue }));
-                  }
 
                   return (
                     <div className="pf-type-section" key={t.key}>
                       <div className="pf-type-section-head">
-                        <div onClick={() => toggleChartMode(t.key)} className="pf-pie-tap" role="button" tabIndex={0}>
-                          <ExplodedPie3D data={chartData} rx={62} depth={14} explode={5} />
-                          <div className="pf-pie-tap-hint">{viewMode === 'industry' ? 'แตะดูรายตัว' : 'แตะดูอุตสาหกรรม'}</div>
-                        </div>
+                        <ExplodedPie3D data={typeHoldings.map((h) => ({ key: h.id, label: h.name, color: colorById[h.id], value: h.marketValue }))} rx={55} depth={12} explode={4} />
                         <div className="pf-type-section-info">
                           <div className="pf-type-section-title"><span className="pf-dot" style={{ background: t.color }} />{t.label}</div>
                           <div className="pf-type-section-value pf-mono">฿{fmt(t.value, 0)}</div>
@@ -1180,7 +1059,7 @@ export default function PortfolioApp() {
             </div>
           )}
 
-          {/* หน้าต่างที่ 3: พอร์ตรวม (Portfolio Overview) - โดดเด่นและใหญ่กว่าเพื่อน */}
+          {/* 3. พอร์ตรวม */}
           {activeTab === 3 && (
             <div>
               <div className="pf-section-label" style={{ marginTop: 0 }}>พอร์ตรวม (Portfolio Overview)</div>
@@ -1244,7 +1123,6 @@ export default function PortfolioApp() {
                     </div>
                   </div>
 
-                  {/* ส่วนจัดการเงินสดในพอร์ตรวม */}
                   {byType.find(t => t.key === 'cash') && (
                     <div className="pf-type-section" style={{ marginTop: '20px' }}>
                       <div className="pf-type-section-head">
@@ -1265,7 +1143,7 @@ export default function PortfolioApp() {
             </div>
           )}
 
-          {/* หน้าต่างที่ 4: สินทรัพย์อื่นๆ (Other Assets: กองทุน, ทอง, คริปโต) */}
+          {/* 4. สินทรัพย์อื่นๆ */}
           {activeTab === 4 && (
             <div>
               <div className="pf-section-label" style={{ marginTop: 0 }}>สินทรัพย์อื่นๆ (กองทุน ทอง คริปโต)</div>
@@ -1330,19 +1208,24 @@ export default function PortfolioApp() {
             </div>
           )}
 
-          {/* หน้าต่างที่ 5: ตั้งค่า (Settings - รวมฟังก์ชัน 3 จุดเดิมทั้งหมด) */}
+          {/* 5. ตั้งค่า (รวมปุ่มอัปเดตราคาตลาดมาไว้ที่นี่เรียบร้อย) */}
           {activeTab === 5 && (
             <div>
               <div className="pf-section-label" style={{ marginTop: 0 }}>ตั้งค่าระบบ (Settings)</div>
               <div className="pf-type-section">
                 <div style={{ marginBottom: '16px' }}>
-                  <div style={{ fontWeight: '600', fontSize: '16px', marginBottom: '4px' }}>จัดการข้อมูล & สำรอง</div>
-                  <div style={{ color: 'var(--muted)', fontSize: '13px' }}>ส่งออกข้อมูล นำเข้าข้อมูล และตั้งค่าระบบ Endpoint API</div>
+                  <div style={{ fontWeight: '600', fontSize: '16px', marginBottom: '4px' }}>จัดการข้อมูล & อัปเดตราคา</div>
+                  <div style={{ color: 'var(--muted)', fontSize: '13px' }}>อัปเดตราคาสินทรัพย์รายวัน, ตั้งค่า API และสำรองข้อมูล</div>
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {holdings.length > 0 && (
+                    <button className="pf-btn pf-btn-primary" style={{ justifyContent: 'flex-start', padding: '14px' }} onClick={openUpdatePrices}>
+                      <RefreshCw size={16} /> อัปเดตราคาวันนี้ (ราคาตลาด)
+                    </button>
+                  )}
                   <button className="pf-btn pf-btn-ghost" style={{ justifyContent: 'flex-start', padding: '14px' }} onClick={() => { setBackendDraft(backendUrl); setFxDraft(String(fxRate)); setInitialCapitalDraft(initialCapital > 0 ? String(initialCapital) : ''); setPanel('settings'); }}>
-                    ⚙️ ตั้งค่า API Endpoint และทุนเริ่มต้น
+                    ⚙️ ตั้งค่า API Endpoint และอัตราแลกเปลี่ยน
                   </button>
                   <button className="pf-btn pf-btn-ghost" style={{ justifyContent: 'flex-start', padding: '14px' }} onClick={exportData}>
                     📥 ส่งออกข้อมูล (สำรอง Backup JSON)
@@ -1358,44 +1241,30 @@ export default function PortfolioApp() {
             </div>
           )}
 
-          {/* Floating Action Button (เพิ่มสินทรัพย์ / อัปเดตราคา) */}
+          {/* ปุ่มบวกเพิ่มสินทรัพย์ลอยตัว */}
           <div className="pf-fab">
-            {holdings.length > 0 && (
-              <button className="pf-btn pf-btn-ghost" onClick={openUpdatePrices}><RefreshCw size={15} /> อัปเดตราคาวันนี้</button>
-            )}
             <button className="pf-btn pf-btn-primary" onClick={openAdd}><Plus size={16} /> เพิ่ม</button>
           </div>
         </>
       )}
 
-      {/* =========================================
-          แถบเมนูด้านล่าง 5 หน้าต่าง (Bottom Navigation)
-          ========================================= */}
+      {/* แถบเมนูด้านล่าง 5 หน้าต่าง */}
       <div className="pf-bottom-nav">
-        {/* 1. หุ้นไทย */}
         <button onClick={() => setActiveTab(1)} className={`pf-nav-item ${activeTab === 1 ? 'active' : ''}`}>
           📊
           <span className="pf-nav-label">หุ้นไทย</span>
         </button>
-
-        {/* 2. หุ้นต่างประเทศ */}
         <button onClick={() => setActiveTab(2)} className={`pf-nav-item ${activeTab === 2 ? 'active' : ''}`}>
           🌐
           <span className="pf-nav-label">หุ้นนอก</span>
         </button>
-
-        {/* 3. พอร์ตรวม (ตรงกลาง เด่นและใหญ่กว่าเพื่อน) */}
         <button onClick={() => setActiveTab(3)} className={`pf-nav-center ${activeTab === 3 ? 'active' : ''}`}>
           🏛️
         </button>
-
-        {/* 4. สินทรัพย์อื่นๆ */}
         <button onClick={() => setActiveTab(4)} className={`pf-nav-item ${activeTab === 4 ? 'active' : ''}`}>
           🪙
           <span className="pf-nav-label">สินทรัพย์อื่น</span>
         </button>
-
-        {/* 5. ตั้งค่า */}
         <button onClick={() => setActiveTab(5)} className={`pf-nav-item ${activeTab === 5 ? 'active' : ''}`}>
           ⚙️
           <span className="pf-nav-label">ตั้งค่า</span>
@@ -1525,7 +1394,7 @@ export default function PortfolioApp() {
             </div>
             <div className="pf-field">
               <label className="pf-label">ทุนเริ่มต้นทั้งหมด (บาท)</label>
-              <input className="pf-input pf-mono" inputMode="decimal" value={initialCapitalDraft} onChange={(e) => setInitialCapitalDraft(e.target.value)} placeholder="เช่น 100000" />
+              <input className="pf-input pf-mono" inputMode="decimal" value={initialCapitalDraft} onChange={(e) => initialCapitalDraft} placeholder="เช่น 100000" />
             </div>
             <div className="pf-panel-actions">
               <button className="pf-btn pf-btn-ghost" onClick={closePanel}>ยกเลิก</button>
