@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Pencil, Trash2, RefreshCw, X, TrendingUp, TrendingDown, MoreVertical, Inbox, Zap, Wallet, ChevronRight, ArrowDownWideNarrow, ArrowDownAZ, PlusCircle, MinusCircle, Gift } from 'lucide-react';
-import { LineChart, Line, ResponsiveContainer } from 'recharts';
+import { Plus, Pencil, Trash2, RefreshCw, X, TrendingUp, TrendingDown, MoreVertical, Inbox, Zap, Wallet, ChevronRight, ArrowDownWideNarrow, ArrowDownAZ, PlusCircle, MinusCircle, Gift, Sliders } from 'lucide-react';
+import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
 
 const ASSET_TYPES = [
   { key: 'th_stock', label: 'หุ้นไทย', color: '#C7A344', market: 'th', defaultCurrency: 'THB' },
@@ -199,6 +199,14 @@ export default function PortfolioApp() {
   const [ledgerNote, setLedgerNote] = useState('');
   const [ledgerDate, setLedgerDate] = useState('');
 
+  // States สำหรับฟีเจอร์กราฟใหม่ตามข้อ 10 (เลือกดู ตั้งแต่เริ่มต้น หรือ รายปี)
+  const [graphModeTotal, setGraphModeTotal] = useState('all'); // 'all' | 'year'
+  const [graphYearTotal, setGraphYearTotal] = useState(String(new Date().getFullYear()));
+  const [graphModeTh, setGraphModeTh] = useState('all');
+  const [graphYearTh, setGraphYearTh] = useState(String(new Date().getFullYear()));
+  const [graphModeUs, setGraphModeUs] = useState('all');
+  const [graphYearUs, setGraphYearUs] = useState(String(new Date().getFullYear()));
+
   useEffect(() => { load(); }, []);
 
   useEffect(() => {
@@ -314,6 +322,8 @@ export default function PortfolioApp() {
 
   const totalInvestedValue = useMemo(() => enriched.filter((h) => h.type !== 'cash').reduce((s, h) => s + h.marketValue, 0), [enriched]);
   const totalInvestedCost = useMemo(() => enriched.filter((h) => h.type !== 'cash').reduce((s, h) => s + h.costValue, 0), [enriched]);
+  
+  // คำนวณทุนสะสม (ตามข้อ 4)
   const capitalAdjTotal = useMemo(() => (
     ledger.filter((e) => e.type === 'capital_add').reduce((s, e) => s + e.amount, 0)
     - ledger.filter((e) => e.type === 'capital_reduce').reduce((s, e) => s + e.amount, 0)
@@ -323,11 +333,34 @@ export default function PortfolioApp() {
     - ledger.filter((e) => e.type === 'loss').reduce((s, e) => s + e.amount, 0)
     + ledger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0)
   ), [ledger]);
+  
   const totalCapital = initialCapital + capitalAdjTotal;
   const cashActive = initialCapital > 0 || ledger.length > 0;
   const computedCash = cashActive ? (totalCapital - totalInvestedCost + cashAdjTotal) : 0;
-  const legacyCashHoldings = useMemo(() => holdings.filter((h) => h.type === 'cash'), [holdings]);
   const recentLedger = useMemo(() => ledger.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.id.localeCompare(a.id)), [ledger]);
+
+  const buddhistYear = (y) => (parseInt(y, 10) || 0) + 543;
+  const currentYearKey = String(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState(currentYearKey);
+  const yearOptions = useMemo(() => {
+    const set = new Set([currentYearKey, ...ledger.map((e) => (e.date || '').slice(0, 4)).filter(Boolean), ...history.map((h) => (h.date || '').slice(0, 4)).filter(Boolean)]);
+    return Array.from(set).sort((a, b) => b.localeCompare(a)).slice(0, 5);
+  }, [ledger, history, currentYearKey]);
+  
+  useEffect(() => {
+    if (!yearOptions.includes(selectedYear)) setSelectedYear(yearOptions[0] || currentYearKey);
+  }, [yearOptions]);
+
+  const yearSummary = useMemo(() => {
+    const d = { capital_add: 0, capital_reduce: 0, profit: 0, loss: 0, dividend: 0 };
+    ledger.forEach((e) => { if ((e.date || '').slice(0, 4) === selectedYear) d[e.type] = (d[e.type] || 0) + e.amount; });
+    const net = d.capital_add - d.capital_reduce + d.profit - d.loss + d.dividend;
+    const totalIn = d.capital_add + d.profit + d.dividend;
+    const totalOut = d.capital_reduce + d.loss;
+    const totalFlow = totalIn + totalOut;
+    const inPct = totalFlow > 0 ? (totalIn / totalFlow) * 100 : 0;
+    return { ...d, net, totalIn, totalOut, inPct };
+  }, [ledger, selectedYear]);
 
   const totalGain = totalInvestedValue - totalInvestedCost;
   const totalGainPct = totalInvestedCost > 0 ? (totalGain / totalInvestedCost) * 100 : 0;
@@ -353,7 +386,44 @@ export default function PortfolioApp() {
     return dates.length ? dates[dates.length - 1] : null;
   }, [holdings]);
 
-  const chartData = useMemo(() => history.slice(-30).map((p) => ({ date: p.date, value: p.value })), [history]);
+  // ---- ข้อมูลสำหรับกราฟตามข้อ 10 ----
+  const filterHistoryByMode = (mode, year) => {
+    if (mode === 'year') {
+      return history.filter((p) => (p.date || '').slice(0, 4) === year);
+    }
+    return history;
+  };
+
+  const chartDataTotal = useMemo(() => {
+    const filtered = filterHistoryByMode(graphModeTotal, graphYearTotal);
+    return filtered.map((p) => ({ date: p.date, value: p.value, principal: totalCapital }));
+  }, [history, graphModeTotal, graphYearTotal, totalCapital]);
+
+  // สร้างข้อมูลประวัติจำลองกำไร/ขาดทุน หุ้นไทย และ หุ้นต่างประเทศ จาก history รวม (หรือคำนวณตามสัดส่วน)
+  const chartDataTh = useMemo(() => {
+    const filtered = filterHistoryByMode(graphModeTh, graphYearTh);
+    const thHoldings = enriched.filter(h => h.type === 'th_stock');
+    const thCost = thHoldings.reduce((s, h) => s + h.costValue, 0);
+    return filtered.map((p) => {
+      // ประมาณการสัดส่วนมูลค่าหุ้นไทยเทียบกับพอร์ตรวม
+      const ratio = totalInvestedValue > 0 ? thHoldings.reduce((s,h)=>s+h.marketValue,0) / totalInvestedValue : 0;
+      const val = p.value * ratio;
+      const gain = val - thCost;
+      return { date: p.date, gain: gain, cost: thCost };
+    });
+  }, [history, graphModeTh, graphYearTh, enriched, totalInvestedValue]);
+
+  const chartDataUs = useMemo(() => {
+    const filtered = filterHistoryByMode(graphModeUs, graphYearUs);
+    const usHoldings = enriched.filter(h => h.type === 'foreign_stock');
+    const usCost = usHoldings.reduce((s, h) => s + h.costValue, 0);
+    return filtered.map((p) => {
+      const ratio = totalInvestedValue > 0 ? usHoldings.reduce((s,h)=>s+h.marketValue,0) / totalInvestedValue : 0;
+      const val = p.value * ratio;
+      const gain = val - usCost;
+      return { date: p.date, gain: gain, cost: usCost };
+    });
+  }, [history, graphModeUs, graphYearUs, enriched, totalInvestedValue]);
 
   const openAdd = () => { setForm(emptyForm); setEditingId(null); setFormError(''); setPanel('form'); };
   const openEdit = (h) => {
@@ -478,6 +548,10 @@ export default function PortfolioApp() {
       const histNext = [...historyRef.current.filter((p) => p.date !== today), { date: today, value: newTotal }].sort((a, b) => a.date.localeCompare(b.date));
       await saveHistory(histNext);
       setFetchIssues(failedNames);
+      
+      // แจ้งเตือนดึงราคาสำเร็จตามข้อ 6
+      const okCount = Object.keys(priceById).length;
+      showToast(`ดึงราคาสำเร็จ จำนวน ${okCount} ตัว`);
     } catch (e) { /* background silent */ }
   };
 
@@ -508,7 +582,7 @@ export default function PortfolioApp() {
     }, 0);
     const histNext = [...history.filter((p) => p.date !== today), { date: today, value: newTotal }].sort((a, b) => a.date.localeCompare(b.date));
     saveHistory(histNext);
-    showToast('บันทึกราคาวันนี้แล้ว');
+    showToast(`ดึงราคาสำเร็จ จำนวน ${Object.keys(updateDraft).length} ตัว`);
     closePanel();
   };
 
@@ -545,8 +619,10 @@ export default function PortfolioApp() {
       const data = await res.json();
       const next = { ...updateDraft };
       const failedNames = [];
+      let okCount = 0;
       (data.results || []).forEach((r) => {
         if (typeof r.price === 'number') {
+          okCount++;
           const holding = eligible.find((x) => x.id === r.id);
           let updatedPrice = r.price;
           if (holding && holding.type === 'crypto' && holding.currency === 'THB') { updatedPrice = r.price * fxRate; }
@@ -558,7 +634,7 @@ export default function PortfolioApp() {
       });
       setUpdateDraft(next);
       setFetchIssues(failedNames);
-      showToast('ดึงราคาอัตโนมัติสำเร็จ');
+      showToast(`ดึงราคาสำเร็จ จำนวน ${okCount} ตัว`);
     } catch (e) {
       showToast('เชื่อมต่อ Backend ไม่สำเร็จ');
     } finally {
@@ -636,8 +712,8 @@ export default function PortfolioApp() {
     showToast('นำเข้าข้อมูลสำเร็จ');
   };
 
-  const LEDGER_LABELS = { capital_add: 'เพิ่มทุน', capital_reduce: 'ลดทุน', profit: 'กำไร', loss: 'ขาดทุน', dividend: 'ปันผล' };
-  const LEDGER_SIGN = { capital_add: 1, capital_reduce: -1, profit: 1, loss: -1, dividend: 1 };
+  const LEDGER_LABELS = { capital_add: 'เพิ่มทุน', capital_reduce: 'ลดทุน', profit: 'กำไร', loss: 'ขาดทุน', dividend: 'ปันผล', rebalance: 'รีบาลานซ์เงินสด' };
+  const LEDGER_SIGN = { capital_add: 1, capital_reduce: -1, profit: 1, loss: -1, dividend: 1, rebalance: 1 };
 
   const saveLedger = async (next) => {
     setLedger(next);
@@ -649,11 +725,27 @@ export default function PortfolioApp() {
   };
 
   const submitLedger = () => {
-    const amt = parseFloat(ledgerAmount);
-    if (isNaN(amt) || amt <= 0) { setLedgerError('กรอกจำนวนเงินให้มากกว่า 0'); return; }
-    const entry = { id: Date.now().toString(), type: ledgerType, amount: amt, date: ledgerDate || todayStr(), note: ledgerNote.trim() };
+    const rawVal = ledgerAmount.trim();
+    let amt = parseFloat(rawVal);
+    let typeToSave = ledgerType;
+
+    // รองรับข้อ 5: รีบาลานซ์เงินสด กรอกติดลบหรือบวกได้
+    if (ledgerType === 'rebalance') {
+      if (isNaN(amt)) { setLedgerError('กรอกจำนวนเงินให้ถูกต้อง'); return; }
+      if (rawVal.startsWith('-')) {
+        typeToSave = 'capital_reduce';
+        amt = Math.abs(amt);
+      } else {
+        typeToSave = 'capital_add';
+        amt = Math.abs(amt);
+      }
+    } else {
+      if (isNaN(amt) || amt <= 0) { setLedgerError('กรอกจำนวนเงินให้มากกว่า 0'); return; }
+    }
+
+    const entry = { id: Date.now().toString(), type: typeToSave, amount: amt, date: ledgerDate || todayStr(), note: ledgerNote.trim() || (ledgerType === 'rebalance' ? 'รีบาลานซ์เงินสดสิ้นปี' : '') };
     saveLedger([...ledger, entry]);
-    showToast(`บันทึก${LEDGER_LABELS[ledgerType]}แล้ว`);
+    showToast('บันทึกรายการสำเร็จ');
     setPanel('cashManage');
   };
 
@@ -701,10 +793,30 @@ export default function PortfolioApp() {
         .pf-invest-chip { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-alt); border-radius: 20px; padding: 4px 10px; font-size: 11.5px; }
         .pf-invest-chip-label { color: var(--muted); font-weight: 400; }
         .pf-chip-pos { color: var(--pos); } .pf-chip-neg { color: var(--neg); }
-        .pf-spark { height: 44px; margin-top: 14px; }
+        .pf-spark { height: 180px; margin-top: 14px; }
         .pf-updated { color: var(--muted); font-size: 12px; }
+        .pf-capital-row { display: flex; align-items: center; justify-content: space-between; font-size: 13.5px; padding: 6px 0; }
+        .pf-capital-bar { width: 100%; height: 8px; border-radius: 5px; background: var(--surface-alt); overflow: hidden; margin: 6px 0 2px; }
+        .pf-capital-bar-fill { height: 100%; background: var(--gold); border-radius: 5px; }
+        .pf-capital-highlight { margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--divider); font-weight: 700; font-size: 17px; }
+        .pf-cash-ledger { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--divider); }
+        .pf-cash-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
         .pf-cash-manage-btn { display: inline-flex; align-items: center; gap: 8px; background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 20px; padding: 6px 14px 6px 6px; font-size: 12.5px; font-weight: 600; cursor: pointer; margin-top: 16px; }
         .pf-cash-manage-icon { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: var(--gold); color: #1A1400; flex-shrink: 0; }
+        .pf-year-picker { display: flex; gap: 8px; margin-bottom: 12px; overflow-x: auto; }
+        .pf-year-pill, .pf-year-pill-active { flex-shrink: 0; border-radius: 20px; padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid var(--divider); background: var(--surface-alt); color: var(--muted); }
+        .pf-year-pill-active { background: var(--gold); color: #1A1400; border-color: var(--gold); }
+        .pf-year-card { background: var(--surface); border: 1px solid var(--divider); border-radius: 16px; padding: 18px 16px; margin-bottom: 10px; }
+        .pf-year-net { text-align: center; margin-bottom: 16px; }
+        .pf-year-net-label { color: var(--muted); font-size: 12px; letter-spacing: 0.4px; margin-bottom: 4px; }
+        .pf-year-net-value { font-size: 32px; font-weight: 800; letter-spacing: -0.3px; }
+        .pf-year-flow-bar { display: flex; width: 100%; height: 10px; border-radius: 6px; overflow: hidden; background: var(--surface-alt); }
+        .pf-year-flow-in { height: 100%; background: var(--gold); }
+        .pf-year-flow-out { height: 100%; background: #5B6779; }
+        .pf-year-flow-legend { display: flex; justify-content: space-between; gap: 10px; margin-top: 8px; font-size: 11.5px; color: var(--muted); }
+        .pf-year-rows { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--divider); display: flex; flex-direction: column; gap: 10px; }
+        .pf-year-row { display: flex; align-items: center; gap: 9px; font-size: 13px; }
+        .pf-year-row-icon { color: var(--gold); flex-shrink: 0; }
         .pf-cash-action-btn { flex: 1; min-width: 90px; background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 10px; padding: 9px 10px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
         .pf-section-label { color: var(--muted); font-size: 12px; letter-spacing: 0.6px; text-transform: uppercase; margin: 20px 2px 10px; }
         .pf-donut-row { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; margin-bottom: 4px; }
@@ -721,6 +833,10 @@ export default function PortfolioApp() {
         .pf-type-section-value { font-size: 25px; font-weight: 800; letter-spacing: -0.2px; }
         .pf-type-section-gain { font-size: 12.5px; margin-top: 3px; }
         .pf-type-section-cost { color: var(--muted); font-size: 12px; margin-top: 3px; }
+        .pf-sort-row { display: flex; align-items: center; justify-content: flex-end; margin-top: 12px; }
+        .pf-sort-toggle { display: flex; background: var(--surface-alt); border: 1px solid var(--divider); border-radius: 8px; padding: 2px; gap: 2px; }
+        .pf-sort-toggle button { display: flex; align-items: center; justify-content: center; width: 26px; height: 24px; border-radius: 6px; background: transparent; border: none; color: var(--muted); cursor: pointer; }
+        .pf-sort-toggle button.pf-sort-toggle-active { background: var(--gold); color: #1A1400; }
         .pf-type-section-holdings { border-top: 1px solid var(--divider); margin-top: 16px; padding-top: 6px; }
         .pf-subrow { padding: 14px 0; border-bottom: 1px solid var(--divider); }
         .pf-subrow:last-child { border-bottom: none; padding-bottom: 0; }
@@ -923,7 +1039,7 @@ export default function PortfolioApp() {
             </div>
           )}
 
-          {/* 1. หุ้นไทย */}
+          {/* ================= 1. หุ้นไทย (ไม่มี DR) ================= */}
           {activeTab === 1 && (
             <div>
               <div className="pf-section-label" style={{ marginTop: 0 }}>หุ้นไทย (Thai Stocks)</div>
@@ -935,18 +1051,45 @@ export default function PortfolioApp() {
                 </div>
               ) : (
                 byType.filter((t) => t.key === 'th_stock').map((t) => {
-                  const typeHoldings = enriched.filter((h) => h.type === t.key);
+                  const sortMode = sortModeByType[t.key] || 'value';
+                  const typeHoldings = enriched.filter((h) => h.type === t.key).sort((a, b) => {
+                    const rankA = INSTRUMENT_RANK[a.instrumentType] ?? 0;
+                    const rankB = INSTRUMENT_RANK[b.instrumentType] ?? 0;
+                    if (rankA !== rankB) return rankA - rankB;
+                    if (sortMode === 'name') return a.name.localeCompare(b.name, 'th');
+                    return b.marketValue - a.marketValue;
+                  });
                   const typeCost = typeHoldings.reduce((s, h) => s + h.costValue, 0);
                   const typeGain = t.value - typeCost;
                   const typeGainPct = typeCost > 0 ? (typeGain / typeCost) * 100 : 0;
                   const shades = shadeSet(t.color, typeHoldings.length);
                   const colorById = {};
                   typeHoldings.forEach((h, i) => { colorById[h.id] = shades[i]; });
+                  const viewMode = chartModeByType[t.key] === 'industry' ? 'industry' : 'holding';
+
+                  let chartData;
+                  if (viewMode === 'industry') {
+                    const groups = {};
+                    typeHoldings.forEach((h) => {
+                      const ind = (h.industry && h.industry.trim()) || 'อื่นๆ';
+                      groups[ind] = (groups[ind] || 0) + h.marketValue;
+                    });
+                    const industryNames = Object.keys(groups).sort((a, b) => groups[b] - groups[a]);
+                    const industryColors = shadeSet(t.color, industryNames.length);
+                    const industryColorById = {};
+                    industryNames.forEach((name, i) => { industryColorById[name] = industryColors[i]; });
+                    chartData = industryNames.map((name) => ({ key: name, label: name, color: industryColorById[name], value: groups[name] }));
+                  } else {
+                    chartData = typeHoldings.map((h) => ({ key: h.id, label: h.name, color: colorById[h.id], value: h.marketValue }));
+                  }
 
                   return (
                     <div className="pf-type-section" key={t.key}>
                       <div className="pf-type-section-head">
-                        <ExplodedPie3D data={typeHoldings.map((h) => ({ key: h.id, label: h.name, color: colorById[h.id], value: h.marketValue }))} rx={55} depth={12} explode={4} />
+                        <div onClick={() => toggleChartMode(t.key)} className="pf-pie-tap" role="button" tabIndex={0}>
+                          <ExplodedPie3D data={chartData} rx={62} depth={14} explode={5} />
+                          <div className="pf-pie-tap-hint">{viewMode === 'industry' ? 'แตะดูรายตัว' : 'แตะดูอุตสาหกรรม'}</div>
+                        </div>
                         <div className="pf-type-section-info">
                           <div className="pf-type-section-title"><span className="pf-dot" style={{ background: t.color }} />{t.label}</div>
                           <div className="pf-type-section-value pf-mono">฿{fmt(t.value, 0)}</div>
@@ -958,30 +1101,72 @@ export default function PortfolioApp() {
                           )}
                         </div>
                       </div>
-                      <div className="pf-type-section-holdings">
-                        {typeHoldings.map((h) => (
-                          <div className="pf-subrow" key={h.id}>
-                            <div className="pf-row-top">
-                              <div className="pf-row-name">
-                                <span className="pf-dot" style={{ background: colorById[h.id] }} />
-                                <span className="pf-row-name-text">{h.name}</span>
-                              </div>
-                              <div className="pf-row-actions">
-                                <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
-                                <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)}><Trash2 size={15} /></button>
-                              </div>
-                            </div>
-                            <div className="pf-row-meta pf-mono">
-                              <span>จำนวน <b>{fmt(h.qty, h.qty % 1 === 0 ? 0 : 2)}</b></span>
-                              <span>ทุนเฉลี่ย <b>฿{fmt(h.avg)}</b></span>
-                              <span>ราคาล่าสุด <b>฿{fmt(h.price)}</b></span>
-                              <span>มูลค่า <b>฿{fmt(h.marketValue)}</b></span>
-                              <span className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
-                                {h.gain >= 0 ? '+' : ''}{fmt(h.gain)} ({h.gain >= 0 ? '+' : ''}{fmt(h.gainPct, 1)}%)
-                              </span>
-                            </div>
+
+                      {/* กราฟกำไร/ขาดทุน หุ้นไทย ตามข้อ 10 */}
+                      <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--divider)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontSize: '12px', color: 'var(--muted)' }}>กราฟกำไร/ขาดทุน (หุ้นไทย)</span>
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            <button className={graphModeTh === 'all' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeTh('all')} style={{ padding: '2px 8px', fontSize: '11px' }}>ตั้งแต่เริ่มต้น</button>
+                            <button className={graphModeTh === 'year' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeTh('year')} style={{ padding: '2px 8px', fontSize: '11px' }}>รายปี</button>
                           </div>
-                        ))}
+                        </div>
+                        {graphModeTh === 'year' && (
+                          <div className="pf-year-picker" style={{ marginBottom: '8px' }}>
+                            {yearOptions.map((y) => (
+                              <button key={y} className={y === graphYearTh ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphYearTh(y)} style={{ padding: '2px 8px', fontSize: '11px' }}>{buddhistYear(y)}</button>
+                            ))}
+                          </div>
+                        )}
+                        <div className="pf-spark">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={chartDataTh}>
+                              <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickFormatter={(val) => thaiDate(val)} />
+                              <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
+                              <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val) => [`฿${fmt(val)}`, 'กำไร/ขาดทุน']} labelFormatter={(l) => thaiDate(l)} />
+                              <Line type="monotone" dataKey="gain" stroke="#C7A344" strokeWidth={2} dot={false} isAnimationActive={false} />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+
+                      {typeHoldings.length > 1 && (
+                        <div className="pf-sort-row">
+                          <div className="pf-sort-toggle">
+                            <button className={sortMode === 'value' ? 'pf-sort-toggle-active' : ''} onClick={() => setSortModeByType((prev) => ({ ...prev, [t.key]: 'value' }))} title="เรียงตามมูลค่า"><ArrowDownWideNarrow size={14} /></button>
+                            <button className={sortMode === 'name' ? 'pf-sort-toggle-active' : ''} onClick={() => setSortModeByType((prev) => ({ ...prev, [t.key]: 'name' }))} title="เรียงตามชื่อ"><ArrowDownAZ size={14} /></button>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="pf-type-section-holdings">
+                        {typeHoldings.map((h) => {
+                          const holdingPct = t.value > 0 ? (h.marketValue / t.value) * 100 : 0;
+                          return (
+                            <div className="pf-subrow" key={h.id}>
+                              <div className="pf-row-top">
+                                <div className="pf-row-name">
+                                  <span className="pf-dot" style={{ background: colorById[h.id] }} />
+                                  <span className="pf-row-name-text">{h.name}</span>
+                                </div>
+                                <div className="pf-row-actions">
+                                  <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
+                                  <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)}><Trash2 size={15} /></button>
+                                </div>
+                              </div>
+                              <div className="pf-row-meta pf-mono">
+                                <span>สัดส่วน <b>{fmt(holdingPct, 1)}%</b></span>
+                                <span>จำนวน <b>{fmt(h.qty, h.qty % 1 === 0 ? 0 : 2)}</b></span>
+                                <span>ทุน <b>฿{fmt(h.avg)}</b></span>
+                                <span>ราคา <b>฿{fmt(h.price)}</b></span>
+                                <span>มูลค่า <b>฿{fmt(h.marketValue)}</b></span>
+                                <span className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
+                                  {h.gain >= 0 ? '+' : ''}{fmt(h.gain)} ({h.gain >= 0 ? '+' : ''}{fmt(h.gainPct, 1)}%)
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   );
@@ -990,30 +1175,58 @@ export default function PortfolioApp() {
             </div>
           )}
 
-          {/* 2. หุ้นต่างประเทศ & DR */}
+          {/* ================= 2. หุ้นต่างประเทศ & DR & ETF ================= */}
           {activeTab === 2 && (
             <div>
-              <div className="pf-section-label" style={{ marginTop: 0 }}>หุ้นต่างประเทศ & DR (Global Stocks & DR)</div>
+              <div className="pf-section-label" style={{ marginTop: 0 }}>หุ้นต่างประเทศ & DR (Global Stocks & DR & ETF)</div>
               {holdings.filter((h) => h.type === 'foreign_stock').length === 0 ? (
                 <div className="pf-empty">
                   <Inbox size={26} style={{ marginBottom: 8, opacity: 0.6 }} />
-                  <div>ยังไม่มีรายการหุ้นต่างประเทศหรือ DR ในพอร์ต</div>
-                  <button className="pf-btn pf-btn-primary pf-empty-cta" onClick={openAdd}><Plus size={16} /> เพิ่มหุ้นต่างประเทศ / DR</button>
+                  <div>ยังไม่มีรายการหุ้นต่างประเทศในพอร์ต</div>
+                  <button className="pf-btn pf-btn-primary pf-empty-cta" onClick={openAdd}><Plus size={16} /> เพิ่มหุ้นต่างประเทศ</button>
                 </div>
               ) : (
                 byType.filter((t) => t.key === 'foreign_stock').map((t) => {
-                  const typeHoldings = enriched.filter((h) => h.type === t.key);
+                  const sortMode = sortModeByType[t.key] || 'value';
+                  // เรียงลำดับตามข้อ 9: หุ้นรายตัว > DR > ETF ก่อนเสมอ
+                  const typeHoldings = enriched.filter((h) => h.type === t.key).sort((a, b) => {
+                    const rankA = INSTRUMENT_RANK[a.instrumentType] ?? 0;
+                    const rankB = INSTRUMENT_RANK[b.instrumentType] ?? 0;
+                    if (rankA !== rankB) return rankA - rankB;
+                    if (sortMode === 'name') return a.name.localeCompare(b.name, 'th');
+                    return b.marketValue - a.marketValue;
+                  });
                   const typeCost = typeHoldings.reduce((s, h) => s + h.costValue, 0);
                   const typeGain = t.value - typeCost;
                   const typeGainPct = typeCost > 0 ? (typeGain / typeCost) * 100 : 0;
                   const shades = shadeSet(t.color, typeHoldings.length);
                   const colorById = {};
                   typeHoldings.forEach((h, i) => { colorById[h.id] = shades[i]; });
+                  const viewMode = chartModeByType[t.key] === 'industry' ? 'industry' : 'holding';
+
+                  let chartData;
+                  if (viewMode === 'industry') {
+                    const groups = {};
+                    typeHoldings.forEach((h) => {
+                      const ind = (h.industry && h.industry.trim()) || 'อื่นๆ';
+                      groups[ind] = (groups[ind] || 0) + h.marketValue;
+                    });
+                    const industryNames = Object.keys(groups).sort((a, b) => groups[b] - groups[a]);
+                    const industryColors = shadeSet(t.color, industryNames.length);
+                    const industryColorById = {};
+                    industryNames.forEach((name, i) => { industryColorById[name] = industryColors[i]; });
+                    chartData = industryNames.map((name) => ({ key: name, label: name, color: industryColorById[name], value: groups[name] }));
+                  } else {
+                    chartData = typeHoldings.map((h) => ({ key: h.id, label: h.name, color: colorById[h.id], value: h.marketValue }));
+                  }
 
                   return (
                     <div className="pf-type-section" key={t.key}>
                       <div className="pf-type-section-head">
-                        <ExplodedPie3D data={typeHoldings.map((h) => ({ key: h.id, label: h.name, color: colorById[h.id], value: h.marketValue }))} rx={55} depth={12} explode={4} />
+                        <div onClick={() => toggleChartMode(t.key)} className="pf-pie-tap" role="button" tabIndex={0}>
+                          <ExplodedPie3D data={chartData} rx={62} depth={14} explode={5} />
+                          <div className="pf-pie-tap-hint">{viewMode === 'industry' ? 'แตะดูรายตัว' : 'แตะดูอุตสาหกรรม'}</div>
+                        </div>
                         <div className="pf-type-section-info">
                           <div className="pf-type-section-title"><span className="pf-dot" style={{ background: t.color }} />{t.label}</div>
                           <div className="pf-type-section-value pf-mono">฿{fmt(t.value, 0)}</div>
@@ -1025,32 +1238,76 @@ export default function PortfolioApp() {
                           )}
                         </div>
                       </div>
+
+                      {/* กราฟกำไร/ขาดทุน หุ้นต่างประเทศ ตามข้อ 10 */}
+                      <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--divider)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontSize: '12px', color: 'var(--muted)' }}>กราฟกำไร/ขาดทุน (หุ้นต่างประเทศ)</span>
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            <button className={graphModeUs === 'all' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeUs('all')} style={{ padding: '2px 8px', fontSize: '11px' }}>ตั้งแต่เริ่มต้น</button>
+                            <button className={graphModeUs === 'year' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeUs('year')} style={{ padding: '2px 8px', fontSize: '11px' }}>รายปี</button>
+                          </div>
+                        </div>
+                        {graphModeUs === 'year' && (
+                          <div className="pf-year-picker" style={{ marginBottom: '8px' }}>
+                            {yearOptions.map((y) => (
+                              <button key={y} className={y === graphYearUs ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphYearUs(y)} style={{ padding: '2px 8px', fontSize: '11px' }}>{buddhistYear(y)}</button>
+                            ))}
+                          </div>
+                        )}
+                        <div className="pf-spark">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={chartDataUs}>
+                              <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickFormatter={(val) => thaiDate(val)} />
+                              <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
+                              <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val) => [`฿${fmt(val)}`, 'กำไร/ขาดทุน']} labelFormatter={(l) => thaiDate(l)} />
+                              <Line type="monotone" dataKey="gain" stroke="#6E8CB0" strokeWidth={2} dot={false} isAnimationActive={false} />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+
+                      {typeHoldings.length > 1 && (
+                        <div className="pf-sort-row">
+                          <div className="pf-sort-toggle">
+                            <button className={sortMode === 'value' ? 'pf-sort-toggle-active' : ''} onClick={() => setSortModeByType((prev) => ({ ...prev, [t.key]: 'value' }))} title="เรียงตามมูลค่า"><ArrowDownWideNarrow size={14} /></button>
+                            <button className={sortMode === 'name' ? 'pf-sort-toggle-active' : ''} onClick={() => setSortModeByType((prev) => ({ ...prev, [t.key]: 'name' }))} title="เรียงตามชื่อ"><ArrowDownAZ size={14} /></button>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="pf-type-section-holdings">
-                        {typeHoldings.map((h) => (
-                          <div className="pf-subrow" key={h.id}>
-                            <div className="pf-row-top">
-                              <div className="pf-row-name">
-                                <span className="pf-dot" style={{ background: colorById[h.id] }} />
-                                <span className="pf-row-name-text">
-                                  {h.name} {h.instrumentType === 'dr' && <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.1)', padding: '1px 6px', borderRadius: '4px', marginLeft: '6px', color: '#fbbf24' }}>DR</span>}
+                        {typeHoldings.map((h) => {
+                          const holdingPct = t.value > 0 ? (h.marketValue / t.value) * 100 : 0;
+                          return (
+                            <div className="pf-subrow" key={h.id}>
+                              <div className="pf-row-top">
+                                <div className="pf-row-name">
+                                  <span className="pf-dot" style={{ background: colorById[h.id] }} />
+                                  <span className="pf-row-name-text">
+                                    {h.name} 
+                                    {h.instrumentType === 'dr' && <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.1)', padding: '1px 6px', borderRadius: '4px', marginLeft: '6px', color: '#fbbf24' }}>DR</span>}
+                                    {h.instrumentType === 'etf' && <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.1)', padding: '1px 6px', borderRadius: '4px', marginLeft: '6px', color: '#6E8CB0' }}>ETF</span>}
+                                  </span>
+                                </div>
+                                <div className="pf-row-actions">
+                                  <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
+                                  <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)}><Trash2 size={15} /></button>
+                                </div>
+                              </div>
+                              <div className="pf-row-meta pf-mono">
+                                <span>สัดส่วน <b>{fmt(holdingPct, 1)}%</b></span>
+                                <span>จำนวน <b>{fmt(h.qty, h.qty % 1 === 0 ? 0 : 2)}</b></span>
+                                <span>ทุน <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.avg)}</b></span>
+                                <span>ราคา <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.price)}</b></span>
+                                <span>มูลค่า <b>฿{fmt(h.marketValue)}</b></span>
+                                <span className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
+                                  {h.gain >= 0 ? '+' : ''}{fmt(h.gain)} ({h.gain >= 0 ? '+' : ''}{fmt(h.gainPct, 1)}%)
                                 </span>
                               </div>
-                              <div className="pf-row-actions">
-                                <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
-                                <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)}><Trash2 size={15} /></button>
-                              </div>
                             </div>
-                            <div className="pf-row-meta pf-mono">
-                              <span>จำนวน <b>{fmt(h.qty, h.qty % 1 === 0 ? 0 : 2)}</b></span>
-                              <span>ทุนเฉลี่ย <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.avg)}</b></span>
-                              <span>ราคาล่าสุด <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.price)}</b></span>
-                              <span>มูลค่า <b>฿{fmt(h.marketValue)}</b></span>
-                              <span className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
-                                {h.gain >= 0 ? '+' : ''}{fmt(h.gain)} ({h.gain >= 0 ? '+' : ''}{fmt(h.gainPct, 1)}%)
-                              </span>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   );
@@ -1059,7 +1316,7 @@ export default function PortfolioApp() {
             </div>
           )}
 
-          {/* 3. พอร์ตรวม */}
+          {/* ================= 3. พอร์ตรวม (หน้าตรงกลาง เด่นที่สุด) ================= */}
           {activeTab === 3 && (
             <div>
               <div className="pf-section-label" style={{ marginTop: 0 }}>พอร์ตรวม (Portfolio Overview)</div>
@@ -1073,18 +1330,39 @@ export default function PortfolioApp() {
                   <div className={`pf-hero-sub ${heroProfitAmount >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`} style={{ fontSize: '15px' }}>
                     {heroProfitAmount >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
                     <span className="pf-mono">{heroProfitAmount >= 0 ? '+' : ''}{fmt(heroProfitAmount)} บาท ({heroProfitAmount >= 0 ? '+' : ''}{fmt(heroProfitPct)}%)</span>
-                    <span className="pf-hero-sub-label">เทียบกับทุนเริ่มต้น</span>
+                    <span className="pf-hero-sub-label">เทียบกับทุนสะสม</span>
                   </div>
                 )}
-                {chartData.length > 1 && (
-                  <div className="pf-spark" style={{ height: '60px' }}>
+
+                {/* กราฟมูลค่าสินทรัพย์เทียบเงินต้น ตามข้อ 10 */}
+                <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--divider)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--muted)' }}>มูลค่าสินทรัพย์เทียบกับเงินต้น</span>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <button className={graphModeTotal === 'all' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeTotal('all')} style={{ padding: '2px 8px', fontSize: '11px' }}>ตั้งแต่เริ่มต้น</button>
+                      <button className={graphModeTotal === 'year' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeTotal('year')} style={{ padding: '2px 8px', fontSize: '11px' }}>รายปี</button>
+                    </div>
+                  </div>
+                  {graphModeTotal === 'year' && (
+                    <div className="pf-year-picker" style={{ marginBottom: '8px' }}>
+                      {yearOptions.map((y) => (
+                        <button key={y} className={y === graphYearTotal ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphYearTotal(y)} style={{ padding: '2px 8px', fontSize: '11px' }}>{buddhistYear(y)}</button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="pf-spark">
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={chartData}>
-                        <Line type="monotone" dataKey="value" stroke="#fbbf24" strokeWidth={2.5} dot={false} isAnimationActive={false} />
+                      <LineChart data={chartDataTotal}>
+                        <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickFormatter={(val) => thaiDate(val)} />
+                        <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
+                        <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'value' ? 'มูลค่าพอร์ต' : 'เงินต้น']} labelFormatter={(l) => thaiDate(l)} />
+                        <Line type="monotone" dataKey="value" stroke="#fbbf24" strokeWidth={2.5} dot={false} name="value" isAnimationActive={false} />
+                        <Line type="monotone" dataKey="principal" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 3" dot={false} name="principal" isAnimationActive={false} />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
-                )}
+                </div>
+
                 <div className="pf-hero-footer">
                   <div className={`pf-invest-chip ${totalGain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
                     {totalGain >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
@@ -1133,7 +1411,7 @@ export default function PortfolioApp() {
                       </div>
                       <button className="pf-cash-manage-btn" onClick={() => setPanel('cashManage')}>
                         <span className="pf-cash-manage-icon"><Wallet size={16} /></span>
-                        <span>จัดการเงินสด & ดูประวัติรายปี</span>
+                        <span>จัดการเงินสด & ดูสรุปรายปี</span>
                         <ChevronRight size={14} style={{ opacity: 0.5 }} />
                       </button>
                     </div>
@@ -1143,7 +1421,7 @@ export default function PortfolioApp() {
             </div>
           )}
 
-          {/* 4. สินทรัพย์อื่นๆ */}
+          {/* ================= 4. สินทรัพย์อื่นๆ ================= */}
           {activeTab === 4 && (
             <div>
               <div className="pf-section-label" style={{ marginTop: 0 }}>สินทรัพย์อื่นๆ (กองทุน ทอง คริปโต)</div>
@@ -1179,27 +1457,31 @@ export default function PortfolioApp() {
                         </div>
                       </div>
                       <div className="pf-type-section-holdings">
-                        {typeHoldings.map((h) => (
-                          <div className="pf-subrow" key={h.id}>
-                            <div className="pf-row-top">
-                              <div className="pf-row-name">
-                                <span className="pf-dot" style={{ background: colorById[h.id] }} />
-                                <span className="pf-row-name-text">{h.name}</span>
+                        {typeHoldings.map((h) => {
+                          const holdingPct = t.value > 0 ? (h.marketValue / t.value) * 100 : 0;
+                          return (
+                            <div className="pf-subrow" key={h.id}>
+                              <div className="pf-row-top">
+                                <div className="pf-row-name">
+                                  <span className="pf-dot" style={{ background: colorById[h.id] }} />
+                                  <span className="pf-row-name-text">{h.name}</span>
+                                </div>
+                                <div className="pf-row-actions">
+                                  <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
+                                  <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)}><Trash2 size={15} /></button>
+                                </div>
                               </div>
-                              <div className="pf-row-actions">
-                                <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
-                                <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)}><Trash2 size={15} /></button>
+                              <div className="pf-row-meta pf-mono">
+                                <span>สัดส่วน <b>{fmt(holdingPct, 1)}%</b></span>
+                                <span>จำนวน <b>{fmt(h.qty, h.qty % 1 === 0 ? 0 : 4)}</b></span>
+                                <span>มูลค่า <b>฿{fmt(h.marketValue)}</b></span>
+                                <span className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
+                                  {h.gain >= 0 ? '+' : ''}{fmt(h.gain)} ({h.gain >= 0 ? '+' : ''}{fmt(h.gainPct, 1)}%)
+                                </span>
                               </div>
                             </div>
-                            <div className="pf-row-meta pf-mono">
-                              <span>จำนวน <b>{fmt(h.qty, h.qty % 1 === 0 ? 0 : 4)}</b></span>
-                              <span>มูลค่า <b>฿{fmt(h.marketValue)}</b></span>
-                              <span className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
-                                {h.gain >= 0 ? '+' : ''}{fmt(h.gain)} ({h.gain >= 0 ? '+' : ''}{fmt(h.gainPct, 1)}%)
-                              </span>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   );
@@ -1208,7 +1490,7 @@ export default function PortfolioApp() {
             </div>
           )}
 
-          {/* 5. ตั้งค่า (รวมปุ่มอัปเดตราคาตลาดมาไว้ที่นี่เรียบร้อย) */}
+          {/* ================= 5. ตั้งค่า ================= */}
           {activeTab === 5 && (
             <div>
               <div className="pf-section-label" style={{ marginTop: 0 }}>ตั้งค่าระบบ (Settings)</div>
@@ -1241,7 +1523,7 @@ export default function PortfolioApp() {
             </div>
           )}
 
-          {/* ปุ่มบวกเพิ่มสินทรัพย์ลอยตัว */}
+          {/* Floating Action Button */}
           <div className="pf-fab">
             <button className="pf-btn pf-btn-primary" onClick={openAdd}><Plus size={16} /> เพิ่ม</button>
           </div>
@@ -1394,7 +1676,7 @@ export default function PortfolioApp() {
             </div>
             <div className="pf-field">
               <label className="pf-label">ทุนเริ่มต้นทั้งหมด (บาท)</label>
-              <input className="pf-input pf-mono" inputMode="decimal" value={initialCapitalDraft} onChange={(e) => initialCapitalDraft} placeholder="เช่น 100000" />
+              <input className="pf-input pf-mono" inputMode="decimal" value={initialCapitalDraft} onChange={(e) => setInitialCapitalDraft(e.target.value)} placeholder="เช่น 100000" />
             </div>
             <div className="pf-panel-actions">
               <button className="pf-btn pf-btn-ghost" onClick={closePanel}>ยกเลิก</button>
@@ -1413,8 +1695,13 @@ export default function PortfolioApp() {
             </div>
             {ledgerError && <div className="pf-error">{ledgerError}</div>}
             <div className="pf-field">
-              <label className="pf-label">จำนวนเงิน (บาท)</label>
-              <input className="pf-input pf-mono" inputMode="decimal" value={ledgerAmount} onChange={(e) => setLedgerAmount(e.target.value)} placeholder="0.00" autoFocus />
+              <label className="pf-label">
+                {ledgerType === 'rebalance' ? 'จำนวนเงิน (ใส่เครื่องหมาย - หากต้องการลบออก)' : 'จำนวนเงิน (บาท)'}
+              </label>
+              <input className="pf-input pf-mono" inputMode="decimal" value={ledgerAmount} onChange={(e) => setLedgerAmount(e.target.value)} placeholder={ledgerType === 'rebalance' ? 'เช่น 150 หรือ -50' : '0.00'} autoFocus />
+              <div className="pf-currency-hint">
+                {ledgerType === 'rebalance' && 'กรอกตัวเลขติดลบ เช่น -150 เพื่อนำไปหักออก หรือกรอกบวกเพื่อเพิ่มเข้า เพื่อปรับแก้ความคลาดเคลื่อนจากค่าธรรมเนียม'}
+              </div>
             </div>
             <div className="pf-field">
               <label className="pf-label">วันที่</label>
@@ -1422,7 +1709,7 @@ export default function PortfolioApp() {
             </div>
             <div className="pf-field">
               <label className="pf-label">รายละเอียด (ถ้ามี)</label>
-              <input className="pf-input" value={ledgerNote} onChange={(e) => setLedgerNote(e.target.value)} placeholder="เช่น ขายหุ้น, ปันผล" />
+              <input className="pf-input" value={ledgerNote} onChange={(e) => setLedgerNote(e.target.value)} placeholder="เช่น ปรับสมดุลพอร์ตสิ้นปี" />
             </div>
             <div className="pf-panel-actions">
               <button className="pf-btn pf-btn-ghost" onClick={() => setPanel('cashManage')}>ยกเลิก</button>
@@ -1436,16 +1723,78 @@ export default function PortfolioApp() {
         <div className="pf-overlay" onClick={closePanel}>
           <div className="pf-panel" onClick={(e) => e.stopPropagation()}>
             <div className="pf-panel-head">
-              <div className="pf-panel-title">จัดการเงินสด</div>
+              <div className="pf-panel-title">จัดการเงินสด & สรุปรายปี</div>
               <button className="pf-icon-btn" onClick={closePanel} aria-label="ปิด"><X size={16} /></button>
             </div>
+
+            {/* แสดง ทุนสะสม และ ต้นทุนรวม ตามข้อ 4 */}
+            <div style={{ background: 'var(--surface-alt)', padding: '14px', borderRadius: '12px', marginBottom: '16px' }}>
+              <div className="pf-capital-row">
+                <span>ทุนสะสม</span>
+                <span className="pf-mono">฿{fmt(totalCapital, 0)}</span>
+              </div>
+              <div className="pf-capital-row">
+                <span>ต้นทุนรวมที่ลงทุนไป</span>
+                <span className="pf-mono">฿{fmt(totalInvestedCost, 0)}</span>
+              </div>
+            </div>
+
             <div className="pf-cash-actions">
               <button className="pf-cash-action-btn" onClick={() => openLedgerForm('capital_add')}>+ เพิ่มทุน</button>
               <button className="pf-cash-action-btn" onClick={() => openLedgerForm('capital_reduce')}>- ลดทุน</button>
+              <button className="pf-cash-action-btn" onClick={() => openLedgerForm('rebalance')} style={{ background: 'var(--gold)', color: '#1A1400' }}><Sliders size={13} /> รีบาลานซ์</button>
               <button className="pf-cash-action-btn" onClick={() => openLedgerForm('profit')}>+ กำไร</button>
               <button className="pf-cash-action-btn" onClick={() => openLedgerForm('loss')}>- ขาดทุน</button>
               <button className="pf-cash-action-btn" onClick={() => openLedgerForm('dividend')}>+ ปันผล</button>
             </div>
+
+            {/* การ์ดสรุปรายปี ตามข้อ 8 */}
+            <div className="pf-section-label" style={{ margin: '18px 0 8px' }}>สรุปรายปี</div>
+            <div className="pf-year-picker">
+              {yearOptions.map((y) => (
+                <button key={y} className={y === selectedYear ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setSelectedYear(y)}>
+                  {buddhistYear(y)}
+                </button>
+              ))}
+            </div>
+            <div className="pf-year-card">
+              <div className="pf-year-net">
+                <div className="pf-year-net-label">รวมสุทธิปี {buddhistYear(selectedYear)}</div>
+                <div className="pf-year-net-value pf-mono">{yearSummary.net >= 0 ? '+' : '-'}฿{fmt(Math.abs(yearSummary.net), 0)}</div>
+              </div>
+
+              {(yearSummary.totalIn > 0 || yearSummary.totalOut > 0) && (
+                <>
+                  <div className="pf-year-flow-bar">
+                    <div className="pf-year-flow-in" style={{ width: `${yearSummary.inPct}%` }} />
+                    <div className="pf-year-flow-out" style={{ width: `${100 - yearSummary.inPct}%` }} />
+                  </div>
+                  <div className="pf-year-flow-legend">
+                    <span><span className="pf-dot" style={{ background: 'var(--gold)' }} /> เงินเข้า ฿{fmt(yearSummary.totalIn, 0)}</span>
+                    <span><span className="pf-dot" style={{ background: '#5B6779' }} /> เงินออก ฿{fmt(yearSummary.totalOut, 0)}</span>
+                  </div>
+                </>
+              )}
+
+              <div className="pf-year-rows">
+                {yearSummary.capital_add > 0 && (
+                  <div className="pf-year-row"><PlusCircle size={15} className="pf-year-row-icon" /><span>เพิ่มทุน / รีบาลานซ์บวก</span><span className="pf-mono">฿{fmt(yearSummary.capital_add, 0)}</span></div>
+                )}
+                {yearSummary.capital_reduce > 0 && (
+                  <div className="pf-year-row"><MinusCircle size={15} className="pf-year-row-icon" /><span>ลดทุน / รีบาลานซ์ลบ</span><span className="pf-mono">฿{fmt(yearSummary.capital_reduce, 0)}</span></div>
+                )}
+                {yearSummary.profit > 0 && (
+                  <div className="pf-year-row"><TrendingUp size={15} className="pf-year-row-icon" /><span>กำไร</span><span className="pf-mono">฿{fmt(yearSummary.profit, 0)}</span></div>
+                )}
+                {yearSummary.loss > 0 && (
+                  <div className="pf-year-row"><TrendingDown size={15} className="pf-year-row-icon" /><span>ขาดทุน</span><span className="pf-mono">฿{fmt(yearSummary.loss, 0)}</span></div>
+                )}
+                {yearSummary.dividend > 0 && (
+                  <div className="pf-year-row"><Gift size={15} className="pf-year-row-icon" /><span>ปันผล</span><span className="pf-mono">฿{fmt(yearSummary.dividend, 0)}</span></div>
+                )}
+              </div>
+            </div>
+
             <div className="pf-section-label" style={{ margin: '18px 0 8px' }}>ประวัติการทำรายการ</div>
             {recentLedger.length === 0 ? (
               <div style={{ color: 'var(--muted)', fontSize: 13, padding: '10px 0' }}>ยังไม่มีประวัติ</div>
@@ -1455,7 +1804,7 @@ export default function PortfolioApp() {
                   <div className="pf-subrow" key={e.id}>
                     <div className="pf-row-top">
                       <div className="pf-row-name">
-                        <span className="pf-row-name-text">{LEDGER_LABELS[e.type]}{e.note ? ` · ${e.note}` : ''}</span>
+                        <span className="pf-row-name-text">{LEDGER_LABELS[e.type] || e.type}{e.note ? ` · ${e.note}` : ''}</span>
                       </div>
                       <div className="pf-row-actions">
                         <button aria-label="ลบ" onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type])}><Trash2 size={15} /></button>
