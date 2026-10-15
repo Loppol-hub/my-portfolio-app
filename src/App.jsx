@@ -199,7 +199,6 @@ export default function PortfolioApp() {
   const [ledgerNote, setLedgerNote] = useState('');
   const [ledgerDate, setLedgerDate] = useState('');
 
-  // States กราฟ
   const [graphModeTotal, setGraphModeTotal] = useState('all');
   const [graphYearTotal, setGraphYearTotal] = useState(String(new Date().getFullYear()));
   const [graphModeGain, setGraphModeGain] = useState('all');
@@ -308,7 +307,6 @@ export default function PortfolioApp() {
     return rate;
   };
 
-  // ข้อ 5: ถ้าเลือกเป็น DR ให้บังคับจัดหมวดหมู่ไปอยู่ foreign_stock (หุ้นต่างประเทศ & DR) ทันที
   const enriched = useMemo(() => holdings.map((h) => {
     const qty = parseFloat(h.quantity) || 0;
     const avg = parseFloat(h.avgCost) || 0;
@@ -393,7 +391,6 @@ export default function PortfolioApp() {
     return dates.length ? dates[dates.length - 1] : null;
   }, [holdings]);
 
-  // กราฟ
   const filterHistoryByMode = (mode, year) => {
     if (mode === 'year') {
       return history.filter((p) => (p.date || '').slice(0, 4) === year);
@@ -401,13 +398,11 @@ export default function PortfolioApp() {
     return history;
   };
 
-  // ข้อ 1: เส้นมูลค่าพอร์ต (สีทอง) อยู่ด้านบน และเส้นประเงินต้น (สีเทา) อยู่ด้านล่าง
   const chartDataTotal = useMemo(() => {
     const filtered = filterHistoryByMode(graphModeTotal, graphYearTotal);
     return filtered.map((p) => ({ date: p.date, value: p.value, principal: totalCapital }));
   }, [history, graphModeTotal, graphYearTotal, totalCapital]);
 
-  // ข้อ 2: กราฟการ์ดกำไรขาดทุนรวม
   const chartDataGainCard = useMemo(() => {
     const filtered = filterHistoryByMode(graphModeGain, graphYearGain);
     return filtered.map((p) => {
@@ -1096,7 +1091,6 @@ export default function PortfolioApp() {
 
                   return (
                     <div className="pf-type-section" key={t.key}>
-                      {/* ข้อ 3: ย้ายกราฟเส้นไปไว้ด้านบน พร้อมเส้นต้นทุน */}
                       <div style={{ marginBottom: '16px', paddingBottom: '14px', borderBottom: '1px solid var(--divider)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                           <span style={{ fontSize: '12px', color: 'var(--muted)' }}>กราฟกำไร/ขาดทุน (หุ้นไทย)</span>
@@ -1142,7 +1136,6 @@ export default function PortfolioApp() {
                         </div>
                       </div>
 
-                      {/* ข้อ 4: แสดงเปอร์เซ็นต์หุ้น/อุตสาหกรรมด้านล่าง พร้อม Scrollbar เลื่อนดูได้ถ้าเยอะเกินไป */}
                       <div style={{ maxHeight: '180px', overflowY: 'auto', marginTop: '14px', paddingRight: '4px' }}>
                         {displayItemsList.map((item) => {
                           const itemPct = t.value > 0 ? (item.value / t.value) * 100 : 0;
@@ -1252,7 +1245,6 @@ export default function PortfolioApp() {
 
                   return (
                     <div className="pf-type-section" key={t.key}>
-                      {/* ข้อ 3: ย้ายกราฟเส้นไปไว้ด้านบน พร้อมเส้นต้นทุน */}
                       <div style={{ marginBottom: '16px', paddingBottom: '14px', borderBottom: '1px solid var(--divider)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                           <span style={{ fontSize: '12px', color: 'var(--muted)' }}>กราฟกำไร/ขาดทุน (หุ้นต่างประเทศ)</span>
@@ -1298,7 +1290,6 @@ export default function PortfolioApp() {
                         </div>
                       </div>
 
-                      {/* ข้อ 4: แสดงเปอร์เซ็นต์หุ้น/อุตสาหกรรมด้านล่าง พร้อม Scrollbar เลื่อนดูได้ */}
                       <div style={{ maxHeight: '180px', overflowY: 'auto', marginTop: '14px', paddingRight: '4px' }}>
                         {displayItemsList.map((item) => {
                           const itemPct = t.value > 0 ? (item.value / t.value) * 100 : 0;
@@ -1368,21 +1359,11 @@ export default function PortfolioApp() {
             <div>
               <div className="pf-section-label" style={{ marginTop: 0 }}>พอร์ตรวม (Portfolio Overview)</div>
               
-              {/* การ์ดที่ 1: มูลค่าพอร์ตรวม */}
+              {/* การ์ดที่ 1: มูลค่าพอร์ตรวม (เอาเปอร์เซ็นต์ออกตามข้อ 2) */}
               <div className="pf-hero" style={{ border: '2px solid rgba(251, 191, 36, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #1f2937 100%)' }}>
                 <div className="pf-hero-label">มูลค่าพอร์ตรวมทั้งหมด</div>
                 <div className="pf-hero-value pf-mono" style={{ fontSize: '44px' }}>฿{fmt(displayTotalValue)}</div>
-                {heroProfitPct === null ? (
-                  <div className="pf-hero-sub-hint">ตั้งค่าทุนเริ่มต้นในเมนูตั้งค่าเพื่อดู % กำไรเทียบกับทุน</div>
-                ) : (
-                  <div className={`pf-hero-sub ${heroProfitAmount >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`} style={{ fontSize: '15px' }}>
-                    {heroProfitAmount >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
-                    <span className="pf-mono">{heroProfitAmount >= 0 ? '+' : ''}{fmt(heroProfitAmount)} บาท ({heroProfitAmount >= 0 ? '+' : ''}{fmt(heroProfitPct)}%)</span>
-                    <span className="pf-hero-sub-label">เทียบกับทุนสะสม</span>
-                  </div>
-                )}
-
-                {/* ข้อ 1: กราฟเส้นพอร์ตรวม (เส้นทองอยู่ด้านบน เส้นประเทาอยู่ด้านล่าง) */}
+                
                 <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--divider)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                     <span style={{ fontSize: '12px', color: 'var(--muted)' }}>มูลค่าสินทรัพย์เทียบกับเงินต้น</span>
@@ -1402,7 +1383,8 @@ export default function PortfolioApp() {
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={chartDataTotal}>
                         <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickFormatter={(val) => thaiDate(val)} />
-                        <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
+                        {/* ข้อ 1: ปรับโดเมนและสเกล YAxis ให้เส้นทองอยู่ด้านบนเส้นเงินต้นถูกต้อง */}
+                        <YAxis stroke="#94a3b8" fontSize={10} domain={['auto', 'auto']} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
                         <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'value' ? 'มูลค่าพอร์ต' : 'เงินต้น']} labelFormatter={(l) => thaiDate(l)} />
                         <Line type="monotone" dataKey="value" stroke="#fbbf24" strokeWidth={2.5} dot={false} name="value" isAnimationActive={false} />
                         <Line type="monotone" dataKey="principal" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 3" dot={false} name="principal" isAnimationActive={false} />
@@ -1412,20 +1394,20 @@ export default function PortfolioApp() {
                 </div>
 
                 <div className="pf-hero-footer">
-                  <div className={`pf-invest-chip ${totalGain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
-                    {totalGain >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-                    <span className="pf-mono">{totalGain >= 0 ? '+' : ''}{fmt(totalGainPct, 1)}%</span>
-                    <span className="pf-invest-chip-label">กำไรจากการลงทุน</span>
-                  </div>
-                  <div className="pf-updated">อัปเดตล่าสุด: {lastUpdated ? thaiDate(lastUpdated) : 'ยังไม่มีการอัปเดต'}</div>
+                  <div className="pf-updated" style={{ marginLeft: 'auto' }}>อัปเดตล่าสุด: {lastUpdated ? thaiDate(lastUpdated) : 'ยังไม่มีการอัปเดต'}</div>
                 </div>
               </div>
 
-              {/* ข้อ 2: การ์ดกำไร/ขาดทุนจากการลงทุน พร้อมกราฟเส้น */}
-              <div className="pf-hero" style={{ border: '1px solid var(--divider)', background: '#111827' }}>
+              {/* ข้อ 2 & 3: การ์ดกำไร/ขาดทุนรวม ปรับดีไซน์และขนาดให้เหมือนการ์ดบน และย้าย % มาไว้ที่นี่ */}
+              <div className="pf-hero" style={{ border: '2px solid rgba(52, 211, 153, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #172a3a 100%)' }}>
                 <div className="pf-hero-label">กำไร/ขาดทุนรวมทุกสินทรัพย์</div>
-                <div className={`pf-hero-value pf-mono ${totalGain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`} style={{ fontSize: '32px' }}>
-                  {totalGain >= 0 ? '+' : ''}฿{fmt(totalGain)} ({totalGain >= 0 ? '+' : ''}{fmt(totalGainPct, 1)}%)
+                <div className={`pf-hero-value pf-mono ${totalGain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`} style={{ fontSize: '44px' }}>
+                  {totalGain >= 0 ? '+' : ''}฿{fmt(totalGain)}
+                </div>
+                <div className={`pf-hero-sub ${totalGain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`} style={{ fontSize: '15px' }}>
+                  {totalGain >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
+                  <span className="pf-mono">{totalGain >= 0 ? '+' : ''}{fmt(totalGainPct, 1)}%</span>
+                  <span className="pf-hero-sub-label">เทียบกับทุนสะสม</span>
                 </div>
 
                 <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--divider)' }}>
@@ -1447,9 +1429,9 @@ export default function PortfolioApp() {
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={chartDataGainCard}>
                         <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickFormatter={(val) => thaiDate(val)} />
-                        <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
+                        <YAxis stroke="#94a3b8" fontSize={10} domain={['auto', 'auto']} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
                         <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'gain' ? 'กำไร/ขาดทุน' : 'ต้นทุน']} labelFormatter={(l) => thaiDate(l)} />
-                        <Line type="monotone" dataKey="gain" stroke="#34d399" strokeWidth={2} dot={false} name="gain" isAnimationActive={false} />
+                        <Line type="monotone" dataKey="gain" stroke="#34d399" strokeWidth={2.5} dot={false} name="gain" isAnimationActive={false} />
                         <Line type="monotone" dataKey="cost" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 3" dot={false} name="cost" isAnimationActive={false} />
                       </LineChart>
                     </ResponsiveContainer>
@@ -1827,7 +1809,6 @@ export default function PortfolioApp() {
               <button className="pf-icon-btn" onClick={closePanel} aria-label="ปิด"><X size={16} /></button>
             </div>
 
-            {/* ข้อ 4: แสดง ทุนสะสม และ ต้นทุนรวม */}
             <div style={{ background: 'var(--surface-alt)', padding: '14px', borderRadius: '12px', marginBottom: '16px' }}>
               <div className="pf-capital-row">
                 <span>ทุนสะสม</span>
@@ -1899,7 +1880,7 @@ export default function PortfolioApp() {
               <div style={{ color: 'var(--muted)', fontSize: 13, padding: '10px 0' }}>ยังไม่มีประวัติ</div>
             ) : (
               <div className="pf-type-section-holdings" style={{ borderTop: 'none', marginTop: 0, paddingTop: 0 }}>
-                {recentLedger.map((e) => (
+                {recentledger.map((e) => (
                   <div className="pf-subrow" key={e.id}>
                     <div className="pf-row-top">
                       <div className="pf-row-name">
