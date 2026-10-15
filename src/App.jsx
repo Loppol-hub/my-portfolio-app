@@ -1000,19 +1000,7 @@ const chartData = useMemo(() =>
       `}</style>
 
       <div className="pf-header">
-                  <div style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 1000,
-        backgroundColor: '#070913', // โทนสีมืดกลมกลืนกับโลโก้
-        width: '100%',
-        padding: '14px 20px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'flex-start',
-        boxSizing: 'border-box',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.08)'
-      }}>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
         <img 
           src={new URL('../Logo.jpg', import.meta.url).href} 
           alt="Moon Shot Logo" 
@@ -1020,7 +1008,7 @@ const chartData = useMemo(() =>
         />
       </div>
 
-        <div className="pf-menu-wrap">
+            <div className="pf-menu-wrap">
           <button className="pf-icon-btn" aria-label="เมนู" onClick={() => setMenuOpen((v) => !v)}><MoreVertical size={17} /></button>
           {menuOpen && (
             <div className="pf-menu">
