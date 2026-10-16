@@ -792,10 +792,10 @@ export default function PortfolioApp() {
           background-image: 
             radial-gradient(circle at 20% 30%, rgba(56, 189, 248, 0.08) 0%, transparent 40%),
             radial-gradient(circle at 80% 70%, rgba(147, 51, 234, 0.07) 0%, transparent 40%),
-            radial-gradient(white 1px, transparent 0),
-            radial-gradient(white 1.5px, transparent 0);
-          background-size: 100% 100%, 100% 100%, 50px 50px, 120px 120px;
-          background-position: 0 0, 0 0, 25px 25px, 60px 60px;
+            radial-gradient(white 1.2px, transparent 0),
+            radial-gradient(white 1.8px, transparent 0);
+          background-size: 100% 100%, 100% 100%, 60px 60px, 140px 140px;
+          background-position: 0 0, 0 0, 30px 30px, 70px 70px;
           background-attachment: fixed;
 
           color: var(--text); min-height: 100vh;
@@ -910,79 +910,51 @@ export default function PortfolioApp() {
         .pf-issue-banner { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; background: rgba(252,165,165,0.12); border: 1px solid var(--neg); color: var(--text); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; font-size: 12.5px; line-height: 1.5; }
         .pf-loading { display: flex; align-items: center; justify-content: center; height: 60vh; color: var(--muted); }
         
-        /* Bottom Navigation Bar ธีมแคปซูลห้องควบคุมยานอวกาศ (เอาตัวหนังสือออก & ปุ่มฟ้าเรืองแสง) */
+        /* Bottom Navigation Bar รูปแบบแคปซูลตามรูปตัวอย่าง ปุ่มทั้งหมดระดับเดียวกัน ปุ่ม active มีวงแหวนเรืองแสงครอบ */
         .pf-nav-container {
           position: fixed;
           bottom: 16px;
           left: 50%;
           transform: translateX(-50%);
           width: 92%;
-          max-width: 420px;
+          max-width: 440px;
           z-index: 1000;
         }
         .pf-bottom-nav {
           position: relative;
-          background: linear-gradient(180deg, rgba(8, 15, 30, 0.9) 0%, rgba(3, 7, 18, 0.98) 100%);
+          background: linear-gradient(180deg, rgba(8, 20, 40, 0.9) 0%, rgba(3, 9, 22, 0.98) 100%);
           backdrop-filter: blur(20px);
           border: 1px solid rgba(56, 189, 248, 0.35);
           border-radius: 40px;
           display: flex;
           justify-content: space-around;
           align-items: center;
-          padding: 10px 20px;
+          padding: 8px 16px;
           box-shadow: 0 10px 40px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(56, 189, 248, 0.3);
         }
         .pf-nav-item {
           background: none;
           border: none;
           cursor: pointer;
-          font-size: 22px;
+          font-size: 20px;
           display: flex;
           align-items: center;
           justify-content: center;
           color: #64748b;
-          padding: 10px;
+          width: 48px;
+          height: 48px;
+          border-radius: 50%;
           transition: all 0.2s ease;
         }
         .pf-nav-item:hover {
           color: #38bdf8;
         }
+        /* รูปแบบเมื่อปุ่มนั้นถูกเลือก (Active) ให้มีวงแหวนเรืองแสงและปุ่มนูนโค้งมนตามรูปตัวอย่าง */
         .pf-nav-item.active {
-          color: #38bdf8;
-          text-shadow: 0 0 12px rgba(56, 189, 248, 0.7);
-        }
-        
-        /* ปุ่มวงกลมตรงกลาง สีฟ้าเรืองแสงเบาๆ (ตามข้อ 2) */
-        .pf-nav-center-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          margin-top: -36px;
-        }
-        .pf-nav-center {
-          background: radial-gradient(circle at 30% 30%, #38bdf8 0%, #0284c7 60%, #0369a1 100%);
-          border: 2px solid rgba(255, 255, 255, 0.6);
+          background: radial-gradient(circle, rgba(56, 189, 248, 0.3) 0%, rgba(2, 132, 199, 0.5) 70%);
+          border: 2px solid #38bdf8;
           color: #fff;
-          cursor: pointer;
-          font-size: 24px;
-          width: 58px;
-          height: 58px;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: 0 0 25px rgba(56, 189, 248, 0.45), inset 0 3px 6px rgba(255, 255, 255, 0.6), inset 0 -4px 6px rgba(0, 0, 0, 0.6);
-          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        .pf-nav-center:hover {
-          transform: scale(1.05);
-          box-shadow: 0 0 35px rgba(56, 189, 248, 0.75), inset 0 3px 8px rgba(255, 255, 255, 0.8);
-        }
-        .pf-nav-center.active {
-          background: radial-gradient(circle at 30% 30%, #7dd3fc 0%, #0284c7 70%, #0369a1 100%);
-          border-color: #ffffff;
-          box-shadow: 0 0 35px rgba(56, 189, 248, 0.85), inset 0 3px 8px rgba(255, 255, 255, 0.8);
+          box-shadow: 0 0 20px rgba(56, 189, 248, 0.6), inset 0 2px 4px rgba(255, 255, 255, 0.6);
         }
 
         .pf-foreign-glow {
@@ -1695,27 +1667,23 @@ export default function PortfolioApp() {
         </>
       )}
 
-      {/* ข้อ 1 & 2: Bottom Navigation Bar แบบไม่มีข้อความ และปุ่มวงกลมตรงกลางสีฟ้าเรืองแสง */}
+      {/* Bottom Navigation Bar รูปแบบตามรูปตัวอย่าง ปุ่มทั้งหมดระดับเดียวกัน ปุ่ม active มีวงแหวนเรืองแสงครอบ */}
       <div className="pf-nav-container">
         <div className="pf-bottom-nav">
           <button onClick={() => setActiveTab(1)} className={`pf-nav-item ${activeTab === 1 ? 'active' : ''}`} title="หุ้นไทย">
-            <LayoutGrid size={24} />
+            <LayoutGrid size={22} />
           </button>
           <button onClick={() => setActiveTab(2)} className={`pf-nav-item ${activeTab === 2 ? 'active' : ''}`} title="หุ้นนอก">
-            <BarChart3 size={24} />
+            <BarChart3 size={22} />
           </button>
-          
-          <div className="pf-nav-center-wrapper">
-            <button onClick={() => setActiveTab(3)} className={`pf-nav-center ${activeTab === 3 ? 'active' : ''}`} title="พอร์ตรวม">
-              <Home size={24} />
-            </button>
-          </div>
-
+          <button onClick={() => setActiveTab(3)} className={`pf-nav-item ${activeTab === 3 ? 'active' : ''}`} title="พอร์ตรวม">
+            <Home size={22} />
+          </button>
           <button onClick={() => setActiveTab(4)} className={`pf-nav-item ${activeTab === 4 ? 'active' : ''}`} title="สินทรัพย์อื่น">
-            <TrendingUp size={24} />
+            <TrendingUp size={22} />
           </button>
           <button onClick={() => setActiveTab(5)} className={`pf-nav-item ${activeTab === 5 ? 'active' : ''}`} title="ตั้งค่า">
-            <Settings size={24} />
+            <Settings size={22} />
           </button>
         </div>
       </div>
