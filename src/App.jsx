@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Pencil, Trash2, RefreshCw, X, TrendingUp, TrendingDown, MoreVertical, Inbox, Zap, Wallet, ChevronRight, ArrowDownWideNarrow, ArrowDownAZ, ArrowUpDown, PlusCircle, MinusCircle, Gift, Sliders, Home, LayoutGrid, BarChart3, Settings, Search } from 'lucide-react';
-import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
+import { LineChart, Line, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
 
 const ASSET_TYPES = [
   { key: 'th_stock', label: 'หุ้นไทย', color: '#C7A344', market: 'th', defaultCurrency: 'THB' },
@@ -153,7 +153,6 @@ const INSTRUMENT_TYPES = [
 ];
 const INSTRUMENT_RANK = { stock: 0, dr: 1, etf: 2 };
 
-// ข้อ 1: ปรับแต่งโดเมนแกน Y ให้เว้นระยะขอบบนล่างสวยงาม ไม่ทับเส้นขอบ
 const getDynamicDomain = (currentVal, baseVal) => {
   const refVal = currentVal || baseVal || 100000;
   const margin = Math.max(refVal * 0.25, 5000);
@@ -241,6 +240,10 @@ export default function PortfolioApp() {
   const [graphYearTh, setGraphYearTh] = useState(String(new Date().getFullYear()));
   const [graphModeUs, setGraphModeUs] = useState('all');
   const [graphYearUs, setGraphYearUs] = useState(String(new Date().getFullYear()));
+
+  // สถานะคำทักทายของนักบินอวกาศ (Moon Assistant)
+  const [astronautMsg, setAstronautMsg] = useState('สวัสดีจ้า 🌙 ยินดีต้อนรับสู่นักบินอวกาศ Moon Shot!');
+  const [showAstronautBubble, setShowAstronautBubble] = useState(true);
 
   useEffect(() => { load(); }, []);
 
@@ -456,6 +459,24 @@ export default function PortfolioApp() {
     }
     return base;
   }, [monthlyList, graphModeGain, graphYearGain, totalInvestedCost, totalGain]);
+
+  // ข้อมูลกราฟแท่งปันผลเทียบกับเงินที่ลงทุนไปรายปี
+  const dividendChartData = useMemo(() => {
+    return yearOptions.slice().reverse().map((y) => {
+      let divSum = 0;
+      ledger.forEach((e) => {
+        if (e.type === 'dividend' && (e.date || '').slice(0, 4) === y) {
+          divSum += e.amount;
+        }
+      });
+      return {
+        year: buddhistYear(y),
+        dividend: divSum,
+        invested: totalInvestedCost,
+        yieldPct: totalInvestedCost > 0 ? (divSum / totalInvestedCost) * 100 : 0
+      };
+    });
+  }, [yearOptions, ledger, totalInvestedCost]);
 
   const chartDataTh = useMemo(() => {
     const thHoldings = enriched.filter(h => h.type === 'th_stock');
@@ -1008,27 +1029,49 @@ export default function PortfolioApp() {
           filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.6));
         }
 
-        .moon-float {
+        /* กล่องคำพูดคำทักทายของนักบินอวกาศ (Moon Assistant) อยู่ติดกับไอคอนนักบิน */
+        .moon-wrapper {
           position: fixed;
           top: 16px;
           right: 20px;
-          width: 110px;
-          height: 110px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          z-index: 1100;
+          touch-action: none;
+          user-select: none;
+        }
+        .moon-bubble {
+          background: rgba(17, 24, 39, 0.9);
+          backdrop-filter: blur(8px);
+          border: 1px solid rgba(56, 189, 248, 0.4);
+          color: #38bdf8;
+          padding: 6px 12px;
+          border-radius: 12px;
+          font-size: 12px;
+          font-weight: 500;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+          white-space: nowrap;
+          animation: fadeIn 0.3s ease;
+          max-width: 220px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .moon-float {
+          width: 70px;
+          height: 70px;
           display: flex;
           align-items: center;
           justify-content: center;
           cursor: grab;
-          z-index: 1100;
           animation: moonFloat 2.5s ease-in-out infinite;
-          user-select: none;
-          touch-action: none;
         }
         .moon-float:active {
           cursor: grabbing;
         }
         @keyframes moonFloat {
           0% { transform: translateY(0px); }
-          50% { transform: translateY(-8px); }
+          50% { transform: translateY(-6px); }
           100% { transform: translateY(0px); }
         }
 
@@ -1047,7 +1090,8 @@ export default function PortfolioApp() {
         </div>
       </div>
 
-      <div className="moon-float" onPointerDown={(e) => {
+      {/* นักบินอวกาศ พร้อมกล่องคำทักทายที่ขยับตาม (ย้ายตำแหน่งมาไว้มุมขวาบนอย่างลงตัว) */}
+      <div className="moon-wrapper" onPointerDown={(e) => {
         const el = e.currentTarget; el.setPointerCapture(e.pointerId);
         const startX = e.clientX, startY = e.clientY, rect = el.getBoundingClientRect();
         const onPointerMove = (m) => {
@@ -1057,8 +1101,27 @@ export default function PortfolioApp() {
         };
         const onPointerUp = (u) => { el.releasePointerCapture(u.pointerId); window.removeEventListener('pointermove', onPointerMove); window.removeEventListener('pointerup', onPointerUp); };
         window.addEventListener('pointermove', onPointerMove); window.addEventListener('pointerup', onPointerUp);
-      }} onClick={(e) => { e.stopPropagation(); showToast('สวัสดีครับ 🌙 ผมคือผู้ช่วย Moon Shot'); }}>
-        <img src={new URL('../moon.png', import.meta.url).href} alt="Moon Assistant" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 5px 15px rgba(56,189,248,0.4))' }} />
+      }} onClick={(e) => { 
+        e.stopPropagation(); 
+        const msgs = [
+          'สวัสดีจ้า 🌙 พอร์ตวันนี้ดูสดใสมาก!',
+          'สู้ๆ นะนักเดินทาง! เป้าหมายดวงจันทร์อยู่ไม่ไกล 🚀',
+          'ตรวจสอบสภาพพอร์ตแล้ว ทุกอย่างปกติดีครับกัปตัน! ✨',
+          'อย่าลืมบันทึกเงินปันผลและรีบาลานซ์สิ้นปีนะ 💰'
+        ];
+        const randomMsg = msgs[Math.floor(Math.random() * msgs.length)];
+        setAstronautMsg(randomMsg);
+        setShowAstronautBubble(true);
+        showToast('นักบินอวกาศทักทายคุณ!'); 
+      }}>
+        {showAstronautBubble && (
+          <div className="moon-bubble">
+            {astronautMsg}
+          </div>
+        )}
+        <div className="moon-float">
+          <img src={new URL('../moon.png', import.meta.url).href} alt="Moon Assistant" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 5px 15px rgba(56,189,248,0.4))' }} />
+        </div>
       </div>
 
       <input ref={fileInputRef} type="file" accept="application/json,.json" style={{ display: 'none' }} onChange={handleImportFile} />
@@ -1535,6 +1598,24 @@ export default function PortfolioApp() {
                 </div>
               </div>
 
+              {/* ข้อ 1: กราฟปันผล เทียบ เงินที่ลงทุนไป (ต่อจากกราฟกำไรขาดทุนในหน้าพอร์ตรวม) */}
+              <div className="pf-hero" style={{ border: '2px solid rgba(56, 189, 248, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #0f172a 100%)' }}>
+                <div className="pf-hero-label">กราฟปันผล เทียบ เงินที่ลงทุนไป (รายปี)</div>
+                <div className="pf-spark" style={{ marginTop: '10px' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={dividendChartData}>
+                      <XAxis dataKey="year" stroke="#94a3b8" fontSize={10} />
+                      <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
+                      <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'dividend' ? 'เงินปันผลรับ' : 'เงินที่ลงทุนไป']} labelFormatter={(l) => `ปี พ.ศ. ${l}`} />
+                      <Bar dataKey="dividend" fill="#38bdf8" radius={[4, 4, 0, 0]} name="dividend" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div style={{ marginTop: '10px', fontSize: '12.5px', color: 'var(--muted)', textAlign: 'center' }}>
+                  อัตราผลตอบแทนเงินปันผลเทียบเงินลงทุน (Yield on Cost) เฉลี่ยตามปีปฏิทิน
+                </div>
+              </div>
+
               {holdings.length === 0 && !cashActive ? (
                 <div className="pf-empty">
                   <Inbox size={26} style={{ marginBottom: 8, opacity: 0.6 }} />
@@ -1626,7 +1707,6 @@ export default function PortfolioApp() {
               ) : (
                 byType.filter((t) => t.key !== 'th_stock' && t.key !== 'foreign_stock' && t.key !== 'cash')
                   .sort((a, b) => {
-                    // ข้อ 2: เรียงลำดับ กองทุน (fund) -> ทองคำ (gold) -> คริปโต (crypto) -> อื่นๆ (other)
                     const order = { fund: 0, gold: 1, crypto: 2, other: 3 };
                     return (order[a.key] ?? 9) - (order[b.key] ?? 9);
                   })
@@ -1659,7 +1739,7 @@ export default function PortfolioApp() {
                           {typeHoldings.map((h) => {
                             const itemPct = t.value > 0 ? (h.marketValue / t.value) * 100 : 0;
                             return (
-                              <div key={h.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: '13px' }}>
+                              <div key={h.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: '13px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                   <span className="pf-dot" style={{ background: colorById[h.id] }} />
                                   <span>{h.name}</span>
@@ -1670,7 +1750,6 @@ export default function PortfolioApp() {
                           })}
                         </div>
 
-                        {/* ข้อ 2: รูปแบบแสดงรายละเอียดแต่ละรายการเหมือนหน้าหุ้น (3 บรรทัด) */}
                         <div className="pf-type-section-holdings">
                           {typeHoldings.map((h) => {
                             return (
