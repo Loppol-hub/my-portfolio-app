@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Pencil, Trash2, RefreshCw, X, TrendingUp, TrendingDown, MoreVertical, Inbox, Zap, Wallet, ChevronRight, ArrowDownWideNarrow, ArrowDownAZ, PlusCircle, MinusCircle, Gift, Sliders, Home, LayoutGrid, BarChart3, Settings } from 'lucide-react';
+import { Plus, Pencil, Trash2, RefreshCw, X, TrendingUp, TrendingDown, MoreVertical, Inbox, Zap, Wallet, ChevronRight, ArrowUpDown, PlusCircle, MinusCircle, Gift, Sliders, Home, LayoutGrid, BarChart3, Settings } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
 
 const ASSET_TYPES = [
@@ -191,7 +191,17 @@ export default function PortfolioApp() {
   const [importError, setImportError] = useState('');
   const fileInputRef = useRef(null);
   const [chartModeByType, setChartModeByType] = useState({});
+  
+  // ข้อ 3, 4, 5: จัดการโหมดการเรียงลำดับ (0 = มูลค่า/สัดส่วน, 1 = % กำไร, 2 = ตัวอักษร)
   const [sortModeByType, setSortModeByType] = useState({});
+  const cycleSortMode = (typeKey, maxMode = 2) => {
+    setSortModeByType((prev) => {
+      const current = prev[typeKey] || 0;
+      const next = (current + 1) % (maxMode + 1);
+      return { ...prev, [typeKey]: next };
+    });
+  };
+
   const [excludedTypes, setExcludedTypes] = useState({});
   const toggleChartMode = (typeKey) => {
     setChartModeByType((prev) => ({ ...prev, [typeKey]: prev[typeKey] === 'industry' ? 'holding' : 'industry' }));
@@ -855,9 +865,8 @@ export default function PortfolioApp() {
         .pf-type-section-gain { font-size: 12.5px; margin-top: 3px; }
         .pf-type-section-cost { color: var(--muted); font-size: 12px; margin-top: 3px; }
         .pf-sort-row { display: flex; align-items: center; justify-content: flex-end; margin-top: 12px; }
-        .pf-sort-toggle { display: flex; background: var(--surface-alt); border: 1px solid var(--divider); border-radius: 8px; padding: 2px; gap: 2px; }
-        .pf-sort-toggle button { display: flex; align-items: center; justify-content: center; width: 26px; height: 24px; border-radius: 6px; background: transparent; border: none; color: var(--muted); cursor: pointer; }
-        .pf-sort-toggle button.pf-sort-toggle-active { background: var(--gold); color: #1A1400; }
+        .pf-sort-btn { background: var(--surface-alt); border: 1px solid var(--divider); border-radius: 8px; padding: 4px 10px; font-size: 12px; color: var(--gold); cursor: pointer; display: flex; align-items: center; gap: 6px; font-family: 'Inter', sans-serif; font-weight: 500; }
+        .pf-sort-btn:hover { background: rgba(56, 189, 248, 0.1); }
         .pf-type-section-holdings { border-top: 1px solid var(--divider); margin-top: 16px; padding-top: 6px; }
         .pf-subrow { padding: 14px 0; border-bottom: 1px solid var(--divider); }
         .pf-subrow:last-child { border-bottom: none; padding-bottom: 0; }
@@ -876,7 +885,7 @@ export default function PortfolioApp() {
         .pf-row-name-text { font-family: 'Fraunces', serif; font-weight: 600; font-size: 15.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .pf-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
         .pf-row-actions button { background: transparent; border: none; color: var(--muted); cursor: pointer; padding: 4px; border-radius: 6px; }
-        .pf-row-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 10px; font-size: 12.5px; color: var(--muted); }
+        .pf-row-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px; font-size: 12.5px; color: var(--muted); }
         .pf-row-meta b { color: var(--text); font-weight: 500; }
         .pf-ledger-amount { font-weight: 700; }
         .pf-fab { position: fixed; right: 20px; bottom: 100px; display: flex; gap: 10px; z-index: 900; }
@@ -910,7 +919,7 @@ export default function PortfolioApp() {
         .pf-issue-banner { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; background: rgba(252,165,165,0.12); border: 1px solid var(--neg); color: var(--text); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; font-size: 12.5px; line-height: 1.5; }
         .pf-loading { display: flex; align-items: center; justify-content: center; height: 60vh; color: var(--muted); }
         
-        /* Bottom Navigation Bar รูปแบบแคปซูลโค้งมนยาวตามรูปตัวอย่าง */
+        /* Bottom Navigation Bar รูปแบบแคปซูลตามรูปตัวอย่าง */
         .pf-nav-container {
           position: fixed;
           bottom: 16px;
@@ -949,15 +958,15 @@ export default function PortfolioApp() {
         .pf-nav-item:hover {
           color: #38bdf8;
         }
-        /* ปุ่มที่เลือกอยู่ (Active) จะมีวงแหวนเรืองแสงและปุ่มนูนโค้งมนครอบไอคอน พร้อมขยายใหญ่ขึ้นเป๊ะตามรูปตัวอย่าง */
+        /* ข้อ 6: ปุ่มที่เลือกอยู่ (Active) ขยายใหญ่ขึ้นและลอยนูนพ้นขอบพร้อมวงแหวนเรืองแสง */
         .pf-nav-item.active {
           background: radial-gradient(circle at 30% 30%, #38bdf8 0%, #0284c7 70%, #0369a1 100%);
-          border: 2px solid rgba(255, 255, 255, 0.7);
+          border: 2px solid rgba(255, 255, 255, 0.8);
           color: #ffffff;
-          width: 54px;
-          height: 54px;
-          transform: translateY(-4px);
-          box-shadow: 0 0 25px rgba(56, 189, 248, 0.75), inset 0 3px 6px rgba(255, 255, 255, 0.7), inset 0 -4px 6px rgba(0, 0, 0, 0.6);
+          width: 58px;
+          height: 58px;
+          transform: translateY(-8px);
+          box-shadow: 0 0 30px rgba(56, 189, 248, 0.85), inset 0 3px 6px rgba(255, 255, 255, 0.8), inset 0 -4px 6px rgba(0, 0, 0, 0.6);
         }
 
         .pf-foreign-glow {
@@ -1074,14 +1083,21 @@ export default function PortfolioApp() {
                 </div>
               ) : (
                 byType.filter((t) => t.key === 'th_stock').map((t) => {
-                  const sortMode = sortModeByType[t.key] || 'value';
+                  const sortMode = sortModeByType[t.key] || 0; // 0=สัดส่วน, 1=%กำไร, 2=ตัวอักษร
                   const typeHoldings = enriched.filter((h) => h.type === t.key).sort((a, b) => {
                     const rankA = INSTRUMENT_RANK[a.instrumentType] ?? 0;
                     const rankB = INSTRUMENT_RANK[b.instrumentType] ?? 0;
                     if (rankA !== rankB) return rankA - rankB;
-                    if (sortMode === 'name') return a.name.localeCompare(b.name, 'th');
-                    return b.marketValue - a.marketValue;
+
+                    if (sortMode === 1) {
+                      return (b.gainPct || 0) - (a.gainPct || 0); // % กำไรมากไปน้อย
+                    } else if (sortMode === 2) {
+                      return a.name.localeCompare(b.name, 'th'); // ตัวอักษร
+                    } else {
+                      return b.marketValue - a.marketValue; // สัดส่วน/มูลค่ามากไปน้อย (ค่าเริ่มต้นเสมอ)
+                    }
                   });
+
                   const typeCost = typeHoldings.reduce((s, h) => s + h.costValue, 0);
                   const typeGain = t.value - typeCost;
                   const typeGainPct = typeCost > 0 ? (typeGain / typeCost) * 100 : 0;
@@ -1108,6 +1124,8 @@ export default function PortfolioApp() {
                     chartData = typeHoldings.map((h) => ({ key: h.id, label: h.name, color: colorById[h.id], value: h.marketValue }));
                     displayItemsList = typeHoldings.map((h) => ({ key: h.id, name: h.name, value: h.marketValue, color: colorById[h.id] }));
                   }
+
+                  const sortLabels = ['เรียงตาม: สัดส่วน', 'เรียงตาม: % กำไร', 'เรียงตาม: ตัวอักษร'];
 
                   return (
                     <div className="pf-type-section" key={t.key}>
@@ -1171,12 +1189,12 @@ export default function PortfolioApp() {
                         })}
                       </div>
 
+                      {/* ข้อ 3 & 4: ปุ่มไอคอนเรียงลำดับปุ่มเดียว แตะสลับวนรูปแบบ (สัดส่วน -> %กำไร -> ตัวอักษร) */}
                       {typeHoldings.length > 1 && (
                         <div className="pf-sort-row">
-                          <div className="pf-sort-toggle">
-                            <button className={sortMode === 'value' ? 'pf-sort-toggle-active' : ''} onClick={() => setSortModeByType((prev) => ({ ...prev, [t.key]: 'value' }))} title="เรียงตามมูลค่า"><ArrowDownWideNarrow size={14} /></button>
-                            <button className={sortMode === 'name' ? 'pf-sort-toggle-active' : ''} onClick={() => setSortModeByType((prev) => ({ ...prev, [t.key]: 'name' }))} title="เรียงตามชื่อ"><ArrowDownAZ size={14} /></button>
-                          </div>
+                          <button className="pf-sort-btn" onClick={() => cycleSortMode(t.key, 2)}>
+                            <ArrowUpDown size={14} /> {sortLabels[sortMode]}
+                          </button>
                         </div>
                       )}
 
@@ -1195,12 +1213,17 @@ export default function PortfolioApp() {
                                   <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)}><Trash2 size={15} /></button>
                                 </div>
                               </div>
+                              {/* ข้อ 1 & 2: รูปแบบแสดงข้อมูลเดิม 3 บรรทัด (ราคาล่าสุดสีทองอยู่หลังต้นทุนรวม, มูลค่า/กำไร สีเขียว/แดง) */}
                               <div className="pf-row-meta pf-mono">
-                                <span>สัดส่วน <b>{fmt(holdingPct, 1)}%</b></span>
                                 <span>จำนวน <b>{fmt(h.qty, h.qty % 1 === 0 ? 0 : 2)}</b></span>
-                                <span>ทุน <b>฿{fmt(h.avg)}</b></span>
-                                <span>ราคา <b>฿{fmt(h.price)}</b></span>
-                                <span>มูลค่า <b>฿{fmt(h.marketValue)}</b></span>
+                                <span>ทุนเฉลี่ย <b>฿{fmt(h.avg)}</b></span>
+                              </div>
+                              <div className="pf-row-meta pf-mono">
+                                <span>ราคาล่าสุด <b style={{ color: 'var(--gold)' }}>฿{fmt(h.price)}</b></span>
+                                <span>ต้นทุนรวม <b>฿{fmt(h.costValue)}</b></span>
+                              </div>
+                              <div className="pf-row-meta pf-mono">
+                                <span>มูลค่า <b className={h.marketValue >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>฿{fmt(h.marketValue)}</b></span>
                                 <span className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
                                   {h.gain >= 0 ? '+' : ''}{fmt(h.gain)} ({h.gain >= 0 ? '+' : ''}{fmt(h.gainPct, 1)}%)
                                 </span>
@@ -1228,14 +1251,21 @@ export default function PortfolioApp() {
                 </div>
               ) : (
                 byType.filter((t) => t.key === 'foreign_stock').map((t) => {
-                  const sortMode = sortModeByType[t.key] || 'value';
+                  const sortMode = sortModeByType[t.key] || 0; // 0=สัดส่วน, 1=%กำไร, 2=ตัวอักษร
                   const typeHoldings = enriched.filter((h) => h.type === t.key).sort((a, b) => {
                     const rankA = INSTRUMENT_RANK[a.instrumentType] ?? 0;
                     const rankB = INSTRUMENT_RANK[b.instrumentType] ?? 0;
                     if (rankA !== rankB) return rankA - rankB;
-                    if (sortMode === 'name') return a.name.localeCompare(b.name, 'th');
-                    return b.marketValue - a.marketValue;
+
+                    if (sortMode === 1) {
+                      return (b.gainPct || 0) - (a.gainPct || 0); // % กำไรมากไปน้อย
+                    } else if (sortMode === 2) {
+                      return a.name.localeCompare(b.name, 'th'); // ตัวอักษร
+                    } else {
+                      return b.marketValue - a.marketValue; // สัดส่วน/มูลค่ามากไปน้อย
+                    }
                   });
+
                   const typeCost = typeHoldings.reduce((s, h) => s + h.costValue, 0);
                   const typeGain = t.value - typeCost;
                   const typeGainPct = typeCost > 0 ? (typeGain / typeCost) * 100 : 0;
@@ -1262,6 +1292,8 @@ export default function PortfolioApp() {
                     chartData = typeHoldings.map((h) => ({ key: h.id, label: h.name, color: colorById[h.id], value: h.marketValue }));
                     displayItemsList = typeHoldings.map((h) => ({ key: h.id, name: h.name, value: h.marketValue, color: colorById[h.id] }));
                   }
+
+                  const sortLabels = ['เรียงตาม: สัดส่วน', 'เรียงตาม: % กำไร', 'เรียงตาม: ตัวอักษร'];
 
                   return (
                     <div className="pf-type-section" key={t.key}>
@@ -1325,12 +1357,12 @@ export default function PortfolioApp() {
                         })}
                       </div>
 
+                      {/* ข้อ 3 & 5: ปุ่มไอคอนเรียงลำดับปุ่มเดียวสำหรับหุ้นนอก */}
                       {typeHoldings.length > 1 && (
                         <div className="pf-sort-row">
-                          <div className="pf-sort-toggle">
-                            <button className={sortMode === 'value' ? 'pf-sort-toggle-active' : ''} onClick={() => setSortModeByType((prev) => ({ ...prev, [t.key]: 'value' }))} title="เรียงตามมูลค่า"><ArrowDownWideNarrow size={14} /></button>
-                            <button className={sortMode === 'name' ? 'pf-sort-toggle-active' : ''} onClick={() => setSortModeByType((prev) => ({ ...prev, [t.key]: 'name' }))} title="เรียงตามชื่อ"><ArrowDownAZ size={14} /></button>
-                          </div>
+                          <button className="pf-sort-btn" onClick={() => cycleSortMode(t.key, 2)}>
+                            <ArrowUpDown size={14} /> {sortLabels[sortMode]}
+                          </button>
                         </div>
                       )}
 
@@ -1353,12 +1385,17 @@ export default function PortfolioApp() {
                                   <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)}><Trash2 size={15} /></button>
                                 </div>
                               </div>
+                              {/* ข้อ 1 & 2: รูปแบบแสดงข้อมูลเดิม 3 บรรทัด (ราคาล่าสุดสีทองอยู่หลังต้นทุนรวม, มูลค่า/กำไร สีเขียว/แดง) */}
                               <div className="pf-row-meta pf-mono">
-                                <span>สัดส่วน <b>{fmt(holdingPct, 1)}%</b></span>
                                 <span>จำนวน <b>{fmt(h.qty, h.qty % 1 === 0 ? 0 : 2)}</b></span>
-                                <span>ทุน <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.avg)}</b></span>
-                                <span>ราคา <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.price)}</b></span>
-                                <span>มูลค่า <b>฿{fmt(h.marketValue)}</b></span>
+                                <span>ทุนเฉลี่ย <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.avg)}</b></span>
+                              </div>
+                              <div className="pf-row-meta pf-mono">
+                                <span>ราคาล่าสุด <b style={{ color: 'var(--gold)' }}>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.price)}</b></span>
+                                <span>ต้นทุนรวม <b>฿{fmt(h.costValue)}</b></span>
+                              </div>
+                              <div className="pf-row-meta pf-mono">
+                                <span>มูลค่า <b className={h.marketValue >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>฿{fmt(h.marketValue)}</b> {h.currency === 'USD' && <span style={{ fontSize: '11px', opacity: 0.7 }}>(${fmt(h.qty * h.price)})</span>}</span>
                                 <span className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
                                   {h.gain >= 0 ? '+' : ''}{fmt(h.gain)} ({h.gain >= 0 ? '+' : ''}{fmt(h.gainPct, 1)}%)
                                 </span>
@@ -1670,7 +1707,7 @@ export default function PortfolioApp() {
         </>
       )}
 
-      {/* Bottom Navigation Bar รูปแบบแคปซูล ปุ่ม active ขยายใหญ่และมีวงแหวนเรืองแสงครอบเป๊ะตามรูปตัวอย่าง */}
+      {/* ข้อ 6: Bottom Navigation Bar แบบแคปซูล ปุ่ม active ขยายใหญ่และลอยนูนพ้นขอบพร้อมวงแหวนเรืองแสง */}
       <div className="pf-nav-container">
         <div className="pf-bottom-nav">
           <button onClick={() => setActiveTab(1)} className={`pf-nav-item ${activeTab === 1 ? 'active' : ''}`} title="หุ้นไทย">
