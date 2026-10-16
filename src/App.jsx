@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Pencil, Trash2, RefreshCw, X, TrendingUp, TrendingDown, MoreVertical, Inbox, Zap, Wallet, ChevronRight, ArrowDownWideNarrow, ArrowDownAZ, PlusCircle, MinusCircle, Gift, Sliders } from 'lucide-react';
+import { Plus, Pencil, Trash2, RefreshCw, X, TrendingUp, TrendingDown, MoreVertical, Inbox, Zap, Wallet, ChevronRight, ArrowDownWideNarrow, ArrowDownAZ, PlusCircle, MinusCircle, Gift, Sliders, Home, LayoutGrid, BarChart3, Settings } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
 
 const ASSET_TYPES = [
   { key: 'th_stock', label: 'หุ้นไทย', color: '#C7A344', market: 'th', defaultCurrency: 'THB' },
-  { key: 'foreign_stock', label: 'หุ้นต่างประเทศ', color: '#38bdf8', market: 'us', defaultCurrency: 'USD' }, // ปรับสีให้ฟ้าเรืองแสงเบาๆ ตามข้อ 2
+  { key: 'foreign_stock', label: 'หุ้นต่างประเทศ', color: '#38bdf8', market: 'us', defaultCurrency: 'USD' },
   { key: 'crypto', label: 'คริปโต', color: '#967ACC', market: 'crypto', defaultCurrency: 'USD' },
   { key: 'gold', label: 'ทองคำ', color: '#D9823F', market: 'gold', defaultCurrency: 'USD' },
   { key: 'fund', label: 'กองทุน', color: '#C17B86', market: null, defaultCurrency: 'THB' },
@@ -160,14 +160,11 @@ const getDynamicDomain = (currentVal, baseVal) => {
   return [Math.floor(min / 10000) * 10000, Math.ceil(max / 10000) * 10000];
 };
 
-// สร้างข้อมูล 12 เดือนอัตโนมัติสำหรับแกนนอน (ข้อ 1)
 const getMonthlyAxisData = () => {
   const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
   const now = new Date();
   const currentMonthIdx = now.getMonth();
   const currentYearShort = String(now.getFullYear()).slice(-2);
-  
-  // เรียงลำดับ 12 เดือนล่าสุดจบที่เดือนปัจจุบัน
   const result = [];
   for (let i = 0; i < 12; i++) {
     const idx = (currentMonthIdx - 11 + i + 12) % 12;
@@ -415,7 +412,6 @@ export default function PortfolioApp() {
     return dates.length ? dates[dates.length - 1] : null;
   }, [holdings]);
 
-  // ข้อ 1: แกนนอนแสดง 12 เดือนอัตโนมัติ
   const monthlyList = useMemo(() => getMonthlyAxisData(), []);
 
   const chartDataTotal = useMemo(() => {
@@ -784,7 +780,6 @@ export default function PortfolioApp() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap');
         
-        /* ข้อ 9: พื้นหลังอวกาศ มีหมู่ดาวและกาแลกซี่เรืองแสง */
         .pf-root {
           --bg: #030712; 
           --surface: rgba(17, 24, 39, 0.75); 
@@ -884,7 +879,7 @@ export default function PortfolioApp() {
         .pf-row-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 10px; font-size: 12.5px; color: var(--muted); }
         .pf-row-meta b { color: var(--text); font-weight: 500; }
         .pf-ledger-amount { font-weight: 700; }
-        .pf-fab { position: fixed; right: 20px; bottom: 95px; display: flex; gap: 10px; z-index: 900; }
+        .pf-fab { position: fixed; right: 20px; bottom: 100px; display: flex; gap: 10px; z-index: 900; }
         .pf-btn { border-radius: 12px; padding: 11px 16px; font-size: 14px; font-weight: 600; cursor: pointer; border: 1px solid var(--divider); display: flex; align-items: center; gap: 6px; }
         .pf-btn-primary { background: var(--gold); color: #1A1400; border: none; }
         .pf-btn-ghost { background: var(--surface); color: var(--text); }
@@ -910,83 +905,87 @@ export default function PortfolioApp() {
         .pf-update-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--divider); }
         .pf-update-name { font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .pf-update-input { width: 110px; }
-        .pf-toast { position: fixed; left: 50%; bottom: 95px; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--divider); color: var(--text); padding: 10px 18px; border-radius: 30px; font-size: 13.5px; z-index: 1400; box-shadow: 0 5px 20px rgba(0,0,0,0.5); }
+        .pf-toast { position: fixed; left: 50%; bottom: 100px; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--divider); color: var(--text); padding: 10px 18px; border-radius: 30px; font-size: 13.5px; z-index: 1400; box-shadow: 0 5px 20px rgba(0,0,0,0.5); }
         .pf-confirm { background: var(--surface); border: 1px solid var(--divider); border-radius: 14px; padding: 16px; margin-bottom: 16px; }
         .pf-issue-banner { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; background: rgba(252,165,165,0.12); border: 1px solid var(--neg); color: var(--text); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; font-size: 12.5px; line-height: 1.5; }
         .pf-loading { display: flex; align-items: center; justify-content: center; height: 60vh; color: var(--muted); }
         
-        /* ข้อ 3: Bottom Navigation Bar ธีมห้องควบคุมยานอวกาศ (Sci-Fi Cockpit Deck) */
-        .pf-bottom-nav {
+        /* ข้อ 3: Bottom Navigation Bar ธีมห้องควบคุมยานอวกาศ (Sci-Fi Cockpit Capsule Deck ตามแบบตัวอย่าง) */
+        .pf-nav-container {
           position: fixed;
-          bottom: 0;
-          left: 0;
-          width: 100%;
-          background: rgba(3, 7, 18, 0.9);
-          backdrop-filter: blur(16px);
-          border-top: 1px solid rgba(56, 189, 248, 0.25);
-          display: flex;
-          justify-content: space-around;
-          align-items: center;
-          padding: 8px 12px 14px;
+          bottom: 16px;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 92%;
+          max-width: 440px;
           z-index: 1000;
-          box-shadow: 0 -10px 30px rgba(56, 189, 248, 0.1);
+        }
+        .pf-bottom-nav {
+          position: relative;
+          background: linear-gradient(180deg, rgba(8, 15, 30, 0.85) 0%, rgba(3, 7, 18, 0.95) 100%);
+          backdrop-filter: blur(20px);
+          border: 1px solid rgba(56, 189, 248, 0.3);
+          border-radius: 40px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 8px 24px;
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(56, 189, 248, 0.2);
         }
         .pf-nav-item {
-          background: rgba(17, 24, 39, 0.6);
-          border: 1px solid rgba(255, 255, 255, 0.05);
-          border-radius: 12px;
+          background: none;
+          border: none;
           cursor: pointer;
           font-size: 20px;
           display: flex;
           flex-direction: column;
           align-items: center;
-          color: #94a3b8;
-          padding: 6px 12px;
+          color: #64748b;
+          padding: 6px;
           transition: all 0.2s ease;
         }
         .pf-nav-item:hover {
-          border-color: rgba(56, 189, 248, 0.4);
           color: #38bdf8;
         }
         .pf-nav-item.active {
-          background: rgba(56, 189, 248, 0.12);
-          border-color: #38bdf8;
           color: #38bdf8;
-          box-shadow: 0 0 15px rgba(56, 189, 248, 0.3);
+          text-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
         }
-        .pf-nav-label {
-          font-size: 9.5px;
-          margin-top: 3px;
-          font-family: 'Inter', sans-serif;
-          letter-spacing: 0.3px;
+        
+        /* ปุ่มวงกลมตรงกลางลอยเด่นแบบ Sci-Fi */
+        .pf-nav-center-wrapper {
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-top: -34px;
         }
         .pf-nav-center {
-          background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-          border: 1px solid rgba(251, 191, 36, 0.4);
-          color: #fbbf24;
+          background: radial-gradient(circle at 30% 30%, #38bdf8 0%, #0369a1 60%, #0284c7 100%);
+          border: 2px solid rgba(255, 255, 255, 0.4);
+          color: #fff;
           cursor: pointer;
-          font-size: 22px;
-          width: 52px;
-          height: 52px;
+          font-size: 24px;
+          width: 60px;
+          height: 60px;
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 0 20px rgba(251, 191, 36, 0.25);
-          margin-top: -22px;
-          transition: all 0.2s ease;
+          box-shadow: 0 0 25px rgba(56, 189, 248, 0.5), inset 0 3px 6px rgba(255, 255, 255, 0.5), inset 0 -4px 6px rgba(0, 0, 0, 0.6);
+          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .pf-nav-center:hover {
-          box-shadow: 0 0 25px rgba(251, 191, 36, 0.5);
-          border-color: #fbbf24;
+          transform: scale(1.05);
+          box-shadow: 0 0 35px rgba(56, 189, 248, 0.8), inset 0 3px 8px rgba(255, 255, 255, 0.7);
         }
         .pf-nav-center.active {
-          background: #fbbf24;
-          color: #000;
-          box-shadow: 0 0 30px rgba(251, 191, 36, 0.6);
+          background: radial-gradient(circle at 30% 30%, #fbbf24 0%, #d97706 60%, #b45309 100%);
+          border-color: rgba(255, 255, 255, 0.8);
+          color: #fff;
+          box-shadow: 0 0 35px rgba(251, 191, 36, 0.7), inset 0 3px 6px rgba(255, 255, 255, 0.7), inset 0 -4px 6px rgba(0, 0, 0, 0.6);
         }
 
-        /* ข้อ 2: สัญลักษณ์หุ้นนอกเรืองแสงสีฟ้าอ่อนๆ แบบอวกาศ */
         .pf-foreign-glow {
           filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.6));
         }
@@ -1529,7 +1528,7 @@ export default function PortfolioApp() {
                           <div className="pf-type-section-title"><span className="pf-dot" style={{ background: '#7C8B9E' }} />เงินสด / สภาพคล่อง</div>
                           <div className="pf-type-section-value pf-mono">฿{fmt(computedCash, 0)}</div>
 
-                          {/* ข้อ 4, 5, 6, 7: ย้ายและจัดเรียงรายการใต้เงินสดตามลำดับเป๊ะๆ */}
+                          {/* ข้อ 4, 5, 6, 7: จัดเรียงข้อมูลใต้เงินสดตามลำดับที่คุณต้องการ */}
                           <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                             <div className="pf-capital-row">
                               <span style={{ color: 'var(--muted)' }}>ทุนเริ่มต้น</span>
@@ -1699,27 +1698,33 @@ export default function PortfolioApp() {
         </>
       )}
 
-      {/* ข้อ 3: แถบเมนูด้านล่าง ธีมห้องควบคุมยานอวกาศ (Sci-Fi Cockpit Deck) */}
-      <div className="pf-bottom-nav">
-        <button onClick={() => setActiveTab(1)} className={`pf-nav-item ${activeTab === 1 ? 'active' : ''}`}>
-          📊
-          <span className="pf-nav-label">หุ้นไทย</span>
-        </button>
-        <button onClick={() => setActiveTab(2)} className={`pf-nav-item ${activeTab === 2 ? 'active' : ''}`}>
-          🌐
-          <span className="pf-nav-label">หุ้นนอก</span>
-        </button>
-        <button onClick={() => setActiveTab(3)} className={`pf-nav-center ${activeTab === 3 ? 'active' : ''}`}>
-          🏛️
-        </button>
-        <button onClick={() => setActiveTab(4)} className={`pf-nav-item ${activeTab === 4 ? 'active' : ''}`}>
-          🪙
-          <span className="pf-nav-label">สินทรัพย์อื่น</span>
-        </button>
-        <button onClick={() => setActiveTab(5)} className={`pf-nav-item ${activeTab === 5 ? 'active' : ''}`}>
-          ⚙️
-          <span className="pf-nav-label">ตั้งค่า</span>
-        </button>
+      {/* ข้อ 3: แถบเมนูด้านล่าง ธีมแคปซูลควบคุมยานอวกาศ (Sci-Fi Cockpit Capsule) */}
+      <div className="pf-nav-container">
+        <div className="pf-bottom-nav">
+          <button onClick={() => setActiveTab(1)} className={`pf-nav-item ${activeTab === 1 ? 'active' : ''}`} title="หุ้นไทย">
+            <LayoutGrid size={20} />
+            <span className="pf-nav-label">หุ้นไทย</span>
+          </button>
+          <button onClick={() => setActiveTab(2)} className={`pf-nav-item ${activeTab === 2 ? 'active' : ''}`} title="หุ้นนอก">
+            <BarChart3 size={20} />
+            <span className="pf-nav-label">หุ้นนอก</span>
+          </button>
+          
+          <div className="pf-nav-center-wrapper">
+            <button onClick={() => setActiveTab(3)} className={`pf-nav-center ${activeTab === 3 ? 'active' : ''}`} title="พอร์ตรวม">
+              <Home size={22} />
+            </button>
+          </div>
+
+          <button onClick={() => setActiveTab(4)} className={`pf-nav-item ${activeTab === 4 ? 'active' : ''}`} title="สินทรัพย์อื่น">
+            <TrendingUp size={20} />
+            <span className="pf-nav-label">สินทรัพย์อื่น</span>
+          </button>
+          <button onClick={() => setActiveTab(5)} className={`pf-nav-item ${activeTab === 5 ? 'active' : ''}`} title="ตั้งค่า">
+            <Settings size={20} />
+            <span className="pf-nav-label">ตั้งค่า</span>
+          </button>
+        </div>
       </div>
 
       {/* Modals & Panels */}
