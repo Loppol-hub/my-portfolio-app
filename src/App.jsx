@@ -229,10 +229,8 @@ export default function PortfolioApp() {
   const [ledgerNote, setLedgerNote] = useState('');
   const [ledgerDate, setLedgerDate] = useState('');
 
-  // ข้อ 6: State สำหรับช่องค้นหาประวัติการทำรายการ
   const [ledgerSearchQuery, setLedgerSearchQuery] = useState('');
 
-  // ข้อ 2: กราฟมีแค่ "ตั้งแต่เริ่มต้น" (all) และ "รายปี" (year)
   const [graphModeTotal, setGraphModeTotal] = useState('all');
   const [graphYearTotal, setGraphYearTotal] = useState(String(new Date().getFullYear()));
   const [graphModeGain, setGraphModeGain] = useState('all');
@@ -876,7 +874,6 @@ export default function PortfolioApp() {
         .pf-year-row { display: flex; align-items: center; gap: 9px; font-size: 13px; }
         .pf-year-row-icon { color: var(--gold); flex-shrink: 0; }
         
-        {/* ข้อ 5: จัดรูปแบบปุ่ม 6 ปุ่มในหน้าจัดการเงินสดให้สวยงาม */}
         .pf-cash-actions-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
         .pf-cash-action-btn-styled { background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 12px; padding: 10px 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; transition: all 0.2s ease; }
         .pf-cash-action-btn-styled:hover { background: rgba(56, 189, 248, 0.15); border-color: var(--neon-blue); }
@@ -951,10 +948,10 @@ export default function PortfolioApp() {
         .pf-issue-banner { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; background: rgba(252,165,165,0.12); border: 1px solid var(--neg); color: var(--text); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; font-size: 12.5px; line-height: 1.5; }
         .pf-loading { display: flex; align-items: center; justify-content: center; height: 60vh; color: var(--muted); }
         
-        {/* ข้อ 1: บีบขอบแคปซูลด้านบนให้แคบลง เพื่อให้ปุ่ม Active เลยขอบไป 1/4 ส่วน */}
+        {/* Bottom Navigation Bar */}
         .pf-nav-container {
           position: fixed;
-          bottom: 12px;
+          bottom: 16px;
           left: 50%;
           transform: translateX(-50%);
           width: 92%;
@@ -966,11 +963,11 @@ export default function PortfolioApp() {
           background: linear-gradient(180deg, rgba(8, 20, 42, 0.92) 0%, rgba(3, 9, 22, 0.98) 100%);
           backdrop-filter: blur(20px);
           border: 1px solid rgba(56, 189, 248, 0.35);
-          border-radius: 40px;
+          border-radius: 50px;
           display: flex;
           justify-content: space-around;
           align-items: center;
-          padding: 4px 16px 8px;
+          padding: 6px 16px 8px;
           box-shadow: 0 10px 40px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(56, 189, 248, 0.3);
         }
         .pf-nav-item {
@@ -992,12 +989,12 @@ export default function PortfolioApp() {
         }
         .pf-nav-item.active {
           background: radial-gradient(circle at 30% 30%, #38bdf8 0%, #0284c7 70%, #0369a1 100%);
-          border: 2px solid rgba(255, 255, 255, 0.8);
+          border: 2px solid rgba(255, 255, 255, 0.85);
           color: #ffffff;
-          width: 54px;
-          height: 54px;
-          transform: translateY(-16px);
-          box-shadow: 0 0 25px rgba(56, 189, 248, 0.85), inset 0 3px 6px rgba(255, 255, 255, 0.8), inset 0 -4px 6px rgba(0, 0, 0, 0.6);
+          width: 60px;
+          height: 60px;
+          transform: translateY(-22px);
+          box-shadow: 0 0 30px rgba(56, 189, 248, 0.9), inset 0 3px 6px rgba(255, 255, 255, 0.8), inset 0 -4px 6px rgba(0, 0, 0, 0.6);
         }
 
         .pf-foreign-glow {
@@ -1163,7 +1160,6 @@ export default function PortfolioApp() {
                       <div style={{ marginBottom: '16px', paddingBottom: '14px', borderBottom: '1px solid var(--divider)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                           <span style={{ fontSize: '12px', color: 'var(--muted)' }}>กราฟกำไร/ขาดทุน (หุ้นไทย)</span>
-                          {/* ข้อ 2: กราฟมีแค่ ตั้งแต่เริ่มต้น กับ รายปี */}
                           <div style={{ display: 'flex', gap: '4px' }}>
                             <button className={graphModeTh === 'all' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeTh('all')} style={{ padding: '2px 8px', fontSize: '11px' }}>ตั้งแต่เริ่มต้น</button>
                             <button className={graphModeTh === 'year' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeTh('year')} style={{ padding: '2px 8px', fontSize: '11px' }}>รายปี</button>
@@ -1181,7 +1177,7 @@ export default function PortfolioApp() {
                             <LineChart data={chartDataTh}>
                               <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} />
                               <YAxis stroke="#94a3b8" fontSize={10} domain={getDynamicDomain(t.value, typeCost)} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
-                              <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'gain' ? 'มูลค่า (ต้นทุน+กำไร)' : 'ต้นทุน']} />
+                              <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'gain' ? 'มูลค่า (ต้นทุน+กำไร)' : 'ต้นทุน']} labelFormatter={(l) => l} />
                               <Line type="monotone" dataKey="gain" stroke="#C7A344" strokeWidth={2} dot={false} name="gain" isAnimationActive={false} />
                               <Line type="monotone" dataKey="cost" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 3" dot={false} name="cost" isAnimationActive={false} />
                             </LineChart>
@@ -1221,7 +1217,6 @@ export default function PortfolioApp() {
                         })}
                       </div>
 
-                      {/* ข้อ 3: ปุ่มเรียงลำดับแบบปุ่มเดียว สลับโหมดได้ */}
                       {typeHoldings.length > 1 && (
                         <div className="pf-sort-row">
                           <button className="pf-sort-btn" onClick={() => cycleSortMode(t.key, 2)}>
@@ -1348,7 +1343,7 @@ export default function PortfolioApp() {
                             <LineChart data={chartDataUs}>
                               <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} />
                               <YAxis stroke="#94a3b8" fontSize={10} domain={getDynamicDomain(t.value, typeCost)} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
-                              <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'gain' ? 'มูลค่า (ต้นทุน+กำไร)' : 'ต้นทุน']} />
+                              <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'gain' ? 'มูลค่า (ต้นทุน+กำไร)' : 'ต้นทุน']} labelFormatter={(l) => l} />
                               <Line type="monotone" dataKey="gain" stroke="#38bdf8" strokeWidth={2} dot={false} name="gain" isAnimationActive={false} />
                               <Line type="monotone" dataKey="cost" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 3" dot={false} name="cost" isAnimationActive={false} />
                             </LineChart>
@@ -1479,7 +1474,7 @@ export default function PortfolioApp() {
                       <LineChart data={chartDataTotal}>
                         <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} />
                         <YAxis stroke="#94a3b8" fontSize={10} domain={getDynamicDomain(displayTotalValue, totalCapital)} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
-                        <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'value' ? 'มูลค่าพอร์ต' : 'เงินต้น']} />
+                        <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'value' ? 'มูลค่าพอร์ต' : 'เงินต้น']} labelFormatter={(l) => l} />
                         <Line type="monotone" dataKey="value" stroke="#fbbf24" strokeWidth={2.5} dot={false} name="value" isAnimationActive={false} />
                         <Line type="monotone" dataKey="principal" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 3" dot={false} name="principal" isAnimationActive={false} />
                       </LineChart>
@@ -1524,7 +1519,7 @@ export default function PortfolioApp() {
                       <LineChart data={chartDataGainCard}>
                         <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} />
                         <YAxis stroke="#94a3b8" fontSize={10} domain={getDynamicDomain(totalInvestedCost + totalGain, totalInvestedCost)} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
-                        <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'gain' ? 'มูลค่า (ต้นทุน+กำไร)' : 'ต้นทุน']} />
+                        <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'gain' ? 'มูลค่า (ต้นทุน+กำไร)' : 'ต้นทุน']} labelFormatter={(l) => l} />
                         <Line type="monotone" dataKey="gain" stroke="#34d399" strokeWidth={2.5} dot={false} name="gain" isAnimationActive={false} />
                         <Line type="monotone" dataKey="cost" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 3" dot={false} name="cost" isAnimationActive={false} />
                       </LineChart>
@@ -1567,6 +1562,37 @@ export default function PortfolioApp() {
                         <div className="pf-type-section-info" style={{ flex: 1 }}>
                           <div className="pf-type-section-title"><span className="pf-dot" style={{ background: '#7C8B9E' }} />เงินสด / สภาพคล่อง</div>
                           <div className="pf-type-section-value pf-mono">฿{fmt(computedCash, 0)}</div>
+
+                          {/* ข้อ 1: นำรายละเอียดกลับมาแสดงใต้เงินสดตามเดิม */}
+                          <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                            <div className="pf-capital-row">
+                              <span style={{ color: 'var(--muted)' }}>ทุนเริ่มต้น</span>
+                              <span className="pf-mono">฿{fmt(initialCapital, 0)}</span>
+                            </div>
+                            <div className="pf-capital-row">
+                              <span style={{ color: 'var(--muted)' }}>เงินที่ลงทุนไป</span>
+                              <span className="pf-mono">฿{fmt(totalInvestedCost, 0)}</span>
+                            </div>
+                            <div className="pf-capital-row">
+                              <span style={{ color: 'var(--muted)' }}>กำไร / ขาดทุน</span>
+                              <span className={`pf-mono ${totalGain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
+                                {totalGain >= 0 ? '+' : ''}฿{fmt(totalGain, 0)}
+                              </span>
+                            </div>
+                            <div className="pf-capital-row">
+                              <span style={{ color: 'var(--muted)' }}>เพิ่มทุน / ลดทุน</span>
+                              <span className="pf-mono">฿{fmt(capitalAdjTotal, 0)}</span>
+                            </div>
+                            <div className="pf-capital-row">
+                              <span style={{ color: 'var(--muted)' }}>ปันผล</span>
+                              <span className="pf-mono pf-chip-pos">฿{fmt(ledger.filter(e => e.type === 'dividend').reduce((s, e) => s + e.amount, 0), 0)}</span>
+                            </div>
+                            <div className="pf-capital-row">
+                              <span style={{ color: 'var(--muted)' }}>รีบาลานซ์</span>
+                              <span className="pf-mono">฿{fmt(ledger.filter(e => e.type === 'rebalance').reduce((s, e) => s + e.amount, 0), 0)}</span>
+                            </div>
+                          </div>
+
                         </div>
                       </div>
                       <button className="pf-cash-manage-btn" onClick={() => setPanel('cashManage')}>
@@ -1901,9 +1927,6 @@ export default function PortfolioApp() {
               <button className="pf-icon-btn" onClick={closePanel} aria-label="ปิด"><X size={16} /></button>
             </div>
 
-            {/* ข้อ 4: ลบ ทุนเริ่มต้น และ เงินที่ลงทุนไป ออกจากหน้านี้แล้ว */}
-
-            {/* ข้อ 5: จัดรูปแบบปุ่ม 6 ปุ่มให้ดูสวยงาม เป็นกริด 3x2 */}
             <div className="pf-cash-actions-grid">
               <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('capital_add')}><PlusCircle size={14} /> เพิ่มทุน</button>
               <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('capital_reduce')}><MinusCircle size={14} /> ลดทุน</button>
@@ -1959,11 +1982,11 @@ export default function PortfolioApp() {
               </div>
             </div>
 
-            {/* ข้อ 6: เพิ่มช่องค้นหาประวัติการทำรายการทางด้านขวา */}
+            {/* ช่องค้นหาประวัติการทำรายการ */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '18px 0 8px', gap: '8px' }}>
               <div className="pf-section-label" style={{ margin: 0 }}>ประวัติการทำรายการ</div>
               <div style={{ position: 'relative', width: '150px' }}>
-                <Search size={13} style={{ position: 'absolute', left: '8px', top: '50% - 6px', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
+                <Search size={13} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
                 <input 
                   className="pf-input pf-mono" 
                   style={{ padding: '5px 8px 5px 26px', fontSize: '11.5px', borderRadius: '8px' }} 
