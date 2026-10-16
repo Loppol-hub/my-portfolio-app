@@ -910,22 +910,22 @@ export default function PortfolioApp() {
         .pf-issue-banner { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; background: rgba(252,165,165,0.12); border: 1px solid var(--neg); color: var(--text); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; font-size: 12.5px; line-height: 1.5; }
         .pf-loading { display: flex; align-items: center; justify-content: center; height: 60vh; color: var(--muted); }
         
-        /* Bottom Navigation Bar รูปแบบแคปซูลตามรูปตัวอย่าง ปุ่มทั้งหมดระดับเดียวกัน ปุ่ม active มีวงแหวนเรืองแสงครอบ */
+        /* Bottom Navigation Bar รูปแบบแคปซูลโค้งมนยาวตามรูปตัวอย่าง */
         .pf-nav-container {
           position: fixed;
           bottom: 16px;
           left: 50%;
           transform: translateX(-50%);
           width: 92%;
-          max-width: 440px;
+          max-width: 420px;
           z-index: 1000;
         }
         .pf-bottom-nav {
           position: relative;
-          background: linear-gradient(180deg, rgba(8, 20, 40, 0.9) 0%, rgba(3, 9, 22, 0.98) 100%);
+          background: linear-gradient(180deg, rgba(8, 20, 42, 0.92) 0%, rgba(3, 9, 22, 0.98) 100%);
           backdrop-filter: blur(20px);
           border: 1px solid rgba(56, 189, 248, 0.35);
-          border-radius: 40px;
+          border-radius: 50px;
           display: flex;
           justify-content: space-around;
           align-items: center;
@@ -941,20 +941,23 @@ export default function PortfolioApp() {
           align-items: center;
           justify-content: center;
           color: #64748b;
-          width: 48px;
-          height: 48px;
+          width: 44px;
+          height: 44px;
           border-radius: 50%;
-          transition: all 0.2s ease;
+          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .pf-nav-item:hover {
           color: #38bdf8;
         }
-        /* รูปแบบเมื่อปุ่มนั้นถูกเลือก (Active) ให้มีวงแหวนเรืองแสงและปุ่มนูนโค้งมนตามรูปตัวอย่าง */
+        /* ปุ่มที่เลือกอยู่ (Active) จะมีวงแหวนเรืองแสงและปุ่มนูนโค้งมนครอบไอคอน พร้อมขยายใหญ่ขึ้นเป๊ะตามรูปตัวอย่าง */
         .pf-nav-item.active {
-          background: radial-gradient(circle, rgba(56, 189, 248, 0.3) 0%, rgba(2, 132, 199, 0.5) 70%);
-          border: 2px solid #38bdf8;
-          color: #fff;
-          box-shadow: 0 0 20px rgba(56, 189, 248, 0.6), inset 0 2px 4px rgba(255, 255, 255, 0.6);
+          background: radial-gradient(circle at 30% 30%, #38bdf8 0%, #0284c7 70%, #0369a1 100%);
+          border: 2px solid rgba(255, 255, 255, 0.7);
+          color: #ffffff;
+          width: 54px;
+          height: 54px;
+          transform: translateY(-4px);
+          box-shadow: 0 0 25px rgba(56, 189, 248, 0.75), inset 0 3px 6px rgba(255, 255, 255, 0.7), inset 0 -4px 6px rgba(0, 0, 0, 0.6);
         }
 
         .pf-foreign-glow {
@@ -1667,7 +1670,7 @@ export default function PortfolioApp() {
         </>
       )}
 
-      {/* Bottom Navigation Bar รูปแบบตามรูปตัวอย่าง ปุ่มทั้งหมดระดับเดียวกัน ปุ่ม active มีวงแหวนเรืองแสงครอบ */}
+      {/* Bottom Navigation Bar รูปแบบแคปซูล ปุ่ม active ขยายใหญ่และมีวงแหวนเรืองแสงครอบเป๊ะตามรูปตัวอย่าง */}
       <div className="pf-nav-container">
         <div className="pf-bottom-nav">
           <button onClick={() => setActiveTab(1)} className={`pf-nav-item ${activeTab === 1 ? 'active' : ''}`} title="หุ้นไทย">
