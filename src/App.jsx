@@ -152,6 +152,15 @@ const INSTRUMENT_TYPES = [
 ];
 const INSTRUMENT_RANK = { stock: 0, dr: 1, etf: 2 };
 
+// ฟังก์ชันคำนวณโดเมนแกน Y แบบกระชับและปรับอัตโนมัติ (ข้อ 4)
+const getDynamicDomain = (currentVal, baseVal) => {
+  const refVal = currentVal || baseVal || 100000;
+  const margin = refVal * 0.2; // เผื่อช่วงบนล่าง 20% ให้ดูกระชับ
+  const min = Math.max(0, refVal - margin);
+  const max = refVal + margin;
+  return [Math.floor(min / 10000) * 10000, Math.ceil(max / 10000) * 10000];
+};
+
 export default function PortfolioApp() {
   const [activeTab, setActiveTab] = useState(3);
   const [holdings, setHoldings] = useState([]);
@@ -391,59 +400,41 @@ export default function PortfolioApp() {
     return dates.length ? dates[dates.length - 1] : null;
   }, [holdings]);
 
-  // ข้อ 3: ไม่สน history เก่าที่อาจจะคลาดเคลื่อน ให้ใช้ตัวเลขปัจจุบันของวันนี้เป็นจุดหลักอ้างอิงกราฟ
+  // ข้อ 1 & 2: สร้างข้อมูลกราฟเป็นเส้นตรงอิงจากค่าปัจจุบันของวันนี้เป๊ะๆ (ตัดประวัติเก่าทิ้ง)
   const todayKey = todayStr();
-  const normalizedHistory = useMemo(() => {
-    const baseHistory = history.filter(p => p.date !== todayKey);
-    return [...baseHistory, { date: todayKey, value: displayTotalValue }].sort((a, b) => a.date.localeCompare(b.date));
-  }, [history, todayKey, displayTotalValue]);
-
-  const filterHistoryByMode = (mode, year) => {
-    if (mode === 'year') {
-      return normalizedHistory.filter((p) => (p.date || '').slice(0, 4) === year);
-    }
-    return normalizedHistory;
-  };
+  const flatDateList = useMemo(() => {
+    const d = new Date();
+    const dPrev = new Date();
+    dPrev.setDate(d.getDate() - 1);
+    return [
+      { date: dPrev.toISOString().slice(0, 10) },
+      { date: todayKey }
+    ];
+  }, [todayKey]);
 
   const chartDataTotal = useMemo(() => {
-    const filtered = filterHistoryByMode(graphModeTotal, graphYearTotal);
-    return filtered.map((p) => ({ date: p.date, value: p.value === displayTotalValue ? displayTotalValue : p.value, principal: totalCapital }));
-  }, [normalizedHistory, graphModeTotal, graphYearTotal, totalCapital, displayTotalValue]);
+    return flatDateList.map((p) => ({ date: p.date, value: displayTotalValue, principal: totalCapital }));
+  }, [flatDateList, displayTotalValue, totalCapital]);
 
   const chartDataGainCard = useMemo(() => {
-    const filtered = filterHistoryByMode(graphModeGain, graphYearGain);
-    return filtered.map((p) => {
-      const val = p.value === displayTotalValue ? displayTotalValue : p.value;
-      const gain = val - totalInvestedCost;
-      return { date: p.date, gain: gain, cost: totalInvestedCost };
-    });
-  }, [normalizedHistory, graphModeGain, graphYearGain, totalInvestedCost, displayTotalValue]);
+    return flatDateList.map((p) => ({ date: p.date, gain: totalGain, cost: totalInvestedCost }));
+  }, [flatDateList, totalGain, totalInvestedCost]);
 
   const chartDataTh = useMemo(() => {
-    const filtered = filterHistoryByMode(graphModeTh, graphYearTh);
     const thHoldings = enriched.filter(h => h.type === 'th_stock');
     const thCost = thHoldings.reduce((s, h) => s + h.costValue, 0);
     const thVal = thHoldings.reduce((s, h) => s + h.marketValue, 0);
-    return filtered.map((p) => {
-      const ratio = totalInvestedValue > 0 ? thVal / totalInvestedValue : 0;
-      const val = (p.value === displayTotalValue ? displayTotalValue : p.value) * ratio;
-      const gain = val - thCost;
-      return { date: p.date, gain: gain, cost: thCost };
-    });
-  }, [normalizedHistory, graphModeTh, graphYearTh, enriched, totalInvestedValue, displayTotalValue]);
+    const thGain = thVal - thCost;
+    return flatDateList.map((p) => ({ date: p.date, gain: thGain, cost: thCost }));
+  }, [flatDateList, enriched]);
 
   const chartDataUs = useMemo(() => {
-    const filtered = filterHistoryByMode(graphModeUs, graphYearUs);
     const usHoldings = enriched.filter(h => h.type === 'foreign_stock');
     const usCost = usHoldings.reduce((s, h) => s + h.costValue, 0);
     const usVal = usHoldings.reduce((s, h) => s + h.marketValue, 0);
-    return filtered.map((p) => {
-      const ratio = totalInvestedValue > 0 ? usVal / totalInvestedValue : 0;
-      const val = (p.value === displayTotalValue ? displayTotalValue : p.value) * ratio;
-      const gain = val - usCost;
-      return { date: p.date, gain: gain, cost: usCost };
-    });
-  }, [normalizedHistory, graphModeUs, graphYearUs, enriched, totalInvestedValue, displayTotalValue]);
+    const usGain = usVal - usCost;
+    return flatDateList.map((p) => ({ date: p.date, gain: usGain, cost: usCost }));
+  }, [flatDateList, enriched]);
 
   const openAdd = () => { setForm(emptyForm); setEditingId(null); setFormError(''); setPanel('form'); };
   const openEdit = (h) => {
@@ -1120,7 +1111,7 @@ export default function PortfolioApp() {
                           <ResponsiveContainer width="100%" height="100%">
                             <LineChart data={chartDataTh}>
                               <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickFormatter={(val) => thaiDate(val)} />
-                              <YAxis stroke="#94a3b8" fontSize={10} domain={['auto', 'auto']} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
+                              <YAxis stroke="#94a3b8" fontSize={10} domain={getDynamicDomain(typeGain, typeCost)} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
                               <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'gain' ? 'กำไร/ขาดทุน' : 'ต้นทุน']} labelFormatter={(l) => thaiDate(l)} />
                               <Line type="monotone" dataKey="gain" stroke="#C7A344" strokeWidth={2} dot={false} name="gain" isAnimationActive={false} />
                               <Line type="monotone" dataKey="cost" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 3" dot={false} name="cost" isAnimationActive={false} />
@@ -1274,9 +1265,10 @@ export default function PortfolioApp() {
                           <ResponsiveContainer width="100%" height="100%">
                             <LineChart data={chartDataUs}>
                               <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickFormatter={(val) => thaiDate(val)} />
-                              <YAxis stroke="#94a3b8" fontSize={10} domain={['auto', 'auto']} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
+                              <YAxis stroke="#94a3b8" fontSize={10} domain={getDynamicDomain(typeGain, typeCost)} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
                               <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'gain' ? 'กำไร/ขาดทุน' : 'ต้นทุน']} labelFormatter={(l) => thaiDate(l)} />
-                              <Line type="monotone" dataKey="gain" stroke="#6E8CB0" strokeWidth={2} dot={false} name="gain" isAnimationActive={false} />
+                              {/* ข้อ 3: เปลี่ยนสีเส้นตรงของหุ้นนอกเป็นสีทอง และเส้นปะคงเดิม */}
+                              <Line type="monotone" dataKey="gain" stroke="#fbbf24" strokeWidth={2} dot={false} name="gain" isAnimationActive={false} />
                               <Line type="monotone" dataKey="cost" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 3" dot={false} name="cost" isAnimationActive={false} />
                             </LineChart>
                           </ResponsiveContainer>
@@ -1369,7 +1361,7 @@ export default function PortfolioApp() {
             <div>
               <div className="pf-section-label" style={{ marginTop: 0 }}>พอร์ตรวม (Portfolio Overview)</div>
               
-              {/* การ์ดที่ 1: มูลค่าพอร์ตรวมทั้งหมด (พร้อมเปอร์เซ็นต์และยอดกำไรด้านล่างตามปกติ) */}
+              {/* การ์ดที่ 1: มูลค่าพอร์ตรวมทั้งหมด */}
               <div className="pf-hero" style={{ border: '2px solid rgba(251, 191, 36, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #1f2937 100%)' }}>
                 <div className="pf-hero-label">มูลค่าพอร์ตรวมทั้งหมด</div>
                 <div className="pf-hero-value pf-mono" style={{ fontSize: '44px' }}>฿{fmt(displayTotalValue)}</div>
@@ -1402,7 +1394,8 @@ export default function PortfolioApp() {
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={chartDataTotal}>
                         <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickFormatter={(val) => thaiDate(val)} />
-                        <YAxis stroke="#94a3b8" fontSize={10} domain={['auto', 'auto']} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
+                        {/* ข้อ 4: ใช้ฟังก์ชัน domain แบบกระชับและปรับอัตโนมัติ */}
+                        <YAxis stroke="#94a3b8" fontSize={10} domain={getDynamicDomain(displayTotalValue, totalCapital)} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
                         <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'value' ? 'มูลค่าพอร์ต' : 'เงินต้น']} labelFormatter={(l) => thaiDate(l)} />
                         <Line type="monotone" dataKey="value" stroke="#fbbf24" strokeWidth={2.5} dot={false} name="value" isAnimationActive={false} />
                         <Line type="monotone" dataKey="principal" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 3" dot={false} name="principal" isAnimationActive={false} />
@@ -1416,7 +1409,7 @@ export default function PortfolioApp() {
                 </div>
               </div>
 
-              {/* การ์ดที่ 2: กำไร/ขาดทุนรวมทุกสินทรัพย์ (ตัวเลขสีขาว, ข้อความต่อท้าย "ต้นทุนที่ลงทุนไป") */}
+              {/* การ์ดที่ 2: กำไร/ขาดทุนรวมทุกสินทรัพย์ */}
               <div className="pf-hero" style={{ border: '2px solid rgba(52, 211, 153, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #172a3a 100%)' }}>
                 <div className="pf-hero-label">กำไร/ขาดทุนรวมทุกสินทรัพย์</div>
                 <div className="pf-hero-value pf-mono" style={{ fontSize: '44px', color: '#ffffff' }}>
@@ -1447,7 +1440,7 @@ export default function PortfolioApp() {
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={chartDataGainCard}>
                         <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickFormatter={(val) => thaiDate(val)} />
-                        <YAxis stroke="#94a3b8" fontSize={10} domain={['auto', 'auto']} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
+                        <YAxis stroke="#94a3b8" fontSize={10} domain={getDynamicDomain(totalGain, totalInvestedCost)} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
                         <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'gain' ? 'กำไร/ขาดทุน' : 'ต้นทุน']} labelFormatter={(l) => thaiDate(l)} />
                         <Line type="monotone" dataKey="gain" stroke="#34d399" strokeWidth={2.5} dot={false} name="gain" isAnimationActive={false} />
                         <Line type="monotone" dataKey="cost" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 3" dot={false} name="cost" isAnimationActive={false} />
