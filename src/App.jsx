@@ -4,7 +4,7 @@ import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'rec
 
 const ASSET_TYPES = [
   { key: 'th_stock', label: 'หุ้นไทย', color: '#C7A344', market: 'th', defaultCurrency: 'THB' },
-  { key: 'foreign_stock', label: 'หุ้นต่างประเทศ', color: '#6E8CB0', market: 'us', defaultCurrency: 'USD' },
+  { key: 'foreign_stock', label: 'หุ้นต่างประเทศ', color: '#38bdf8', market: 'us', defaultCurrency: 'USD' }, // ปรับสีให้ฟ้าเรืองแสงเบาๆ ตามข้อ 2
   { key: 'crypto', label: 'คริปโต', color: '#967ACC', market: 'crypto', defaultCurrency: 'USD' },
   { key: 'gold', label: 'ทองคำ', color: '#D9823F', market: 'gold', defaultCurrency: 'USD' },
   { key: 'fund', label: 'กองทุน', color: '#C17B86', market: null, defaultCurrency: 'THB' },
@@ -158,6 +158,22 @@ const getDynamicDomain = (currentVal, baseVal) => {
   const min = Math.max(0, refVal - margin);
   const max = refVal + margin;
   return [Math.floor(min / 10000) * 10000, Math.ceil(max / 10000) * 10000];
+};
+
+// สร้างข้อมูล 12 เดือนอัตโนมัติสำหรับแกนนอน (ข้อ 1)
+const getMonthlyAxisData = () => {
+  const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+  const now = new Date();
+  const currentMonthIdx = now.getMonth();
+  const currentYearShort = String(now.getFullYear()).slice(-2);
+  
+  // เรียงลำดับ 12 เดือนล่าสุดจบที่เดือนปัจจุบัน
+  const result = [];
+  for (let i = 0; i < 12; i++) {
+    const idx = (currentMonthIdx - 11 + i + 12) % 12;
+    result.push({ date: `${months[idx]} ${currentYearShort}` });
+  }
+  return result;
 };
 
 export default function PortfolioApp() {
@@ -399,42 +415,31 @@ export default function PortfolioApp() {
     return dates.length ? dates[dates.length - 1] : null;
   }, [holdings]);
 
-  const todayKey = todayStr();
-  const flatDateList = useMemo(() => {
-    const d = new Date();
-    const dPrev = new Date();
-    dPrev.setDate(d.getDate() - 1);
-    return [
-      { date: dPrev.toISOString().slice(0, 10) },
-      { date: todayKey }
-    ];
-  }, [todayKey]);
+  // ข้อ 1: แกนนอนแสดง 12 เดือนอัตโนมัติ
+  const monthlyList = useMemo(() => getMonthlyAxisData(), []);
 
   const chartDataTotal = useMemo(() => {
-    return flatDateList.map((p) => ({ date: p.date, value: displayTotalValue, principal: totalCapital }));
-  }, [flatDateList, displayTotalValue, totalCapital]);
+    return monthlyList.map((p) => ({ date: p.date, value: displayTotalValue, principal: totalCapital }));
+  }, [monthlyList, displayTotalValue, totalCapital]);
 
-  // ข้อ 1: กราฟกำไร/ขาดทุน ใช้ค่า ต้นทุน + กำไร (เช่น 37835 + 10709.32 = 48544.32) เป็นค่าเส้นหลัก
   const chartDataGainCard = useMemo(() => {
     const currentValForGainChart = totalInvestedCost + totalGain;
-    return flatDateList.map((p) => ({ date: p.date, gain: currentValForGainChart, cost: totalInvestedCost }));
-  }, [flatDateList, totalInvestedCost, totalGain]);
+    return monthlyList.map((p) => ({ date: p.date, gain: currentValForGainChart, cost: totalInvestedCost }));
+  }, [monthlyList, totalInvestedCost, totalGain]);
 
-  // กราฟหุ้นไทย: ต้นทุน + กำไร
   const chartDataTh = useMemo(() => {
     const thHoldings = enriched.filter(h => h.type === 'th_stock');
     const thCost = thHoldings.reduce((s, h) => s + h.costValue, 0);
     const thVal = thHoldings.reduce((s, h) => s + h.marketValue, 0);
-    return flatDateList.map((p) => ({ date: p.date, gain: thVal, cost: thCost }));
-  }, [flatDateList, enriched]);
+    return monthlyList.map((p) => ({ date: p.date, gain: thVal, cost: thCost }));
+  }, [monthlyList, enriched]);
 
-  // กราฟหุ้นต่างประเทศ: ต้นทุน + กำไร
   const chartDataUs = useMemo(() => {
     const usHoldings = enriched.filter(h => h.type === 'foreign_stock');
     const usCost = usHoldings.reduce((s, h) => s + h.costValue, 0);
     const usVal = usHoldings.reduce((s, h) => s + h.marketValue, 0);
-    return flatDateList.map((p) => ({ date: p.date, gain: usVal, cost: usCost }));
-  }, [flatDateList, enriched]);
+    return monthlyList.map((p) => ({ date: p.date, gain: usVal, cost: usCost }));
+  }, [monthlyList, enriched]);
 
   const openAdd = () => { setForm(emptyForm); setEditingId(null); setFormError(''); setPanel('form'); };
   const openEdit = (h) => {
@@ -778,12 +783,28 @@ export default function PortfolioApp() {
     <div className="pf-root">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap');
+        
+        /* ข้อ 9: พื้นหลังอวกาศ มีหมู่ดาวและกาแลกซี่เรืองแสง */
         .pf-root {
-          --bg: #070913; --surface: #111827; --surface-alt: #1f2937; --divider: rgba(255,255,255,0.08);
+          --bg: #030712; 
+          --surface: rgba(17, 24, 39, 0.75); 
+          --surface-alt: rgba(31, 41, 55, 0.85); 
+          --divider: rgba(56, 189, 248, 0.15);
           --text: #EDF1F5; --muted: #94a3b8; --gold: #fbbf24;
-          --pos: #34d399; --neg: #fca5a5;
-          background: var(--bg); color: var(--text); min-height: 100vh;
-          font-family: 'Inter', sans-serif; padding: 16px 16px 90px;
+          --pos: #34d399; --neg: #fca5a5; --neon-blue: #38bdf8;
+          
+          background-color: #02040a;
+          background-image: 
+            radial-gradient(circle at 20% 30%, rgba(56, 189, 248, 0.08) 0%, transparent 40%),
+            radial-gradient(circle at 80% 70%, rgba(147, 51, 234, 0.07) 0%, transparent 40%),
+            radial-gradient(white 1px, transparent 0),
+            radial-gradient(white 1.5px, transparent 0);
+          background-size: 100% 100%, 100% 100%, 50px 50px, 120px 120px;
+          background-position: 0 0, 0 0, 25px 25px, 60px 60px;
+          background-attachment: fixed;
+
+          color: var(--text); min-height: 100vh;
+          font-family: 'Inter', sans-serif; padding: 16px 16px 110px;
           -webkit-font-smoothing: antialiased;
         }
         .pf-root * { box-sizing: border-box; }
@@ -792,7 +813,7 @@ export default function PortfolioApp() {
         .pf-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
         .pf-icon-btn { background: var(--surface); border: 1px solid var(--divider); color: var(--text); border-radius: 10px; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
         .pf-icon-btn:hover { background: var(--surface-alt); }
-        .pf-hero { background: var(--surface); border: 1px solid var(--divider); border-radius: 16px; padding: 22px 20px; margin-bottom: 16px; }
+        .pf-hero { background: var(--surface); backdrop-filter: blur(12px); border: 1px solid var(--divider); border-radius: 16px; padding: 22px 20px; margin-bottom: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
         .pf-hero-label { color: var(--muted); font-size: 12px; letter-spacing: 0.4px; margin-bottom: 6px; }
         .pf-hero-value { font-size: 38px; font-weight: 800; line-height: 1.1; letter-spacing: -0.3px; }
         .pf-hero-sub { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 13px; flex-wrap: wrap; }
@@ -804,7 +825,8 @@ export default function PortfolioApp() {
         .pf-chip-pos { color: var(--pos); } .pf-chip-neg { color: var(--neg); }
         .pf-spark { height: 160px; margin-top: 14px; }
         .pf-updated { color: var(--muted); font-size: 12px; }
-        .pf-capital-row { display: flex; align-items: center; justify-content: space-between; font-size: 13.5px; padding: 6px 0; }
+        .pf-capital-row { display: flex; align-items: center; justify-content: space-between; font-size: 13px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+        .pf-capital-row:last-child { border-bottom: none; }
         .pf-cash-manage-btn { display: inline-flex; align-items: center; gap: 8px; background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 20px; padding: 6px 14px 6px 6px; font-size: 12.5px; font-weight: 600; cursor: pointer; margin-top: 16px; }
         .pf-cash-manage-icon { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: var(--gold); color: #1A1400; flex-shrink: 0; }
         .pf-year-picker { display: flex; gap: 8px; margin-bottom: 12px; overflow-x: auto; }
@@ -828,7 +850,7 @@ export default function PortfolioApp() {
         .pf-pie3d-label { font-family: 'Inter', sans-serif; font-weight: 800; font-size: 15px; fill: #fff; paint-order: stroke; stroke: rgba(0,0,0,0.4); stroke-width: 3px; stroke-linejoin: round; }
         .pf-pie-empty { border-radius: 50%; border: 1px dashed var(--divider); flex-shrink: 0; }
         .pf-legend-col { flex-direction: column; gap: 8px; flex: 1; min-width: 170px; }
-        .pf-type-section { background: var(--surface); border: 1px solid var(--divider); border-radius: 16px; padding: 18px 16px; margin-bottom: 20px; }
+        .pf-type-section { background: var(--surface); backdrop-filter: blur(12px); border: 1px solid var(--divider); border-radius: 16px; padding: 18px 16px; margin-bottom: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
         .pf-type-section-head { display: flex; align-items: center; gap: 18px; }
         .pf-pie-tap { display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; }
         .pf-pie-tap-hint { font-size: 10px; color: var(--muted); text-align: center; }
@@ -862,14 +884,14 @@ export default function PortfolioApp() {
         .pf-row-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 10px; font-size: 12.5px; color: var(--muted); }
         .pf-row-meta b { color: var(--text); font-weight: 500; }
         .pf-ledger-amount { font-weight: 700; }
-        .pf-fab { position: fixed; right: 20px; bottom: 85px; display: flex; gap: 10px; z-index: 900; }
+        .pf-fab { position: fixed; right: 20px; bottom: 95px; display: flex; gap: 10px; z-index: 900; }
         .pf-btn { border-radius: 12px; padding: 11px 16px; font-size: 14px; font-weight: 600; cursor: pointer; border: 1px solid var(--divider); display: flex; align-items: center; gap: 6px; }
         .pf-btn-primary { background: var(--gold); color: #1A1400; border: none; }
         .pf-btn-ghost { background: var(--surface); color: var(--text); }
-        .pf-overlay { position: fixed; inset: 0; background: rgba(6,10,16,0.6); display: flex; justify-content: flex-end; z-index: 1200; }
-        .pf-modal-overlay { position: fixed; inset: 0; background: rgba(6,10,16,0.65); display: flex; align-items: center; justify-content: center; z-index: 1300; padding: 20px; }
-        .pf-confirm-modal { background: var(--surface); border: 1px solid var(--divider); border-radius: 16px; padding: 20px; width: 100%; max-width: 340px; }
-        .pf-panel { background: var(--bg); border-left: 1px solid var(--divider); width: 100%; max-width: 400px; height: 100%; overflow-y: auto; padding: 20px; animation: pf-slide 0.18s ease-out; }
+        .pf-overlay { position: fixed; inset: 0; background: rgba(3,7,18,0.7); backdrop-filter: blur(5px); display: flex; justify-content: flex-end; z-index: 1200; }
+        .pf-modal-overlay { position: fixed; inset: 0; background: rgba(3,7,18,0.75); backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center; z-index: 1300; padding: 20px; }
+        .pf-confirm-modal { background: var(--surface); border: 1px solid var(--divider); border-radius: 16px; padding: 20px; width: 100%; max-width: 340px; box-shadow: 0 10px 40px rgba(0,0,0,0.6); }
+        .pf-panel { background: #070d1a; border-left: 1px solid var(--divider); width: 100%; max-width: 400px; height: 100%; overflow-y: auto; padding: 20px; animation: pf-slide 0.18s ease-out; box-shadow: -10px 0 40px rgba(0,0,0,0.8); }
         @keyframes pf-slide { from { transform: translateX(24px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         .pf-panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
         .pf-panel-title { font-family: 'Fraunces', serif; font-size: 19px; font-weight: 600; }
@@ -888,61 +910,85 @@ export default function PortfolioApp() {
         .pf-update-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--divider); }
         .pf-update-name { font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .pf-update-input { width: 110px; }
-        .pf-toast { position: fixed; left: 50%; bottom: 85px; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--divider); color: var(--text); padding: 10px 18px; border-radius: 30px; font-size: 13.5px; z-index: 1400; }
+        .pf-toast { position: fixed; left: 50%; bottom: 95px; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--divider); color: var(--text); padding: 10px 18px; border-radius: 30px; font-size: 13.5px; z-index: 1400; box-shadow: 0 5px 20px rgba(0,0,0,0.5); }
         .pf-confirm { background: var(--surface); border: 1px solid var(--divider); border-radius: 14px; padding: 16px; margin-bottom: 16px; }
         .pf-issue-banner { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; background: rgba(252,165,165,0.12); border: 1px solid var(--neg); color: var(--text); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; font-size: 12.5px; line-height: 1.5; }
         .pf-loading { display: flex; align-items: center; justify-content: center; height: 60vh; color: var(--muted); }
         
+        /* ข้อ 3: Bottom Navigation Bar ธีมห้องควบคุมยานอวกาศ (Sci-Fi Cockpit Deck) */
         .pf-bottom-nav {
           position: fixed;
           bottom: 0;
           left: 0;
           width: 100%;
-          background-color: #0b0f19;
-          border-top: 1px solid rgba(255, 255, 255, 0.08);
+          background: rgba(3, 7, 18, 0.9);
+          backdrop-filter: blur(16px);
+          border-top: 1px solid rgba(56, 189, 248, 0.25);
           display: flex;
           justify-content: space-around;
           align-items: center;
-          padding: 8px 0;
+          padding: 8px 12px 14px;
           z-index: 1000;
+          box-shadow: 0 -10px 30px rgba(56, 189, 248, 0.1);
         }
         .pf-nav-item {
-          background: none;
-          border: none;
+          background: rgba(17, 24, 39, 0.6);
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 12px;
           cursor: pointer;
-          font-size: 22px;
+          font-size: 20px;
           display: flex;
           flex-direction: column;
           align-items: center;
           color: #94a3b8;
-          padding: 4px;
+          padding: 6px 12px;
+          transition: all 0.2s ease;
+        }
+        .pf-nav-item:hover {
+          border-color: rgba(56, 189, 248, 0.4);
+          color: #38bdf8;
         }
         .pf-nav-item.active {
-          color: #fbbf24;
+          background: rgba(56, 189, 248, 0.12);
+          border-color: #38bdf8;
+          color: #38bdf8;
+          box-shadow: 0 0 15px rgba(56, 189, 248, 0.3);
         }
         .pf-nav-label {
-          font-size: 10px;
-          margin-top: 4px;
+          font-size: 9.5px;
+          margin-top: 3px;
           font-family: 'Inter', sans-serif;
+          letter-spacing: 0.3px;
         }
         .pf-nav-center {
-          background: #1f2937;
-          border: none;
-          color: #fff;
+          background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+          border: 1px solid rgba(251, 191, 36, 0.4);
+          color: #fbbf24;
           cursor: pointer;
-          font-size: 24px;
+          font-size: 22px;
           width: 52px;
           height: 52px;
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 4px 12px rgba(251, 191, 36, 0.3);
-          margin-top: -18px;
+          box-shadow: 0 0 20px rgba(251, 191, 36, 0.25);
+          margin-top: -22px;
+          transition: all 0.2s ease;
+        }
+        .pf-nav-center:hover {
+          box-shadow: 0 0 25px rgba(251, 191, 36, 0.5);
+          border-color: #fbbf24;
         }
         .pf-nav-center.active {
           background: #fbbf24;
           color: #000;
+          box-shadow: 0 0 30px rgba(251, 191, 36, 0.6);
+        }
+
+        /* ข้อ 2: สัญลักษณ์หุ้นนอกเรืองแสงสีฟ้าอ่อนๆ แบบอวกาศ */
+        .pf-foreign-glow {
+          filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.6));
         }
 
         .moon-float {
@@ -970,7 +1016,7 @@ export default function PortfolioApp() {
         }
 
         @media (min-width: 640px) {
-          .pf-root { padding: 32px 28px 90px; max-width: 720px; margin: 0 auto; }
+          .pf-root { padding: 32px 28px 110px; max-width: 720px; margin: 0 auto; }
         }
       `}</style>
 
@@ -995,7 +1041,7 @@ export default function PortfolioApp() {
         const onPointerUp = (u) => { el.releasePointerCapture(u.pointerId); window.removeEventListener('pointermove', onPointerMove); window.removeEventListener('pointerup', onPointerUp); };
         window.addEventListener('pointermove', onPointerMove); window.addEventListener('pointerup', onPointerUp);
       }} onClick={(e) => { e.stopPropagation(); showToast('สวัสดีจ้า 🌙 ฉันคือผู้ช่วย Moon Shot'); }}>
-        <img src={new URL('../moon.png', import.meta.url).href} alt="Moon Assistant" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 5px 15px rgba(0,0,0,0.5))' }} />
+        <img src={new URL('../moon.png', import.meta.url).href} alt="Moon Assistant" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 5px 15px rgba(56,189,248,0.4))' }} />
       </div>
 
       <input ref={fileInputRef} type="file" accept="application/json,.json" style={{ display: 'none' }} onChange={handleImportFile} />
@@ -1096,7 +1142,7 @@ export default function PortfolioApp() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                           <span style={{ fontSize: '12px', color: 'var(--muted)' }}>กราฟกำไร/ขาดทุน (หุ้นไทย)</span>
                           <div style={{ display: 'flex', gap: '4px' }}>
-                            <button className={graphModeTh === 'all' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeTh('all')} style={{ padding: '2px 8px', fontSize: '11px' }}>ตั้งแต่เริ่มต้น</button>
+                            <button className={graphModeTh === 'all' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeTh('all')} style={{ padding: '2px 8px', fontSize: '11px' }}>12 เดือน</button>
                             <button className={graphModeTh === 'year' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeTh('year')} style={{ padding: '2px 8px', fontSize: '11px' }}>รายปี</button>
                           </div>
                         </div>
@@ -1110,9 +1156,9 @@ export default function PortfolioApp() {
                         <div className="pf-spark">
                           <ResponsiveContainer width="100%" height="100%">
                             <LineChart data={chartDataTh}>
-                              <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickFormatter={(val) => thaiDate(val)} />
+                              <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} />
                               <YAxis stroke="#94a3b8" fontSize={10} domain={getDynamicDomain(t.value, typeCost)} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
-                              <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'gain' ? 'มูลค่า (ต้นทุน+กำไร)' : 'ต้นทุน']} labelFormatter={(l) => thaiDate(l)} />
+                              <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'gain' ? 'มูลค่า (ต้นทุน+กำไร)' : 'ต้นทุน']} />
                               <Line type="monotone" dataKey="gain" stroke="#C7A344" strokeWidth={2} dot={false} name="gain" isAnimationActive={false} />
                               <Line type="monotone" dataKey="cost" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 3" dot={false} name="cost" isAnimationActive={false} />
                             </LineChart>
@@ -1250,7 +1296,7 @@ export default function PortfolioApp() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                           <span style={{ fontSize: '12px', color: 'var(--muted)' }}>กราฟกำไร/ขาดทุน (หุ้นต่างประเทศ)</span>
                           <div style={{ display: 'flex', gap: '4px' }}>
-                            <button className={graphModeUs === 'all' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeUs('all')} style={{ padding: '2px 8px', fontSize: '11px' }}>ตั้งแต่เริ่มต้น</button>
+                            <button className={graphModeUs === 'all' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeUs('all')} style={{ padding: '2px 8px', fontSize: '11px' }}>12 เดือน</button>
                             <button className={graphModeUs === 'year' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeUs('year')} style={{ padding: '2px 8px', fontSize: '11px' }}>รายปี</button>
                           </div>
                         </div>
@@ -1264,10 +1310,10 @@ export default function PortfolioApp() {
                         <div className="pf-spark">
                           <ResponsiveContainer width="100%" height="100%">
                             <LineChart data={chartDataUs}>
-                              <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickFormatter={(val) => thaiDate(val)} />
+                              <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} />
                               <YAxis stroke="#94a3b8" fontSize={10} domain={getDynamicDomain(t.value, typeCost)} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
-                              <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'gain' ? 'มูลค่า (ต้นทุน+กำไร)' : 'ต้นทุน']} labelFormatter={(l) => thaiDate(l)} />
-                              <Line type="monotone" dataKey="gain" stroke="#fbbf24" strokeWidth={2} dot={false} name="gain" isAnimationActive={false} />
+                              <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'gain' ? 'มูลค่า (ต้นทุน+กำไร)' : 'ต้นทุน']} />
+                              <Line type="monotone" dataKey="gain" stroke="#38bdf8" strokeWidth={2} dot={false} name="gain" isAnimationActive={false} />
                               <Line type="monotone" dataKey="cost" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 3" dot={false} name="cost" isAnimationActive={false} />
                             </LineChart>
                           </ResponsiveContainer>
@@ -1280,7 +1326,7 @@ export default function PortfolioApp() {
                           <div className="pf-pie-tap-hint">{viewMode === 'industry' ? 'แตะดูรายตัว' : 'แตะดูอุตสาหกรรม'}</div>
                         </div>
                         <div className="pf-type-section-info">
-                          <div className="pf-type-section-title"><span className="pf-dot" style={{ background: t.color }} />{t.label}</div>
+                          <div className="pf-type-section-title"><span className="pf-dot pf-foreign-glow" style={{ background: t.color }} />{t.label}</div>
                           <div className="pf-type-section-value pf-mono">฿{fmt(t.value, 0)}</div>
                           {typeCost > 0 && <div className="pf-type-section-cost pf-mono">ต้นทุนรวม ฿{fmt(typeCost, 0)}</div>}
                           {typeCost > 0 && (
@@ -1300,7 +1346,7 @@ export default function PortfolioApp() {
                                 <span className="pf-dot" style={{ background: item.color }} />
                                 <span>{item.name}</span>
                               </div>
-                              <span className="pf-mono" style={{ color: 'var(--gold)', fontWeight: '600' }}>{fmt(itemPct, 1)}%</span>
+                              <span className="pf-mono" style={{ color: 'var(--neon-blue)', fontWeight: '600' }}>{fmt(itemPct, 1)}%</span>
                             </div>
                           );
                         })}
@@ -1325,7 +1371,7 @@ export default function PortfolioApp() {
                                   <span className="pf-dot" style={{ background: colorById[h.id] }} />
                                   <span className="pf-row-name-text">
                                     {h.name} 
-                                    {h.instrumentType === 'dr' && <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.1)', padding: '1px 6px', borderRadius: '4px', marginLeft: '6px', color: '#fbbf24' }}>DR</span>}
+                                    {h.instrumentType === 'dr' && <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.1)', padding: '1px 6px', borderRadius: '4px', marginLeft: '6px', color: '#38bdf8' }}>DR</span>}
                                     {h.instrumentType === 'etf' && <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.1)', padding: '1px 6px', borderRadius: '4px', marginLeft: '6px', color: '#6E8CB0' }}>ETF</span>}
                                   </span>
                                 </div>
@@ -1378,7 +1424,7 @@ export default function PortfolioApp() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                     <span style={{ fontSize: '12px', color: 'var(--muted)' }}>มูลค่าสินทรัพย์เทียบกับเงินต้น</span>
                     <div style={{ display: 'flex', gap: '4px' }}>
-                      <button className={graphModeTotal === 'all' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeTotal('all')} style={{ padding: '2px 8px', fontSize: '11px' }}>ตั้งแต่เริ่มต้น</button>
+                      <button className={graphModeTotal === 'all' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeTotal('all')} style={{ padding: '2px 8px', fontSize: '11px' }}>12 เดือน</button>
                       <button className={graphModeTotal === 'year' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeTotal('year')} style={{ padding: '2px 8px', fontSize: '11px' }}>รายปี</button>
                     </div>
                   </div>
@@ -1392,9 +1438,9 @@ export default function PortfolioApp() {
                   <div className="pf-spark">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={chartDataTotal}>
-                        <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickFormatter={(val) => thaiDate(val)} />
+                        <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} />
                         <YAxis stroke="#94a3b8" fontSize={10} domain={getDynamicDomain(displayTotalValue, totalCapital)} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
-                        <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'value' ? 'มูลค่าพอร์ต' : 'เงินต้น']} labelFormatter={(l) => thaiDate(l)} />
+                        <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'value' ? 'มูลค่าพอร์ต' : 'เงินต้น']} />
                         <Line type="monotone" dataKey="value" stroke="#fbbf24" strokeWidth={2.5} dot={false} name="value" isAnimationActive={false} />
                         <Line type="monotone" dataKey="principal" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 3" dot={false} name="principal" isAnimationActive={false} />
                       </LineChart>
@@ -1407,7 +1453,7 @@ export default function PortfolioApp() {
                 </div>
               </div>
 
-              {/* ข้อ 2: การ์ดกำไร/ขาดทุนรวม (เอา ต้นทุน+กำไร ขึ้นไปแสดงด้านบน, เอาตัวเลขกำไรลงมาไว้คู่เปอร์เซ็นต์ด้านล่าง) */}
+              {/* การ์ดที่ 2: กำไร/ขาดทุนรวมทุกสินทรัพย์ */}
               <div className="pf-hero" style={{ border: '2px solid rgba(52, 211, 153, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #172a3a 100%)' }}>
                 <div className="pf-hero-label">กำไร/ขาดทุนรวมทุกสินทรัพย์</div>
                 <div className="pf-hero-value pf-mono" style={{ fontSize: '44px', color: '#ffffff' }}>
@@ -1423,7 +1469,7 @@ export default function PortfolioApp() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                     <span style={{ fontSize: '12px', color: 'var(--muted)' }}>กราฟกำไร/ขาดทุน เทียบกับต้นทุน</span>
                     <div style={{ display: 'flex', gap: '4px' }}>
-                      <button className={graphModeGain === 'all' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeGain('all')} style={{ padding: '2px 8px', fontSize: '11px' }}>ตั้งแต่เริ่มต้น</button>
+                      <button className={graphModeGain === 'all' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeGain('all')} style={{ padding: '2px 8px', fontSize: '11px' }}>12 เดือน</button>
                       <button className={graphModeGain === 'year' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeGain('year')} style={{ padding: '2px 8px', fontSize: '11px' }}>รายปี</button>
                     </div>
                   </div>
@@ -1437,9 +1483,9 @@ export default function PortfolioApp() {
                   <div className="pf-spark">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={chartDataGainCard}>
-                        <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickFormatter={(val) => thaiDate(val)} />
+                        <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} />
                         <YAxis stroke="#94a3b8" fontSize={10} domain={getDynamicDomain(totalInvestedCost + totalGain, totalInvestedCost)} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
-                        <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'gain' ? 'มูลค่า (ต้นทุน+กำไร)' : 'ต้นทุน']} labelFormatter={(l) => thaiDate(l)} />
+                        <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'gain' ? 'มูลค่า (ต้นทุน+กำไร)' : 'ต้นทุน']} />
                         <Line type="monotone" dataKey="gain" stroke="#34d399" strokeWidth={2.5} dot={false} name="gain" isAnimationActive={false} />
                         <Line type="monotone" dataKey="cost" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 3" dot={false} name="cost" isAnimationActive={false} />
                       </LineChart>
@@ -1482,11 +1528,43 @@ export default function PortfolioApp() {
                         <div className="pf-type-section-info" style={{ flex: 1 }}>
                           <div className="pf-type-section-title"><span className="pf-dot" style={{ background: '#7C8B9E' }} />เงินสด / สภาพคล่อง</div>
                           <div className="pf-type-section-value pf-mono">฿{fmt(computedCash, 0)}</div>
+
+                          {/* ข้อ 4, 5, 6, 7: ย้ายและจัดเรียงรายการใต้เงินสดตามลำดับเป๊ะๆ */}
+                          <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                            <div className="pf-capital-row">
+                              <span style={{ color: 'var(--muted)' }}>ทุนเริ่มต้น</span>
+                              <span className="pf-mono">฿{fmt(initialCapital, 0)}</span>
+                            </div>
+                            <div className="pf-capital-row">
+                              <span style={{ color: 'var(--muted)' }}>เงินที่ลงทุนไป</span>
+                              <span className="pf-mono">฿{fmt(totalInvestedCost, 0)}</span>
+                            </div>
+                            <div className="pf-capital-row">
+                              <span style={{ color: 'var(--muted)' }}>กำไร / ขาดทุน</span>
+                              <span className={`pf-mono ${totalGain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
+                                {totalGain >= 0 ? '+' : ''}฿{fmt(totalGain, 0)}
+                              </span>
+                            </div>
+                            <div className="pf-capital-row">
+                              <span style={{ color: 'var(--muted)' }}>เพิ่มทุน / ลดทุน</span>
+                              <span className="pf-mono">฿{fmt(capitalAdjTotal, 0)}</span>
+                            </div>
+                            <div className="pf-capital-row">
+                              <span style={{ color: 'var(--muted)' }}>ปันผล</span>
+                              <span className="pf-mono pf-chip-pos">฿{fmt(ledger.filter(e => e.type === 'dividend').reduce((s, e) => s + e.amount, 0), 0)}</span>
+                            </div>
+                            <div className="pf-capital-row">
+                              <span style={{ color: 'var(--muted)' }}>รีบาลานซ์</span>
+                              <span className="pf-mono">฿{fmt(ledger.filter(e => e.type === 'rebalance').reduce((s, e) => s + e.amount, 0), 0)}</span>
+                            </div>
+                          </div>
+
                         </div>
                       </div>
+                      {/* ข้อ 8: ตัดคำว่า ดู ออก */}
                       <button className="pf-cash-manage-btn" onClick={() => setPanel('cashManage')}>
                         <span className="pf-cash-manage-icon"><Wallet size={16} /></span>
-                        <span>จัดการเงินสด & ดูสรุปรายปี</span>
+                        <span>จัดการเงินสด & สรุปรายปี</span>
                         <ChevronRight size={14} style={{ opacity: 0.5 }} />
                       </button>
                     </div>
@@ -1621,7 +1699,7 @@ export default function PortfolioApp() {
         </>
       )}
 
-      {/* แถบเมนูด้านล่าง 5 หน้าต่าง */}
+      {/* ข้อ 3: แถบเมนูด้านล่าง ธีมห้องควบคุมยานอวกาศ (Sci-Fi Cockpit Deck) */}
       <div className="pf-bottom-nav">
         <button onClick={() => setActiveTab(1)} className={`pf-nav-item ${activeTab === 1 ? 'active' : ''}`}>
           📊
@@ -1820,11 +1898,11 @@ export default function PortfolioApp() {
 
             <div style={{ background: 'var(--surface-alt)', padding: '14px', borderRadius: '12px', marginBottom: '16px' }}>
               <div className="pf-capital-row">
-                <span>ทุนสะสม</span>
-                <span className="pf-mono">฿{fmt(totalCapital, 0)}</span>
+                <span>ทุนเริ่มต้น</span>
+                <span className="pf-mono">฿{fmt(initialCapital, 0)}</span>
               </div>
               <div className="pf-capital-row">
-                <span>ต้นทุนรวมที่ลงทุนไป</span>
+                <span>เงินที่ลงทุนไป</span>
                 <span className="pf-mono">฿{fmt(totalInvestedCost, 0)}</span>
               </div>
             </div>
