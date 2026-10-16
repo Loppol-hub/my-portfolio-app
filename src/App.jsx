@@ -152,10 +152,9 @@ const INSTRUMENT_TYPES = [
 ];
 const INSTRUMENT_RANK = { stock: 0, dr: 1, etf: 2 };
 
-// ฟังก์ชันคำนวณโดเมนแกน Y แบบกระชับและปรับอัตโนมัติ (ข้อ 4)
 const getDynamicDomain = (currentVal, baseVal) => {
   const refVal = currentVal || baseVal || 100000;
-  const margin = refVal * 0.2; // เผื่อช่วงบนล่าง 20% ให้ดูกระชับ
+  const margin = refVal * 0.2;
   const min = Math.max(0, refVal - margin);
   const max = refVal + margin;
   return [Math.floor(min / 10000) * 10000, Math.ceil(max / 10000) * 10000];
@@ -400,7 +399,6 @@ export default function PortfolioApp() {
     return dates.length ? dates[dates.length - 1] : null;
   }, [holdings]);
 
-  // ข้อ 1 & 2: สร้างข้อมูลกราฟเป็นเส้นตรงอิงจากค่าปัจจุบันของวันนี้เป๊ะๆ (ตัดประวัติเก่าทิ้ง)
   const todayKey = todayStr();
   const flatDateList = useMemo(() => {
     const d = new Date();
@@ -416,24 +414,26 @@ export default function PortfolioApp() {
     return flatDateList.map((p) => ({ date: p.date, value: displayTotalValue, principal: totalCapital }));
   }, [flatDateList, displayTotalValue, totalCapital]);
 
+  // ข้อ 1: กราฟกำไร/ขาดทุน ใช้ค่า ต้นทุน + กำไร (เช่น 37835 + 10709.32 = 48544.32) เป็นค่าเส้นหลัก
   const chartDataGainCard = useMemo(() => {
-    return flatDateList.map((p) => ({ date: p.date, gain: totalGain, cost: totalInvestedCost }));
-  }, [flatDateList, totalGain, totalInvestedCost]);
+    const currentValForGainChart = totalInvestedCost + totalGain;
+    return flatDateList.map((p) => ({ date: p.date, gain: currentValForGainChart, cost: totalInvestedCost }));
+  }, [flatDateList, totalInvestedCost, totalGain]);
 
+  // กราฟหุ้นไทย: ต้นทุน + กำไร
   const chartDataTh = useMemo(() => {
     const thHoldings = enriched.filter(h => h.type === 'th_stock');
     const thCost = thHoldings.reduce((s, h) => s + h.costValue, 0);
     const thVal = thHoldings.reduce((s, h) => s + h.marketValue, 0);
-    const thGain = thVal - thCost;
-    return flatDateList.map((p) => ({ date: p.date, gain: thGain, cost: thCost }));
+    return flatDateList.map((p) => ({ date: p.date, gain: thVal, cost: thCost }));
   }, [flatDateList, enriched]);
 
+  // กราฟหุ้นต่างประเทศ: ต้นทุน + กำไร
   const chartDataUs = useMemo(() => {
     const usHoldings = enriched.filter(h => h.type === 'foreign_stock');
     const usCost = usHoldings.reduce((s, h) => s + h.costValue, 0);
     const usVal = usHoldings.reduce((s, h) => s + h.marketValue, 0);
-    const usGain = usVal - usCost;
-    return flatDateList.map((p) => ({ date: p.date, gain: usGain, cost: usCost }));
+    return flatDateList.map((p) => ({ date: p.date, gain: usVal, cost: usCost }));
   }, [flatDateList, enriched]);
 
   const openAdd = () => { setForm(emptyForm); setEditingId(null); setFormError(''); setPanel('form'); };
@@ -1111,8 +1111,8 @@ export default function PortfolioApp() {
                           <ResponsiveContainer width="100%" height="100%">
                             <LineChart data={chartDataTh}>
                               <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickFormatter={(val) => thaiDate(val)} />
-                              <YAxis stroke="#94a3b8" fontSize={10} domain={getDynamicDomain(typeGain, typeCost)} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
-                              <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'gain' ? 'กำไร/ขาดทุน' : 'ต้นทุน']} labelFormatter={(l) => thaiDate(l)} />
+                              <YAxis stroke="#94a3b8" fontSize={10} domain={getDynamicDomain(t.value, typeCost)} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
+                              <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'gain' ? 'มูลค่า (ต้นทุน+กำไร)' : 'ต้นทุน']} labelFormatter={(l) => thaiDate(l)} />
                               <Line type="monotone" dataKey="gain" stroke="#C7A344" strokeWidth={2} dot={false} name="gain" isAnimationActive={false} />
                               <Line type="monotone" dataKey="cost" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 3" dot={false} name="cost" isAnimationActive={false} />
                             </LineChart>
@@ -1265,9 +1265,8 @@ export default function PortfolioApp() {
                           <ResponsiveContainer width="100%" height="100%">
                             <LineChart data={chartDataUs}>
                               <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickFormatter={(val) => thaiDate(val)} />
-                              <YAxis stroke="#94a3b8" fontSize={10} domain={getDynamicDomain(typeGain, typeCost)} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
-                              <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'gain' ? 'กำไร/ขาดทุน' : 'ต้นทุน']} labelFormatter={(l) => thaiDate(l)} />
-                              {/* ข้อ 3: เปลี่ยนสีเส้นตรงของหุ้นนอกเป็นสีทอง และเส้นปะคงเดิม */}
+                              <YAxis stroke="#94a3b8" fontSize={10} domain={getDynamicDomain(t.value, typeCost)} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
+                              <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'gain' ? 'มูลค่า (ต้นทุน+กำไร)' : 'ต้นทุน']} labelFormatter={(l) => thaiDate(l)} />
                               <Line type="monotone" dataKey="gain" stroke="#fbbf24" strokeWidth={2} dot={false} name="gain" isAnimationActive={false} />
                               <Line type="monotone" dataKey="cost" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 3" dot={false} name="cost" isAnimationActive={false} />
                             </LineChart>
@@ -1394,7 +1393,6 @@ export default function PortfolioApp() {
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={chartDataTotal}>
                         <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickFormatter={(val) => thaiDate(val)} />
-                        {/* ข้อ 4: ใช้ฟังก์ชัน domain แบบกระชับและปรับอัตโนมัติ */}
                         <YAxis stroke="#94a3b8" fontSize={10} domain={getDynamicDomain(displayTotalValue, totalCapital)} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
                         <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'value' ? 'มูลค่าพอร์ต' : 'เงินต้น']} labelFormatter={(l) => thaiDate(l)} />
                         <Line type="monotone" dataKey="value" stroke="#fbbf24" strokeWidth={2.5} dot={false} name="value" isAnimationActive={false} />
@@ -1409,15 +1407,15 @@ export default function PortfolioApp() {
                 </div>
               </div>
 
-              {/* การ์ดที่ 2: กำไร/ขาดทุนรวมทุกสินทรัพย์ */}
+              {/* ข้อ 2: การ์ดกำไร/ขาดทุนรวม (เอา ต้นทุน+กำไร ขึ้นไปแสดงด้านบน, เอาตัวเลขกำไรลงมาไว้คู่เปอร์เซ็นต์ด้านล่าง) */}
               <div className="pf-hero" style={{ border: '2px solid rgba(52, 211, 153, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #172a3a 100%)' }}>
                 <div className="pf-hero-label">กำไร/ขาดทุนรวมทุกสินทรัพย์</div>
                 <div className="pf-hero-value pf-mono" style={{ fontSize: '44px', color: '#ffffff' }}>
-                  {totalGain >= 0 ? '+' : ''}฿{fmt(totalGain)}
+                  ฿{fmt(totalInvestedCost + totalGain)}
                 </div>
                 <div className={`pf-hero-sub ${totalGain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`} style={{ fontSize: '15px' }}>
                   {totalGain >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
-                  <span className="pf-mono">{totalGain >= 0 ? '+' : ''}{fmt(totalGainPct, 1)}%</span>
+                  <span className="pf-mono">{totalGain >= 0 ? '+' : ''}{fmt(totalGain)} ({totalGain >= 0 ? '+' : ''}{fmt(totalGainPct, 1)}%)</span>
                   <span className="pf-hero-sub-label">ต้นทุนที่ลงทุนไป</span>
                 </div>
 
@@ -1440,8 +1438,8 @@ export default function PortfolioApp() {
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={chartDataGainCard}>
                         <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickFormatter={(val) => thaiDate(val)} />
-                        <YAxis stroke="#94a3b8" fontSize={10} domain={getDynamicDomain(totalGain, totalInvestedCost)} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
-                        <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'gain' ? 'กำไร/ขาดทุน' : 'ต้นทุน']} labelFormatter={(l) => thaiDate(l)} />
+                        <YAxis stroke="#94a3b8" fontSize={10} domain={getDynamicDomain(totalInvestedCost + totalGain, totalInvestedCost)} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
+                        <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'gain' ? 'มูลค่า (ต้นทุน+กำไร)' : 'ต้นทุน']} labelFormatter={(l) => thaiDate(l)} />
                         <Line type="monotone" dataKey="gain" stroke="#34d399" strokeWidth={2.5} dot={false} name="gain" isAnimationActive={false} />
                         <Line type="monotone" dataKey="cost" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 3" dot={false} name="cost" isAnimationActive={false} />
                       </LineChart>
