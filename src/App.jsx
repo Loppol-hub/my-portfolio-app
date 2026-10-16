@@ -438,22 +438,21 @@ export default function PortfolioApp() {
 
   const monthlyList = useMemo(() => getMonthlyAxisData(), []);
 
-  const filterHistoryByMode = (mode, year, rawData) => {
-    if (mode === 'year') {
-      return rawData.filter((p) => (p.date || '').slice(0, 4) === year);
-    }
-    return rawData;
-  };
-
   const chartDataTotal = useMemo(() => {
     const base = monthlyList.map((p) => ({ date: p.date, value: displayTotalValue, principal: totalCapital }));
-    return filterHistoryByMode(graphModeTotal, graphYearTotal, base);
+    if (graphModeTotal === 'year') {
+      return base.filter(p => p.date.includes(String(graphYearTotal).slice(-2)));
+    }
+    return base;
   }, [monthlyList, graphModeTotal, graphYearTotal, displayTotalValue, totalCapital]);
 
   const chartDataGainCard = useMemo(() => {
     const currentValForGainChart = totalInvestedCost + totalGain;
     const base = monthlyList.map((p) => ({ date: p.date, gain: currentValForGainChart, cost: totalInvestedCost }));
-    return filterHistoryByMode(graphModeGain, graphYearGain, base);
+    if (graphModeGain === 'year') {
+      return base.filter(p => p.date.includes(String(graphYearGain).slice(-2)));
+    }
+    return base;
   }, [monthlyList, graphModeGain, graphYearGain, totalInvestedCost, totalGain]);
 
   const chartDataTh = useMemo(() => {
@@ -461,7 +460,10 @@ export default function PortfolioApp() {
     const thCost = thHoldings.reduce((s, h) => s + h.costValue, 0);
     const thVal = thHoldings.reduce((s, h) => s + h.marketValue, 0);
     const base = monthlyList.map((p) => ({ date: p.date, gain: thVal, cost: thCost }));
-    return filterHistoryByMode(graphModeTh, graphYearTh, base);
+    if (graphModeTh === 'year') {
+      return base.filter(p => p.date.includes(String(graphYearTh).slice(-2)));
+    }
+    return base;
   }, [monthlyList, graphModeTh, graphYearTh, enriched]);
 
   const chartDataUs = useMemo(() => {
@@ -469,7 +471,10 @@ export default function PortfolioApp() {
     const usCost = usHoldings.reduce((s, h) => s + h.costValue, 0);
     const usVal = usHoldings.reduce((s, h) => s + h.marketValue, 0);
     const base = monthlyList.map((p) => ({ date: p.date, gain: usVal, cost: usCost }));
-    return filterHistoryByMode(graphModeUs, graphYearUs, base);
+    if (graphModeUs === 'year') {
+      return base.filter(p => p.date.includes(String(graphYearUs).slice(-2)));
+    }
+    return base;
   }, [monthlyList, graphModeUs, graphYearUs, enriched]);
 
   const openAdd = () => { setForm(emptyForm); setEditingId(null); setFormError(''); setPanel('form'); };
@@ -948,10 +953,10 @@ export default function PortfolioApp() {
         .pf-issue-banner { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; background: rgba(252,165,165,0.12); border: 1px solid var(--neg); color: var(--text); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; font-size: 12.5px; line-height: 1.5; }
         .pf-loading { display: flex; align-items: center; justify-content: center; height: 60vh; color: var(--muted); }
         
-        {/* Bottom Navigation Bar */}
+        {/* ข้อ 1: ลดขนาดแคปซูลด้านบนด้านล่างให้แคบลง และข้อ 5: ปุ่ม Active ใหญ่ขึ้นพ้นขอบ */}
         .pf-nav-container {
           position: fixed;
-          bottom: 16px;
+          bottom: 14px;
           left: 50%;
           transform: translateX(-50%);
           width: 92%;
@@ -963,11 +968,11 @@ export default function PortfolioApp() {
           background: linear-gradient(180deg, rgba(8, 20, 42, 0.92) 0%, rgba(3, 9, 22, 0.98) 100%);
           backdrop-filter: blur(20px);
           border: 1px solid rgba(56, 189, 248, 0.35);
-          border-radius: 50px;
+          border-radius: 40px;
           display: flex;
           justify-content: space-around;
           align-items: center;
-          padding: 6px 16px 8px;
+          padding: 2px 16px 4px;
           box-shadow: 0 10px 40px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(56, 189, 248, 0.3);
         }
         .pf-nav-item {
@@ -979,8 +984,8 @@ export default function PortfolioApp() {
           align-items: center;
           justify-content: center;
           color: #64748b;
-          width: 44px;
-          height: 44px;
+          width: 42px;
+          height: 42px;
           border-radius: 50%;
           transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         }
@@ -989,12 +994,12 @@ export default function PortfolioApp() {
         }
         .pf-nav-item.active {
           background: radial-gradient(circle at 30% 30%, #38bdf8 0%, #0284c7 70%, #0369a1 100%);
-          border: 2px solid rgba(255, 255, 255, 0.85);
+          border: 2px solid rgba(255, 255, 255, 0.9);
           color: #ffffff;
-          width: 60px;
-          height: 60px;
-          transform: translateY(-22px);
-          box-shadow: 0 0 30px rgba(56, 189, 248, 0.9), inset 0 3px 6px rgba(255, 255, 255, 0.8), inset 0 -4px 6px rgba(0, 0, 0, 0.6);
+          width: 62px;
+          height: 62px;
+          transform: translateY(-24px);
+          box-shadow: 0 0 35px rgba(56, 189, 248, 0.95), inset 0 3px 6px rgba(255, 255, 255, 0.8), inset 0 -4px 6px rgba(0, 0, 0, 0.6);
         }
 
         .pf-foreign-glow {
@@ -1563,7 +1568,6 @@ export default function PortfolioApp() {
                           <div className="pf-type-section-title"><span className="pf-dot" style={{ background: '#7C8B9E' }} />เงินสด / สภาพคล่อง</div>
                           <div className="pf-type-section-value pf-mono">฿{fmt(computedCash, 0)}</div>
 
-                          {/* ข้อ 1: นำรายละเอียดกลับมาแสดงใต้เงินสดตามเดิม */}
                           <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                             <div className="pf-capital-row">
                               <span style={{ color: 'var(--muted)' }}>ทุนเริ่มต้น</span>
@@ -1982,7 +1986,6 @@ export default function PortfolioApp() {
               </div>
             </div>
 
-            {/* ช่องค้นหาประวัติการทำรายการ */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '18px 0 8px', gap: '8px' }}>
               <div className="pf-section-label" style={{ margin: 0 }}>ประวัติการทำรายการ</div>
               <div style={{ position: 'relative', width: '150px' }}>
