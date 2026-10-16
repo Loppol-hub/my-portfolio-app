@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Pencil, Trash2, RefreshCw, X, TrendingUp, TrendingDown, MoreVertical, Inbox, Zap, Wallet, ChevronRight, ArrowDownWideNarrow, ArrowDownAZ, ArrowUpDown, PlusCircle, MinusCircle, Gift, Sliders, Home, LayoutGrid, BarChart3, Settings, Search } from 'lucide-react';
-import { LineChart, Line, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+import { LineChart, Line, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, LabelList } from 'recharts';
 
 const ASSET_TYPES = [
   { key: 'th_stock', label: 'หุ้นไทย', color: '#C7A344', market: 'th', defaultCurrency: 'THB' },
@@ -147,7 +147,7 @@ const thaiDateAD = (iso) => {
   const day = d.getDate();
   const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
   const m = months[d.getMonth()];
-  const yr = d.getFullYear(); // ค.ศ.
+  const yr = d.getFullYear();
   return `${day} ${m} ${yr}`;
 };
 
@@ -247,18 +247,17 @@ export default function PortfolioApp() {
   const [graphModeUs, setGraphModeUs] = useState('all');
   const [graphYearUs, setGraphYearUs] = useState(String(new Date().getFullYear()));
 
-  // สถานะกราฟปันผล (ตั้งแต่เริ่มต้น vs รายปี)
   const [dividendGraphMode, setDividendGraphMode] = useState('year');
   const [dividendGraphYear, setDividendGraphYear] = useState(String(new Date().getFullYear()));
 
-  // ข้อ 9: คำทักทายของนักบินอวกาศ แบบขึ้นมาแล้วหายไปเอง
+  // ข้อ 4: คำทักทายสีทองมินิมอล แสดงผลตามเวลาดึงราคา (~2.2 วินาที)
   const [astronautMsg, setAstronautMsg] = useState('สวัสดีครับ ยินดีต้อนรับสู่ MOON SHOT');
   const [showAstronautBubble, setShowAstronautBubble] = useState(true);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       setShowAstronautBubble(false);
-    }, 5000);
+    }, 2200);
     return () => clearTimeout(timer);
   }, []);
 
@@ -477,7 +476,7 @@ export default function PortfolioApp() {
     return base;
   }, [monthlyList, graphModeGain, graphYearGain, totalInvestedCost, totalGain]);
 
-  // ข้อ 5: กราฟปันผล รองรับ "ตั้งแต่เริ่มต้น" (รวมยอดปันผลสะสม + เงินลงทุนเฉลี่ย/ปัจจุบัน) และ "รายปี"
+  // ข้อ 2: คำนวณข้อมูลกราฟปันผล (ถ้าไม่มีปันผล invested จะเป็น 0 เพื่อไม่ให้แท่งฟ้าโผล่)
   const dividendChartData = useMemo(() => {
     if (dividendGraphMode === 'all') {
       let totalDiv = 0;
@@ -485,7 +484,7 @@ export default function PortfolioApp() {
       return [{
         year: 'ทั้งหมด',
         dividend: totalDiv,
-        invested: totalInvestedCost,
+        invested: totalDiv > 0 ? totalInvestedCost : 0,
         yieldPct: totalInvestedCost > 0 ? (totalDiv / totalInvestedCost) * 100 : 0
       }];
     } else {
@@ -497,14 +496,21 @@ export default function PortfolioApp() {
           }
         });
         return {
-          year: y, // ข้อ 4: ปี ค.ศ.
+          year: y,
           dividend: divSum,
-          invested: totalInvestedCost, // ข้อ 2: เงินที่ลงทุนไปของตอนนั้น
+          invested: divSum > 0 ? totalInvestedCost : 0, // แสดงแท่งเงินลงทุนก็ต่อเมื่อมีปันผล
           yieldPct: totalInvestedCost > 0 ? (divSum / totalInvestedCost) * 100 : 0
         };
       });
     }
   }, [dividendGraphMode, yearOptions, ledger, totalInvestedCost]);
+
+  // ข้อ 3: คำนวณโดเมนแกน Y ของกราฟปันผลให้มี 5 ระดับสวยงาม
+  const dividendMaxVal = useMemo(() => {
+    const rawMax = Math.max(...dividendChartData.map(d => Math.max(d.dividend, d.invested)), 1000);
+    const step = Math.ceil(rawMax / 4 / 500) * 500 || 1000;
+    return step * 4;
+  }, [dividendChartData]);
 
   const chartDataTh = useMemo(() => {
     const thHoldings = enriched.filter(h => h.type === 'th_stock');
@@ -1004,7 +1010,6 @@ export default function PortfolioApp() {
         .pf-issue-banner { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; background: rgba(252,165,165,0.12); border: 1px solid var(--neg); color: var(--text); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; font-size: 12.5px; line-height: 1.5; }
         .pf-loading { display: flex; align-items: center; justify-content: center; height: 60vh; color: var(--muted); }
         
-        {/* Bottom Navigation Bar */}
         .pf-nav-container {
           position: fixed;
           bottom: 12px;
@@ -1057,28 +1062,24 @@ export default function PortfolioApp() {
           filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.6));
         }
 
-        {/* ข้อ 8: นักบินอวกาศขนาด 110x110 */}
+        {/* ข้อ 4: นักบินอวกาศ 110x110 และข้อความสีทองแบบมินิมอลไร้กรอบ */}
         .moon-wrapper {
           position: fixed;
           top: 16px;
           right: 20px;
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 10px;
           z-index: 1100;
           touch-action: none;
           user-select: none;
         }
-        .moon-bubble {
-          background: rgba(17, 24, 39, 0.92);
-          backdrop-filter: blur(8px);
-          border: 1px solid rgba(56, 189, 248, 0.4);
-          color: #38bdf8;
-          padding: 8px 14px;
-          border-radius: 14px;
-          font-size: 12.5px;
-          font-weight: 500;
-          box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+        .moon-minimal-text {
+          color: #fbbf24;
+          font-size: 13px;
+          font-weight: 600;
+          letter-spacing: 0.3px;
+          text-shadow: 0 2px 10px rgba(0,0,0,0.8);
           white-space: nowrap;
           animation: fadeIn 0.3s ease;
         }
@@ -1115,7 +1116,7 @@ export default function PortfolioApp() {
         </div>
       </div>
 
-      {/* ข้อ 8 & 9: นักบินอวกาศขนาด 110x110 พร้อมคำทักทายที่แสดงผลแล้วจางหายไป */}
+      {/* นักบินอวกาศ 110x110 พร้อมข้อความทักทายสีทองมินิมอลไร้กรอบ */}
       <div className="moon-wrapper" onPointerDown={(e) => {
         const el = e.currentTarget; el.setPointerCapture(e.pointerId);
         const startX = e.clientX, startY = e.clientY, rect = el.getBoundingClientRect();
@@ -1130,11 +1131,11 @@ export default function PortfolioApp() {
         e.stopPropagation(); 
         setAstronautMsg('สวัสดีครับ ยินดีต้อนรับสู่ MOON SHOT');
         setShowAstronautBubble(true);
-        setTimeout(() => setShowAstronautBubble(false), 4000);
+        setTimeout(() => setShowAstronautBubble(false), 2200);
         showToast('นักบินอวกาศทักทายคุณ!'); 
       }}>
         {showAstronautBubble && (
-          <div className="moon-bubble">
+          <div className="moon-minimal-text">
             {astronautMsg}
           </div>
         )}
@@ -1531,7 +1532,6 @@ export default function PortfolioApp() {
               
               {/* การ์ดที่ 1: มูลค่าพอร์ตรวมทั้งหมด */}
               <div className="pf-hero" style={{ border: '2px solid rgba(251, 191, 36, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #1f2937 100%)', position: 'relative' }}>
-                {/* ข้อ: ย้าย "อัปเดตล่าสุด" มาไว้มุมขวาบนของการ์ด และเป็น ค.ศ. */}
                 <div style={{ position: 'absolute', top: '16px', right: '20px' }} className="pf-updated">
                   อัปเดตล่าสุด: {lastUpdated ? thaiDateAD(lastUpdated) : 'ยังไม่มีการอัปเดต'}
                 </div>
@@ -1618,7 +1618,7 @@ export default function PortfolioApp() {
                 </div>
               </div>
 
-              {/* การ์ดที่ 3: กราฟปันผล เทียบ เงินที่ลงทุนไป (ปรับปรุงตามข้อ 1, 2, 3, 5, 6, 7) */}
+              {/* การ์ดที่ 3: กราฟปันผล เทียบ เงินที่ลงทุนไป (ปรับปรุงตามข้อ 1, 2, 3) */}
               <div className="pf-hero" style={{ border: '2px solid rgba(56, 189, 248, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #0f172a 100%)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <div className="pf-hero-label" style={{ margin: 0 }}>กราฟปันผล เทียบ เงินที่ลงทุนไป</div>
@@ -1640,16 +1640,19 @@ export default function PortfolioApp() {
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={dividendGraphMode === 'year' ? dividendChartData.filter(d => String(d.year) === dividendGraphYear) : dividendChartData} barSize={28}>
                       <XAxis dataKey="year" stroke="#94a3b8" fontSize={10} />
-                      <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
+                      <YAxis stroke="#94a3b8" fontSize={10} domain={[0, dividendMaxVal]} ticks={[0, dividendMaxVal*0.25, dividendMaxVal*0.5, dividendMaxVal*0.75, dividendMaxVal]} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
                       <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name, item) => {
                         const label = name === 'dividend' ? 'เงินปันผลรับ' : 'เงินที่ลงทุนไป';
                         const extra = name === 'dividend' && item.payload.invested > 0 ? ` (${fmt(item.payload.yieldPct, 1)}% ของเงินลงทุน)` : '';
                         return [`฿${fmt(val)}${extra}`, label];
                       }} labelFormatter={(l) => `ปี ${l}`} />
-                      <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }} formatter={(value) => (value === 'dividend' ? <span style={{ color: '#34d399' }}>เงินปันผล</span> : <span style={{ color: '#94a3b8' }}>เงินที่ลงทุนไป</span>)} />
-                      {/* ข้อ 6: แท่งปันผลสีเขียว (#34d399), แท่งเงินลงทุนสีเทา (#64748b) */}
-                      <Bar dataKey="dividend" fill="#34d399" radius={[4, 4, 0, 0]} name="dividend" />
-                      <Bar dataKey="invested" fill="#64748b" radius={[4, 4, 0, 0]} name="invested" />
+                      <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }} formatter={(value) => (value === 'dividend' ? <span style={{ color: '#34d399' }}>เงินปันผล</span> : <span style={{ color: '#38bdf8' }}>เงินที่ลงทุนไป</span>)} />
+                      {/* ข้อ 1: แสดงตัวเลข % บนแท่งปันผล */}
+                      <Bar dataKey="dividend" fill="#34d399" radius={[4, 4, 0, 0]} name="dividend">
+                        <LabelList dataKey="yieldPct" position="top" fill="#34d399" fontSize={11} formatter={(v) => v > 0 ? `${fmt(v, 1)}%` : ''} />
+                      </Bar>
+                      {/* ข้อ 2: แท่งเงินลงทุนสีฟ้า และซ่อนเมื่อไม่มีปันผล (invested = 0) */}
+                      <Bar dataKey="invested" fill="#38bdf8" radius={[4, 4, 0, 0]} name="invested" />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -2121,7 +2124,7 @@ export default function PortfolioApp() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '18px 0 8px', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifySelf: 'stretch', justifyContent: 'space-between', margin: '18px 0 8px', gap: '8px' }}>
               <div className="pf-section-label" style={{ margin: 0 }}>ประวัติการทำรายการ</div>
               <div style={{ position: 'relative', width: '150px' }}>
                 <Search size={13} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
