@@ -19,7 +19,6 @@ const TICKER_HINT = {
   gold: 'เช่น XAU (ถ้ามี)',
 };
 
-// ข้อ 3: ย้ายมาไว้ระดับบนสุด เพื่อแก้บั๊กช่องค้นหาทำให้หน้าเว็บขาว
 const LEDGER_LABELS = { capital_add: 'เพิ่มทุน', capital_reduce: 'ลดทุน', profit: 'กำไร', loss: 'ขาดทุน', dividend: 'ปันผล', rebalance: 'รีบาลานซ์เงินสด' };
 const LEDGER_SIGN = { capital_add: 1, capital_reduce: -1, profit: 1, loss: -1, dividend: 1, rebalance: 1 };
 
@@ -461,7 +460,6 @@ export default function PortfolioApp() {
     return base;
   }, [monthlyList, graphModeGain, graphYearGain, totalInvestedCost, totalGain]);
 
-  // ข้อ 2: กราฟปันผลแสดง 5 ปีพร้อมกัน (ปีปัจจุบันย้อนหลัง 4 ปี) เลื่อนปีอัตโนมัติ
   const dividendYears = useMemo(() => {
     const y = new Date().getFullYear();
     return [y - 4, y - 3, y - 2, y - 1, y].map(String);
@@ -471,7 +469,6 @@ export default function PortfolioApp() {
     return dividendYears.map((y) => {
       const entries = ledger.filter((e) => e.type === 'dividend' && (e.date || '').slice(0, 4) === y);
       const divSum = entries.reduce((s, e) => s + e.amount, 0);
-      // ใช้เงินลงทุน ณ ตอนบันทึกปันผล (ถ้ามี) ไม่งั้นใช้ยอดปัจจุบัน
       const snaps = entries.map((e) => e.invested).filter((v) => typeof v === 'number' && v > 0);
       const investedSnap = snaps.length ? snaps[snaps.length - 1] : totalInvestedCost;
       return {
@@ -833,7 +830,6 @@ export default function PortfolioApp() {
     }
 
     const entry = { id: Date.now().toString(), type: typeToSave, amount: amt, date: ledgerDate || todayStr(), note: ledgerNote.trim() || (ledgerType === 'rebalance' ? 'รีบาลานซ์เงินสดสิ้นปี' : '') };
-    // บันทึกเงินที่ลงทุน ณ ตอนนั้นไว้กับรายการปันผล
     if (typeToSave === 'dividend') entry.invested = totalInvestedCost;
     saveLedger([...ledger, entry]);
     showToast('บันทึกรายการสำเร็จ');
@@ -1020,7 +1016,6 @@ export default function PortfolioApp() {
 
         .pf-foreign-glow { filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.6)); }
 
-        /* นักบินอวกาศ 110x110 (ไม่มีข้อความทักทาย) */
         .moon-float {
           position: fixed; top: 16px; right: 20px;
           width: 110px; height: 110px;
@@ -1051,7 +1046,6 @@ export default function PortfolioApp() {
         </div>
       </div>
 
-      {/* ข้อ 1: นักบินอวกาศ ไม่มีข้อความทักทายแล้ว (ยังลากย้ายได้) */}
       <div className="moon-float" onPointerDown={(e) => {
         const el = e.currentTarget; el.setPointerCapture(e.pointerId);
         const startX = e.clientX, startY = e.clientY, rect = el.getBoundingClientRect();
@@ -1409,14 +1403,10 @@ export default function PortfolioApp() {
                             </div>
                             <div className="pf-row-meta pf-mono">
                               <span>จำนวน <b>{fmt(h.qty, h.qty % 1 === 0 ? 0 : 2)}</b></span>
-                              <span>ทุนเฉลี่ย <b>{h.currency === 'USD' ? '
-
-เมื่อปิดหน้าต่างจัดการเงินสด ช่องค้นหาจะถูกล้างให้ว่างเอง เปิดครั้งต่อไปจะเห็นประวัติครบทุกรายการครับ : '฿'}{fmt(h.avg)}</b></span>
+                              <span>ทุนเฉลี่ย <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.avg)}</b></span>
                             </div>
                             <div className="pf-row-meta pf-mono">
-                              <span>ราคาล่าสุด <b style={{ color: 'var(--gold)' }}>{h.currency === 'USD' ? '
-
-เมื่อปิดหน้าต่างจัดการเงินสด ช่องค้นหาจะถูกล้างให้ว่างเอง เปิดครั้งต่อไปจะเห็นประวัติครบทุกรายการครับ : '฿'}{fmt(h.price)}</b></span>
+                              <span>ราคาล่าสุด <b style={{ color: 'var(--gold)' }}>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.price)}</b></span>
                               <span>ต้นทุนรวม <b>฿{fmt(h.costValue)}</b></span>
                             </div>
                             <div className="pf-row-meta pf-mono">
@@ -1528,7 +1518,7 @@ export default function PortfolioApp() {
                 </div>
               </div>
 
-              {/* การ์ดที่ 3: กราฟปันผล — รายปีแสดง 5 ปีพร้อมกัน เลื่อนปีอัตโนมัติ */}
+              {/* การ์ดที่ 3: กราฟปันผล — แสดง 5 ปีอัตโนมัติ */}
               <div className="pf-hero" style={{ border: '2px solid rgba(56, 189, 248, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #0f172a 100%)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <div className="pf-hero-label" style={{ margin: 0 }}>กราฟปันผล เทียบ เงินที่ลงทุนไป</div>
@@ -1709,14 +1699,10 @@ export default function PortfolioApp() {
                               </div>
                               <div className="pf-row-meta pf-mono">
                                 <span>จำนวน <b>{fmt(h.qty, h.qty % 1 === 0 ? 0 : 4)}</b></span>
-                                <span>ทุนเฉลี่ย <b>{h.currency === 'USD' ? '
-
-เมื่อปิดหน้าต่างจัดการเงินสด ช่องค้นหาจะถูกล้างให้ว่างเอง เปิดครั้งต่อไปจะเห็นประวัติครบทุกรายการครับ : '฿'}{fmt(h.avg)}</b></span>
+                                <span>ทุนเฉลี่ย <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.avg)}</b></span>
                               </div>
                               <div className="pf-row-meta pf-mono">
-                                <span>ราคาล่าสุด <b style={{ color: 'var(--gold)' }}>{h.currency === 'USD' ? '
-
-เมื่อปิดหน้าต่างจัดการเงินสด ช่องค้นหาจะถูกล้างให้ว่างเอง เปิดครั้งต่อไปจะเห็นประวัติครบทุกรายการครับ : '฿'}{fmt(h.price)}</b></span>
+                                <span>ราคาล่าสุด <b style={{ color: 'var(--gold)' }}>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.price)}</b></span>
                                 <span>ต้นทุนรวม <b>฿{fmt(h.costValue)}</b></span>
                               </div>
                               <div className="pf-row-meta pf-mono">
@@ -2026,7 +2012,6 @@ export default function PortfolioApp() {
               </div>
             </div>
 
-            {/* ข้อ 3: ช่องค้นหาประวัติ (แก้บั๊กหน้าขาวแล้ว) */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '18px 0 8px', gap: '8px' }}>
               <div className="pf-section-label" style={{ margin: 0 }}>ประวัติการทำรายการ</div>
               <div style={{ position: 'relative', width: '150px' }}>
