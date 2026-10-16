@@ -910,38 +910,38 @@ export default function PortfolioApp() {
         .pf-issue-banner { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; background: rgba(252,165,165,0.12); border: 1px solid var(--neg); color: var(--text); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; font-size: 12.5px; line-height: 1.5; }
         .pf-loading { display: flex; align-items: center; justify-content: center; height: 60vh; color: var(--muted); }
         
-        /* ข้อ 3: Bottom Navigation Bar ธีมห้องควบคุมยานอวกาศ (Sci-Fi Cockpit Capsule Deck ตามแบบตัวอย่าง) */
+        /* Bottom Navigation Bar ธีมแคปซูลห้องควบคุมยานอวกาศ (เอาตัวหนังสือออก & ปุ่มฟ้าเรืองแสง) */
         .pf-nav-container {
           position: fixed;
           bottom: 16px;
           left: 50%;
           transform: translateX(-50%);
           width: 92%;
-          max-width: 440px;
+          max-width: 420px;
           z-index: 1000;
         }
         .pf-bottom-nav {
           position: relative;
-          background: linear-gradient(180deg, rgba(8, 15, 30, 0.85) 0%, rgba(3, 7, 18, 0.95) 100%);
+          background: linear-gradient(180deg, rgba(8, 15, 30, 0.9) 0%, rgba(3, 7, 18, 0.98) 100%);
           backdrop-filter: blur(20px);
-          border: 1px solid rgba(56, 189, 248, 0.3);
+          border: 1px solid rgba(56, 189, 248, 0.35);
           border-radius: 40px;
           display: flex;
-          justify-content: space-between;
+          justify-content: space-around;
           align-items: center;
-          padding: 8px 24px;
-          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(56, 189, 248, 0.2);
+          padding: 10px 20px;
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(56, 189, 248, 0.3);
         }
         .pf-nav-item {
           background: none;
           border: none;
           cursor: pointer;
-          font-size: 20px;
+          font-size: 22px;
           display: flex;
-          flex-direction: column;
           align-items: center;
+          justify-content: center;
           color: #64748b;
-          padding: 6px;
+          padding: 10px;
           transition: all 0.2s ease;
         }
         .pf-nav-item:hover {
@@ -949,41 +949,40 @@ export default function PortfolioApp() {
         }
         .pf-nav-item.active {
           color: #38bdf8;
-          text-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
+          text-shadow: 0 0 12px rgba(56, 189, 248, 0.7);
         }
         
-        /* ปุ่มวงกลมตรงกลางลอยเด่นแบบ Sci-Fi */
+        /* ปุ่มวงกลมตรงกลาง สีฟ้าเรืองแสงเบาๆ (ตามข้อ 2) */
         .pf-nav-center-wrapper {
           position: relative;
           display: flex;
           align-items: center;
           justify-content: center;
-          margin-top: -34px;
+          margin-top: -36px;
         }
         .pf-nav-center {
-          background: radial-gradient(circle at 30% 30%, #38bdf8 0%, #0369a1 60%, #0284c7 100%);
-          border: 2px solid rgba(255, 255, 255, 0.4);
+          background: radial-gradient(circle at 30% 30%, #38bdf8 0%, #0284c7 60%, #0369a1 100%);
+          border: 2px solid rgba(255, 255, 255, 0.6);
           color: #fff;
           cursor: pointer;
           font-size: 24px;
-          width: 60px;
-          height: 60px;
+          width: 58px;
+          height: 58px;
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 0 25px rgba(56, 189, 248, 0.5), inset 0 3px 6px rgba(255, 255, 255, 0.5), inset 0 -4px 6px rgba(0, 0, 0, 0.6);
+          box-shadow: 0 0 25px rgba(56, 189, 248, 0.45), inset 0 3px 6px rgba(255, 255, 255, 0.6), inset 0 -4px 6px rgba(0, 0, 0, 0.6);
           transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .pf-nav-center:hover {
           transform: scale(1.05);
-          box-shadow: 0 0 35px rgba(56, 189, 248, 0.8), inset 0 3px 8px rgba(255, 255, 255, 0.7);
+          box-shadow: 0 0 35px rgba(56, 189, 248, 0.75), inset 0 3px 8px rgba(255, 255, 255, 0.8);
         }
         .pf-nav-center.active {
-          background: radial-gradient(circle at 30% 30%, #fbbf24 0%, #d97706 60%, #b45309 100%);
-          border-color: rgba(255, 255, 255, 0.8);
-          color: #fff;
-          box-shadow: 0 0 35px rgba(251, 191, 36, 0.7), inset 0 3px 6px rgba(255, 255, 255, 0.7), inset 0 -4px 6px rgba(0, 0, 0, 0.6);
+          background: radial-gradient(circle at 30% 30%, #7dd3fc 0%, #0284c7 70%, #0369a1 100%);
+          border-color: #ffffff;
+          box-shadow: 0 0 35px rgba(56, 189, 248, 0.85), inset 0 3px 8px rgba(255, 255, 255, 0.8);
         }
 
         .pf-foreign-glow {
@@ -1528,7 +1527,6 @@ export default function PortfolioApp() {
                           <div className="pf-type-section-title"><span className="pf-dot" style={{ background: '#7C8B9E' }} />เงินสด / สภาพคล่อง</div>
                           <div className="pf-type-section-value pf-mono">฿{fmt(computedCash, 0)}</div>
 
-                          {/* ข้อ 4, 5, 6, 7: จัดเรียงข้อมูลใต้เงินสดตามลำดับที่คุณต้องการ */}
                           <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                             <div className="pf-capital-row">
                               <span style={{ color: 'var(--muted)' }}>ทุนเริ่มต้น</span>
@@ -1560,7 +1558,6 @@ export default function PortfolioApp() {
 
                         </div>
                       </div>
-                      {/* ข้อ 8: ตัดคำว่า ดู ออก */}
                       <button className="pf-cash-manage-btn" onClick={() => setPanel('cashManage')}>
                         <span className="pf-cash-manage-icon"><Wallet size={16} /></span>
                         <span>จัดการเงินสด & สรุปรายปี</span>
@@ -1698,31 +1695,27 @@ export default function PortfolioApp() {
         </>
       )}
 
-      {/* ข้อ 3: แถบเมนูด้านล่าง ธีมแคปซูลควบคุมยานอวกาศ (Sci-Fi Cockpit Capsule) */}
+      {/* ข้อ 1 & 2: Bottom Navigation Bar แบบไม่มีข้อความ และปุ่มวงกลมตรงกลางสีฟ้าเรืองแสง */}
       <div className="pf-nav-container">
         <div className="pf-bottom-nav">
           <button onClick={() => setActiveTab(1)} className={`pf-nav-item ${activeTab === 1 ? 'active' : ''}`} title="หุ้นไทย">
-            <LayoutGrid size={20} />
-            <span className="pf-nav-label">หุ้นไทย</span>
+            <LayoutGrid size={24} />
           </button>
           <button onClick={() => setActiveTab(2)} className={`pf-nav-item ${activeTab === 2 ? 'active' : ''}`} title="หุ้นนอก">
-            <BarChart3 size={20} />
-            <span className="pf-nav-label">หุ้นนอก</span>
+            <BarChart3 size={24} />
           </button>
           
           <div className="pf-nav-center-wrapper">
             <button onClick={() => setActiveTab(3)} className={`pf-nav-center ${activeTab === 3 ? 'active' : ''}`} title="พอร์ตรวม">
-              <Home size={22} />
+              <Home size={24} />
             </button>
           </div>
 
           <button onClick={() => setActiveTab(4)} className={`pf-nav-item ${activeTab === 4 ? 'active' : ''}`} title="สินทรัพย์อื่น">
-            <TrendingUp size={20} />
-            <span className="pf-nav-label">สินทรัพย์อื่น</span>
+            <TrendingUp size={24} />
           </button>
           <button onClick={() => setActiveTab(5)} className={`pf-nav-item ${activeTab === 5 ? 'active' : ''}`} title="ตั้งค่า">
-            <Settings size={20} />
-            <span className="pf-nav-label">ตั้งค่า</span>
+            <Settings size={24} />
           </button>
         </div>
       </div>
