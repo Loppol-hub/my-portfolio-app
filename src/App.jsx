@@ -5,9 +5,9 @@ import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'rec
 const ASSET_TYPES = [
   { key: 'th_stock', label: 'หุ้นไทย', color: '#C7A344', market: 'th', defaultCurrency: 'THB' },
   { key: 'foreign_stock', label: 'หุ้นต่างประเทศ', color: '#38bdf8', market: 'us', defaultCurrency: 'USD' },
-  { key: 'crypto', label: 'คริปโต', color: '#967ACC', market: 'crypto', defaultCurrency: 'USD' },
-  { key: 'gold', label: 'ทองคำ', color: '#D9823F', market: 'gold', defaultCurrency: 'USD' },
   { key: 'fund', label: 'กองทุน', color: '#C17B86', market: null, defaultCurrency: 'THB' },
+  { key: 'gold', label: 'ทองคำ', color: '#D9823F', market: 'gold', defaultCurrency: 'USD' },
+  { key: 'crypto', label: 'คริปโต', color: '#967ACC', market: 'crypto', defaultCurrency: 'USD' },
   { key: 'cash', label: 'เงินสด', color: '#7C8B9E', market: null, defaultCurrency: 'THB' },
   { key: 'other', label: 'อื่นๆ', color: '#4F9E93', market: null, defaultCurrency: 'THB' },
 ];
@@ -16,6 +16,7 @@ const TICKER_HINT = {
   th_stock: 'เช่น PTT หรือ PTT.BK',
   foreign_stock: 'เช่น AAPL, MSFT',
   crypto: 'เช่น BTC, ETH',
+  gold: 'เช่น XAU (ถ้ามี)',
 };
 
 function hexToHsl(hex) {
@@ -152,12 +153,13 @@ const INSTRUMENT_TYPES = [
 ];
 const INSTRUMENT_RANK = { stock: 0, dr: 1, etf: 2 };
 
+// ข้อ 1: ปรับแต่งโดเมนแกน Y ให้เว้นระยะขอบบนล่างสวยงาม ไม่ทับเส้นขอบ
 const getDynamicDomain = (currentVal, baseVal) => {
   const refVal = currentVal || baseVal || 100000;
-  const margin = refVal * 0.2;
+  const margin = Math.max(refVal * 0.25, 5000);
   const min = Math.max(0, refVal - margin);
   const max = refVal + margin;
-  return [Math.floor(min / 10000) * 10000, Math.ceil(max / 10000) * 10000];
+  return [Math.floor(min / 5000) * 5000, Math.ceil(max / 5000) * 5000];
 };
 
 const getMonthlyAxisData = () => {
@@ -953,10 +955,10 @@ export default function PortfolioApp() {
         .pf-issue-banner { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; background: rgba(252,165,165,0.12); border: 1px solid var(--neg); color: var(--text); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; font-size: 12.5px; line-height: 1.5; }
         .pf-loading { display: flex; align-items: center; justify-content: center; height: 60vh; color: var(--muted); }
         
-        {/* ข้อ 1: ลดขนาดแคปซูลด้านบนด้านล่างให้แคบลง และข้อ 5: ปุ่ม Active ใหญ่ขึ้นพ้นขอบ */}
+        {/* ข้อ 3: ลดขนาดแคปซูลด้านบนและด้านล่างลงอีก 1 ใน 4 ส่วน */}
         .pf-nav-container {
           position: fixed;
-          bottom: 14px;
+          bottom: 12px;
           left: 50%;
           transform: translateX(-50%);
           width: 92%;
@@ -972,7 +974,7 @@ export default function PortfolioApp() {
           display: flex;
           justify-content: space-around;
           align-items: center;
-          padding: 2px 16px 4px;
+          padding: 1px 16px 2px;
           box-shadow: 0 10px 40px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(56, 189, 248, 0.3);
         }
         .pf-nav-item {
@@ -984,8 +986,8 @@ export default function PortfolioApp() {
           align-items: center;
           justify-content: center;
           color: #64748b;
-          width: 42px;
-          height: 42px;
+          width: 40px;
+          height: 40px;
           border-radius: 50%;
           transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         }
@@ -996,9 +998,9 @@ export default function PortfolioApp() {
           background: radial-gradient(circle at 30% 30%, #38bdf8 0%, #0284c7 70%, #0369a1 100%);
           border: 2px solid rgba(255, 255, 255, 0.9);
           color: #ffffff;
-          width: 62px;
-          height: 62px;
-          transform: translateY(-24px);
+          width: 58px;
+          height: 58px;
+          transform: translateY(-22px);
           box-shadow: 0 0 35px rgba(56, 189, 248, 0.95), inset 0 3px 6px rgba(255, 255, 255, 0.8), inset 0 -4px 6px rgba(0, 0, 0, 0.6);
         }
 
@@ -1055,7 +1057,7 @@ export default function PortfolioApp() {
         };
         const onPointerUp = (u) => { el.releasePointerCapture(u.pointerId); window.removeEventListener('pointermove', onPointerMove); window.removeEventListener('pointerup', onPointerUp); };
         window.addEventListener('pointermove', onPointerMove); window.addEventListener('pointerup', onPointerUp);
-      }} onClick={(e) => { e.stopPropagation(); showToast('สวัสดีจ้า 🌙 ฉันคือผู้ช่วย Moon Shot'); }}>
+      }} onClick={(e) => { e.stopPropagation(); showToast('สวัสดีครับ 🌙 ผมคือผู้ช่วย Moon Shot'); }}>
         <img src={new URL('../moon.png', import.meta.url).href} alt="Moon Assistant" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 5px 15px rgba(56,189,248,0.4))' }} />
       </div>
 
@@ -1611,7 +1613,7 @@ export default function PortfolioApp() {
             </div>
           )}
 
-          {/* ================= 4. สินทรัพย์อื่นๆ ================= */}
+          {/* ================= 4. สินทรัพย์อื่นๆ (กองทุน ทอง คริปโต ตามลำดับ) ================= */}
           {activeTab === 4 && (
             <div>
               <div className="pf-section-label" style={{ marginTop: 0 }}>สินทรัพย์อื่นๆ (กองทุน ทอง คริปโต)</div>
@@ -1622,76 +1624,88 @@ export default function PortfolioApp() {
                   <button className="pf-btn pf-btn-primary pf-empty-cta" onClick={openAdd}><Plus size={16} /> เพิ่มสินทรัพย์อื่นๆ</button>
                 </div>
               ) : (
-                byType.filter((t) => t.key !== 'th_stock' && t.key !== 'foreign_stock' && t.key !== 'cash').map((t) => {
-                  const typeHoldings = enriched.filter((h) => h.type === t.key);
-                  const typeCost = typeHoldings.reduce((s, h) => s + h.costValue, 0);
-                  const typeGain = t.value - typeCost;
-                  const typeGainPct = typeCost > 0 ? (typeGain / typeCost) * 100 : 0;
-                  const shades = shadeSet(t.color, typeHoldings.length);
-                  const colorById = {};
-                  typeHoldings.forEach((h, i) => { colorById[h.id] = shades[i]; });
+                byType.filter((t) => t.key !== 'th_stock' && t.key !== 'foreign_stock' && t.key !== 'cash')
+                  .sort((a, b) => {
+                    // ข้อ 2: เรียงลำดับ กองทุน (fund) -> ทองคำ (gold) -> คริปโต (crypto) -> อื่นๆ (other)
+                    const order = { fund: 0, gold: 1, crypto: 2, other: 3 };
+                    return (order[a.key] ?? 9) - (order[b.key] ?? 9);
+                  })
+                  .map((t) => {
+                    const typeHoldings = enriched.filter((h) => h.type === t.key);
+                    const typeCost = typeHoldings.reduce((s, h) => s + h.costValue, 0);
+                    const typeGain = t.value - typeCost;
+                    const typeGainPct = typeCost > 0 ? (typeGain / typeCost) * 100 : 0;
+                    const shades = shadeSet(t.color, typeHoldings.length);
+                    const colorById = {};
+                    typeHoldings.forEach((h, i) => { colorById[h.id] = shades[i]; });
 
-                  return (
-                    <div className="pf-type-section" key={t.key}>
-                      <div className="pf-type-section-head">
-                        <ExplodedPie3D data={typeHoldings.map((h) => ({ key: h.id, label: h.name, color: colorById[h.id], value: h.marketValue }))} rx={55} depth={12} explode={4} />
-                        <div className="pf-type-section-info">
-                          <div className="pf-type-section-title"><span className="pf-dot" style={{ background: t.color }} />{t.label}</div>
-                          <div className="pf-type-section-value pf-mono">฿{fmt(t.value, 0)}</div>
-                          {typeCost > 0 && <div className="pf-type-section-cost pf-mono">ต้นทุนรวม ฿{fmt(typeCost, 0)}</div>}
-                          {typeCost > 0 && (
-                            <div className={`pf-type-section-gain pf-mono ${typeGain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
-                              {typeGain >= 0 ? '+' : ''}{fmt(typeGain, 0)} ({typeGain >= 0 ? '+' : ''}{fmt(typeGainPct, 1)}%)
-                            </div>
-                          )}
+                    return (
+                      <div className="pf-type-section" key={t.key}>
+                        <div className="pf-type-section-head">
+                          <ExplodedPie3D data={typeHoldings.map((h) => ({ key: h.id, label: h.name, color: colorById[h.id], value: h.marketValue }))} rx={55} depth={12} explode={4} />
+                          <div className="pf-type-section-info">
+                            <div className="pf-type-section-title"><span className="pf-dot" style={{ background: t.color }} />{t.label}</div>
+                            <div className="pf-type-section-value pf-mono">฿{fmt(t.value, 0)}</div>
+                            {typeCost > 0 && <div className="pf-type-section-cost pf-mono">ต้นทุนรวม ฿{fmt(typeCost, 0)}</div>}
+                            {typeCost > 0 && (
+                              <div className={`pf-type-section-gain pf-mono ${typeGain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
+                                {typeGain >= 0 ? '+' : ''}{fmt(typeGain, 0)} ({typeGain >= 0 ? '+' : ''}{fmt(typeGainPct, 1)}%)
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div style={{ maxHeight: '180px', overflowY: 'auto', marginTop: '14px', paddingRight: '4px' }}>
+                          {typeHoldings.map((h) => {
+                            const itemPct = t.value > 0 ? (h.marketValue / t.value) * 100 : 0;
+                            return (
+                              <div key={h.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: '13px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span className="pf-dot" style={{ background: colorById[h.id] }} />
+                                  <span>{h.name}</span>
+                                </div>
+                                <span className="pf-mono" style={{ color: 'var(--gold)', fontWeight: '600' }}>{fmt(itemPct, 1)}%</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* ข้อ 2: รูปแบบแสดงรายละเอียดแต่ละรายการเหมือนหน้าหุ้น (3 บรรทัด) */}
+                        <div className="pf-type-section-holdings">
+                          {typeHoldings.map((h) => {
+                            return (
+                              <div className="pf-subrow" style={{ padding: '12px 0' }} key={h.id}>
+                                <div className="pf-row-top">
+                                  <div className="pf-row-name">
+                                    <span className="pf-dot" style={{ background: colorById[h.id] }} />
+                                    <span className="pf-row-name-text">{h.name}</span>
+                                  </div>
+                                  <div className="pf-row-actions">
+                                    <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
+                                    <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)}><Trash2 size={15} /></button>
+                                  </div>
+                                </div>
+                                <div className="pf-row-meta pf-mono">
+                                  <span>จำนวน <b>{fmt(h.qty, h.qty % 1 === 0 ? 0 : 4)}</b></span>
+                                  <span>ทุนเฉลี่ย <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.avg)}</b></span>
+                                </div>
+                                <div className="pf-row-meta pf-mono">
+                                  <span>ราคาล่าสุด <b style={{ color: 'var(--gold)' }}>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.price)}</b></span>
+                                  <span>ต้นทุนรวม <b>฿{fmt(h.costValue)}</b></span>
+                                </div>
+                                <div className="pf-row-meta pf-mono">
+                                  <span>มูลค่า <b className={h.marketValue >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>฿{fmt(h.marketValue)}</b> {h.currency === 'USD' && <span style={{ fontSize: '11px', opacity: 0.7 }}>(${fmt(h.qty * h.price)})</span>}</span>
+                                  <span className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
+                                    {h.gain >= 0 ? '+' : ''}{fmt(h.gain)} ({h.gain >= 0 ? '+' : ''}{fmt(h.gainPct, 1)}%)
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
-
-                      <div style={{ maxHeight: '180px', overflowY: 'auto', marginTop: '14px', paddingRight: '4px' }}>
-                        {typeHoldings.map((h) => {
-                          const itemPct = t.value > 0 ? (h.marketValue / t.value) * 100 : 0;
-                          return (
-                            <div key={h.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: '13px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span className="pf-dot" style={{ background: colorById[h.id] }} />
-                                <span>{h.name}</span>
-                              </div>
-                              <span className="pf-mono" style={{ color: 'var(--gold)', fontWeight: '600' }}>{fmt(itemPct, 1)}%</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      <div className="pf-type-section-holdings">
-                        {typeHoldings.map((h) => {
-                          const holdingPct = t.value > 0 ? (h.marketValue / t.value) * 100 : 0;
-                          return (
-                            <div className="pf-subrow" style={{ padding: '12px 0' }} key={h.id}>
-                              <div className="pf-row-top">
-                                <div className="pf-row-name">
-                                  <span className="pf-dot" style={{ background: colorById[h.id] }} />
-                                  <span className="pf-row-name-text">{h.name}</span>
-                                </div>
-                                <div className="pf-row-actions">
-                                  <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
-                                  <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)}><Trash2 size={15} /></button>
-                                </div>
-                              </div>
-                              <div className="pf-row-meta pf-mono">
-                                <span>สัดส่วน <b>{fmt(holdingPct, 1)}%</b></span>
-                                <span>จำนวน <b>{fmt(h.qty, h.qty % 1 === 0 ? 0 : 4)}</b></span>
-                                <span>มูลค่า <b>฿{fmt(h.marketValue)}</b></span>
-                                <span className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
-                                  {h.gain >= 0 ? '+' : ''}{fmt(h.gain)} ({h.gain >= 0 ? '+' : ''}{fmt(h.gainPct, 1)}%)
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })
+                    );
+                  })
               )}
             </div>
           )}
