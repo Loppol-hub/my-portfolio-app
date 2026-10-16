@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Pencil, Trash2, RefreshCw, X, TrendingUp, TrendingDown, MoreVertical, Inbox, Zap, Wallet, ChevronRight, ArrowDownWideNarrow, ArrowDownAZ, ArrowUpDown, PlusCircle, MinusCircle, Gift, Sliders, Home, LayoutGrid, BarChart3, Settings, Search } from 'lucide-react';
-import { LineChart, Line, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
+import { LineChart, Line, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 
 const ASSET_TYPES = [
   { key: 'th_stock', label: 'หุ้นไทย', color: '#C7A344', market: 'th', defaultCurrency: 'THB' },
@@ -141,10 +141,16 @@ const fmt = (n, digits = 2) => {
 };
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
-const thaiDate = (iso) => {
+const thaiDateAD = (iso) => {
   if (!iso) return '-';
-  return new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' });
+  const d = new Date(iso);
+  const day = d.getDate();
+  const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+  const m = months[d.getMonth()];
+  const yr = d.getFullYear(); // ค.ศ.
+  return `${day} ${m} ${yr}`;
 };
+
 const emptyForm = { name: '', ticker: '', type: 'th_stock', quantity: '', avgCost: '', currentPrice: '', currency: 'THB', industry: '', instrumentType: 'stock' };
 const INSTRUMENT_TYPES = [
   { key: 'stock', label: 'หุ้นรายตัว' },
@@ -241,9 +247,20 @@ export default function PortfolioApp() {
   const [graphModeUs, setGraphModeUs] = useState('all');
   const [graphYearUs, setGraphYearUs] = useState(String(new Date().getFullYear()));
 
-  // สถานะคำทักทายของนักบินอวกาศ (Moon Assistant)
-  const [astronautMsg, setAstronautMsg] = useState('สวัสดีจ้า 🌙 ยินดีต้อนรับสู่นักบินอวกาศ Moon Shot!');
+  // สถานะกราฟปันผล (ตั้งแต่เริ่มต้น vs รายปี)
+  const [dividendGraphMode, setDividendGraphMode] = useState('year');
+  const [dividendGraphYear, setDividendGraphYear] = useState(String(new Date().getFullYear()));
+
+  // ข้อ 9: คำทักทายของนักบินอวกาศ แบบขึ้นมาแล้วหายไปเอง
+  const [astronautMsg, setAstronautMsg] = useState('สวัสดีครับ ยินดีต้อนรับสู่ MOON SHOT');
   const [showAstronautBubble, setShowAstronautBubble] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowAstronautBubble(false);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => { load(); }, []);
 
@@ -460,23 +477,34 @@ export default function PortfolioApp() {
     return base;
   }, [monthlyList, graphModeGain, graphYearGain, totalInvestedCost, totalGain]);
 
-  // ข้อมูลกราฟแท่งปันผลเทียบกับเงินที่ลงทุนไปรายปี
+  // ข้อ 5: กราฟปันผล รองรับ "ตั้งแต่เริ่มต้น" (รวมยอดปันผลสะสม + เงินลงทุนเฉลี่ย/ปัจจุบัน) และ "รายปี"
   const dividendChartData = useMemo(() => {
-    return yearOptions.slice().reverse().map((y) => {
-      let divSum = 0;
-      ledger.forEach((e) => {
-        if (e.type === 'dividend' && (e.date || '').slice(0, 4) === y) {
-          divSum += e.amount;
-        }
-      });
-      return {
-        year: buddhistYear(y),
-        dividend: divSum,
+    if (dividendGraphMode === 'all') {
+      let totalDiv = 0;
+      ledger.forEach((e) => { if (e.type === 'dividend') totalDiv += e.amount; });
+      return [{
+        year: 'ทั้งหมด',
+        dividend: totalDiv,
         invested: totalInvestedCost,
-        yieldPct: totalInvestedCost > 0 ? (divSum / totalInvestedCost) * 100 : 0
-      };
-    });
-  }, [yearOptions, ledger, totalInvestedCost]);
+        yieldPct: totalInvestedCost > 0 ? (totalDiv / totalInvestedCost) * 100 : 0
+      }];
+    } else {
+      return yearOptions.slice().reverse().map((y) => {
+        let divSum = 0;
+        ledger.forEach((e) => {
+          if (e.type === 'dividend' && (e.date || '').slice(0, 4) === y) {
+            divSum += e.amount;
+          }
+        });
+        return {
+          year: y, // ข้อ 4: ปี ค.ศ.
+          dividend: divSum,
+          invested: totalInvestedCost, // ข้อ 2: เงินที่ลงทุนไปของตอนนั้น
+          yieldPct: totalInvestedCost > 0 ? (divSum / totalInvestedCost) * 100 : 0
+        };
+      });
+    }
+  }, [dividendGraphMode, yearOptions, ledger, totalInvestedCost]);
 
   const chartDataTh = useMemo(() => {
     const thHoldings = enriched.filter(h => h.type === 'th_stock');
@@ -976,7 +1004,7 @@ export default function PortfolioApp() {
         .pf-issue-banner { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; background: rgba(252,165,165,0.12); border: 1px solid var(--neg); color: var(--text); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; font-size: 12.5px; line-height: 1.5; }
         .pf-loading { display: flex; align-items: center; justify-content: center; height: 60vh; color: var(--muted); }
         
-        {/* ข้อ 3: ลดขนาดแคปซูลด้านบนและด้านล่างลงอีก 1 ใน 4 ส่วน */}
+        {/* Bottom Navigation Bar */}
         .pf-nav-container {
           position: fixed;
           bottom: 12px;
@@ -1029,7 +1057,7 @@ export default function PortfolioApp() {
           filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.6));
         }
 
-        /* กล่องคำพูดคำทักทายของนักบินอวกาศ (Moon Assistant) อยู่ติดกับไอคอนนักบิน */
+        {/* ข้อ 8: นักบินอวกาศขนาด 110x110 */}
         .moon-wrapper {
           position: fixed;
           top: 16px;
@@ -1042,24 +1070,21 @@ export default function PortfolioApp() {
           user-select: none;
         }
         .moon-bubble {
-          background: rgba(17, 24, 39, 0.9);
+          background: rgba(17, 24, 39, 0.92);
           backdrop-filter: blur(8px);
           border: 1px solid rgba(56, 189, 248, 0.4);
           color: #38bdf8;
-          padding: 6px 12px;
-          border-radius: 12px;
-          font-size: 12px;
+          padding: 8px 14px;
+          border-radius: 14px;
+          font-size: 12.5px;
           font-weight: 500;
           box-shadow: 0 4px 20px rgba(0,0,0,0.6);
           white-space: nowrap;
           animation: fadeIn 0.3s ease;
-          max-width: 220px;
-          overflow: hidden;
-          text-overflow: ellipsis;
         }
         .moon-float {
-          width: 70px;
-          height: 70px;
+          width: 110px;
+          height: 110px;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -1090,7 +1115,7 @@ export default function PortfolioApp() {
         </div>
       </div>
 
-      {/* นักบินอวกาศ พร้อมกล่องคำทักทายที่ขยับตาม (ย้ายตำแหน่งมาไว้มุมขวาบนอย่างลงตัว) */}
+      {/* ข้อ 8 & 9: นักบินอวกาศขนาด 110x110 พร้อมคำทักทายที่แสดงผลแล้วจางหายไป */}
       <div className="moon-wrapper" onPointerDown={(e) => {
         const el = e.currentTarget; el.setPointerCapture(e.pointerId);
         const startX = e.clientX, startY = e.clientY, rect = el.getBoundingClientRect();
@@ -1103,15 +1128,9 @@ export default function PortfolioApp() {
         window.addEventListener('pointermove', onPointerMove); window.addEventListener('pointerup', onPointerUp);
       }} onClick={(e) => { 
         e.stopPropagation(); 
-        const msgs = [
-          'สวัสดีจ้า 🌙 พอร์ตวันนี้ดูสดใสมาก!',
-          'สู้ๆ นะนักเดินทาง! เป้าหมายดวงจันทร์อยู่ไม่ไกล 🚀',
-          'ตรวจสอบสภาพพอร์ตแล้ว ทุกอย่างปกติดีครับกัปตัน! ✨',
-          'อย่าลืมบันทึกเงินปันผลและรีบาลานซ์สิ้นปีนะ 💰'
-        ];
-        const randomMsg = msgs[Math.floor(Math.random() * msgs.length)];
-        setAstronautMsg(randomMsg);
+        setAstronautMsg('สวัสดีครับ ยินดีต้อนรับสู่ MOON SHOT');
         setShowAstronautBubble(true);
+        setTimeout(() => setShowAstronautBubble(false), 4000);
         showToast('นักบินอวกาศทักทายคุณ!'); 
       }}>
         {showAstronautBubble && (
@@ -1142,7 +1161,7 @@ export default function PortfolioApp() {
           {pendingImport && (
             <div className="pf-confirm">
               <div style={{ marginBottom: 6, fontSize: 14 }}>
-                พบไฟล์สำรองข้อมูล{pendingImport.exportedAt ? ` (ส่งออกเมื่อ ${thaiDate(pendingImport.exportedAt.slice(0, 10))})` : ''} — มีสินทรัพย์ {Array.isArray(pendingImport.holdings) ? pendingImport.holdings.length : 0} รายการ
+                พบไฟล์สำรองข้อมูล{pendingImport.exportedAt ? ` (ส่งออกเมื่อ ${thaiDateAD(pendingImport.exportedAt.slice(0, 10))})` : ''} — มีสินทรัพย์ {Array.isArray(pendingImport.holdings) ? pendingImport.holdings.length : 0} รายการ
               </div>
               <div style={{ marginBottom: 10, fontSize: 12.5, color: 'var(--muted)' }}>การนำเข้าจะแทนที่ข้อมูลปัจจุบันทั้งหมดในเครื่องนี้</div>
               <div style={{ display: 'flex', gap: 10 }}>
@@ -1238,7 +1257,7 @@ export default function PortfolioApp() {
                         {graphModeTh === 'year' && (
                           <div className="pf-year-picker" style={{ marginBottom: '8px' }}>
                             {yearOptions.map((y) => (
-                              <button key={y} className={y === graphYearTh ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphYearTh(y)} style={{ padding: '2px 8px', fontSize: '11px' }}>{buddhistYear(y)}</button>
+                              <button key={y} className={y === graphYearTh ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphYearTh(y)} style={{ padding: '2px 8px', fontSize: '11px' }}>{y}</button>
                             ))}
                           </div>
                         )}
@@ -1404,7 +1423,7 @@ export default function PortfolioApp() {
                         {graphModeUs === 'year' && (
                           <div className="pf-year-picker" style={{ marginBottom: '8px' }}>
                             {yearOptions.map((y) => (
-                              <button key={y} className={y === graphYearUs ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphYearUs(y)} style={{ padding: '2px 8px', fontSize: '11px' }}>{buddhistYear(y)}</button>
+                              <button key={y} className={y === graphYearUs ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphYearUs(y)} style={{ padding: '2px 8px', fontSize: '11px' }}>{y}</button>
                             ))}
                           </div>
                         )}
@@ -1511,7 +1530,12 @@ export default function PortfolioApp() {
               <div className="pf-section-label" style={{ marginTop: 0 }}>พอร์ตรวม (Portfolio Overview)</div>
               
               {/* การ์ดที่ 1: มูลค่าพอร์ตรวมทั้งหมด */}
-              <div className="pf-hero" style={{ border: '2px solid rgba(251, 191, 36, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #1f2937 100%)' }}>
+              <div className="pf-hero" style={{ border: '2px solid rgba(251, 191, 36, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #1f2937 100%)', position: 'relative' }}>
+                {/* ข้อ: ย้าย "อัปเดตล่าสุด" มาไว้มุมขวาบนของการ์ด และเป็น ค.ศ. */}
+                <div style={{ position: 'absolute', top: '16px', right: '20px' }} className="pf-updated">
+                  อัปเดตล่าสุด: {lastUpdated ? thaiDateAD(lastUpdated) : 'ยังไม่มีการอัปเดต'}
+                </div>
+
                 <div className="pf-hero-label">มูลค่าพอร์ตรวมทั้งหมด</div>
                 <div className="pf-hero-value pf-mono" style={{ fontSize: '44px' }}>฿{fmt(displayTotalValue)}</div>
                 {heroProfitPct === null ? (
@@ -1535,7 +1559,7 @@ export default function PortfolioApp() {
                   {graphModeTotal === 'year' && (
                     <div className="pf-year-picker" style={{ marginBottom: '8px' }}>
                       {yearOptions.map((y) => (
-                        <button key={y} className={y === graphYearTotal ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphYearTotal(y)} style={{ padding: '2px 8px', fontSize: '11px' }}>{buddhistYear(y)}</button>
+                        <button key={y} className={y === graphYearTotal ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphYearTotal(y)} style={{ padding: '2px 8px', fontSize: '11px' }}>{y}</button>
                       ))}
                     </div>
                   )}
@@ -1550,10 +1574,6 @@ export default function PortfolioApp() {
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
-                </div>
-
-                <div className="pf-hero-footer">
-                  <div className="pf-updated" style={{ marginLeft: 'auto' }}>อัปเดตล่าสุด: {lastUpdated ? thaiDate(lastUpdated) : 'ยังไม่มีการอัปเดต'}</div>
                 </div>
               </div>
 
@@ -1580,7 +1600,7 @@ export default function PortfolioApp() {
                   {graphModeGain === 'year' && (
                     <div className="pf-year-picker" style={{ marginBottom: '8px' }}>
                       {yearOptions.map((y) => (
-                        <button key={y} className={y === graphYearGain ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphYearGain(y)} style={{ padding: '2px 8px', fontSize: '11px' }}>{buddhistYear(y)}</button>
+                        <button key={y} className={y === graphYearGain ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphYearGain(y)} style={{ padding: '2px 8px', fontSize: '11px' }}>{y}</button>
                       ))}
                     </div>
                   )}
@@ -1598,21 +1618,43 @@ export default function PortfolioApp() {
                 </div>
               </div>
 
-              {/* ข้อ 1: กราฟปันผล เทียบ เงินที่ลงทุนไป (ต่อจากกราฟกำไรขาดทุนในหน้าพอร์ตรวม) */}
+              {/* การ์ดที่ 3: กราฟปันผล เทียบ เงินที่ลงทุนไป (ปรับปรุงตามข้อ 1, 2, 3, 5, 6, 7) */}
               <div className="pf-hero" style={{ border: '2px solid rgba(56, 189, 248, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #0f172a 100%)' }}>
-                <div className="pf-hero-label">กราฟปันผล เทียบ เงินที่ลงทุนไป (รายปี)</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <div className="pf-hero-label" style={{ margin: 0 }}>กราฟปันผล เทียบ เงินที่ลงทุนไป</div>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button className={dividendGraphMode === 'all' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setDividendGraphMode('all')} style={{ padding: '2px 8px', fontSize: '11px' }}>ตั้งแต่เริ่มต้น</button>
+                    <button className={dividendGraphMode === 'year' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setDividendGraphMode('year')} style={{ padding: '2px 8px', fontSize: '11px' }}>รายปี</button>
+                  </div>
+                </div>
+
+                {dividendGraphMode === 'year' && (
+                  <div className="pf-year-picker" style={{ marginBottom: '8px' }}>
+                    {yearOptions.map((y) => (
+                      <button key={y} className={y === dividendGraphYear ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setDividendGraphYear(y)} style={{ padding: '2px 8px', fontSize: '11px' }}>{y}</button>
+                    ))}
+                  </div>
+                )}
+
                 <div className="pf-spark" style={{ marginTop: '10px' }}>
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={dividendChartData}>
+                    <BarChart data={dividendGraphMode === 'year' ? dividendChartData.filter(d => String(d.year) === dividendGraphYear) : dividendChartData} barSize={28}>
                       <XAxis dataKey="year" stroke="#94a3b8" fontSize={10} />
                       <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(val) => `฿${fmt(val, 0)}`} />
-                      <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name) => [`฿${fmt(val)}`, name === 'dividend' ? 'เงินปันผลรับ' : 'เงินที่ลงทุนไป']} labelFormatter={(l) => `ปี พ.ศ. ${l}`} />
-                      <Bar dataKey="dividend" fill="#38bdf8" radius={[4, 4, 0, 0]} name="dividend" />
+                      <Tooltip contentStyle={{ background: '#111827', border: '1px solid var(--divider)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} formatter={(val, name, item) => {
+                        const label = name === 'dividend' ? 'เงินปันผลรับ' : 'เงินที่ลงทุนไป';
+                        const extra = name === 'dividend' && item.payload.invested > 0 ? ` (${fmt(item.payload.yieldPct, 1)}% ของเงินลงทุน)` : '';
+                        return [`฿${fmt(val)}${extra}`, label];
+                      }} labelFormatter={(l) => `ปี ${l}`} />
+                      <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }} formatter={(value) => (value === 'dividend' ? <span style={{ color: '#34d399' }}>เงินปันผล</span> : <span style={{ color: '#94a3b8' }}>เงินที่ลงทุนไป</span>)} />
+                      {/* ข้อ 6: แท่งปันผลสีเขียว (#34d399), แท่งเงินลงทุนสีเทา (#64748b) */}
+                      <Bar dataKey="dividend" fill="#34d399" radius={[4, 4, 0, 0]} name="dividend" />
+                      <Bar dataKey="invested" fill="#64748b" radius={[4, 4, 0, 0]} name="invested" />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-                <div style={{ marginTop: '10px', fontSize: '12.5px', color: 'var(--muted)', textAlign: 'center' }}>
-                  อัตราผลตอบแทนเงินปันผลเทียบเงินลงทุน (Yield on Cost) เฉลี่ยตามปีปฏิทิน
+                <div style={{ marginTop: '10px', fontSize: '12px', color: 'var(--muted)', textAlign: 'center' }}>
+                  เปรียบเทียบกระแสเงินสดปันผลกับเงินลงทุนจริง (Yield on Cost)
                 </div>
               </div>
 
@@ -2037,13 +2079,13 @@ export default function PortfolioApp() {
             <div className="pf-year-picker">
               {yearOptions.map((y) => (
                 <button key={y} className={y === selectedYear ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setSelectedYear(y)}>
-                  {buddhistYear(y)}
+                  {y}
                 </button>
               ))}
             </div>
             <div className="pf-year-card">
               <div className="pf-year-net">
-                <div className="pf-year-net-label">รวมสุทธิปี {buddhistYear(selectedYear)}</div>
+                <div className="pf-year-net-label">รวมสุทธิปี {selectedYear}</div>
                 <div className="pf-year-net-value pf-mono">{yearSummary.net >= 0 ? '+' : '-'}฿{fmt(Math.abs(yearSummary.net), 0)}</div>
               </div>
 
@@ -2111,7 +2153,7 @@ export default function PortfolioApp() {
                       <span className={`pf-ledger-amount ${LEDGER_SIGN[e.type] > 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
                         {LEDGER_SIGN[e.type] > 0 ? '+' : '-'}฿{fmt(e.amount)}
                       </span>
-                      <span style={{ marginLeft: 'auto' }}>{thaiDate(e.date)}</span>
+                      <span style={{ marginLeft: 'auto' }}>{thaiDateAD(e.date)}</span>
                     </div>
                   </div>
                 ))}
