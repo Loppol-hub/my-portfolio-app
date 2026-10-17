@@ -19,8 +19,8 @@ const TICKER_HINT = {
   gold: 'เช่น XAU (ถ้ามี)',
 };
 
-const LEDGER_LABELS = { profit: 'กำไร', loss: 'ขาดทุน', dividend: 'ปันผล', rebalance: 'รีบาลานซ์เงินสด' };
-const LEDGER_SIGN = { profit: 1, loss: -1, dividend: 1, rebalance: 1 };
+const LEDGER_LABELS = { capital_add: 'เพิ่มทุน', capital_reduce: 'ลดทุน', profit: 'กำไร', loss: 'ขาดทุน', dividend: 'ปันผล', rebalance: 'รีบาลานซ์เงินสด' };
+const LEDGER_SIGN = { capital_add: 1, capital_reduce: -1, profit: 1, loss: -1, dividend: 1, rebalance: 1 };
 
 function hexToHsl(hex) {
   const c = hex.replace('#', '');
@@ -370,17 +370,21 @@ export default function PortfolioApp() {
   const totalInvestedValue = useMemo(() => enriched.filter((h) => h.type !== 'cash').reduce((s, h) => s + h.marketValue, 0), [enriched]);
   const totalInvestedCost = useMemo(() => enriched.filter((h) => h.type !== 'cash').reduce((s, h) => s + h.costValue, 0), [enriched]);
 
-  // ผลรวมของ ปุ่มกำไร กับ ปุ่มขาดทุน สำหรับผลประกอบการ
+  const capitalAdjTotal = useMemo(() => (
+    ledger.filter((e) => e.type === 'capital_add').reduce((s, e) => s + e.amount, 0)
+    - ledger.filter((e) => e.type === 'capital_reduce').reduce((s, e) => s + e.amount, 0)
+  ), [ledger]);
+
   const performanceTotal = useMemo(() => (
     ledger.filter((e) => e.type === 'profit').reduce((s, e) => s + e.amount, 0)
     - ledger.filter((e) => e.type === 'loss').reduce((s, e) => s + e.amount, 0)
   ), [ledger]);
 
   const cashAdjTotal = useMemo(() => (
-    performanceTotal + ledger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0)
-  ), [ledger, performanceTotal]);
+    performanceTotal + ledger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0) + capitalAdjTotal
+  ), [ledger, performanceTotal, capitalAdjTotal]);
 
-  const totalCapital = initialCapital;
+  const totalCapital = initialCapital + capitalAdjTotal;
   const cashActive = initialCapital > 0 || ledger.length > 0;
   const computedCash = cashActive ? (totalCapital - totalInvestedCost + cashAdjTotal) : 0;
 
@@ -411,11 +415,11 @@ export default function PortfolioApp() {
   }, [yearOptions]);
 
   const yearSummary = useMemo(() => {
-    const d = { profit: 0, loss: 0, dividend: 0 };
+    const d = { capital_add: 0, capital_reduce: 0, profit: 0, loss: 0, dividend: 0 };
     ledger.forEach((e) => { if ((e.date || '').slice(0, 4) === selectedYear && d[e.type] !== undefined) d[e.type] = (d[e.type] || 0) + e.amount; });
-    const net = d.profit - d.loss + d.dividend;
-    const totalIn = d.profit + d.dividend;
-    const totalOut = d.loss;
+    const net = d.capital_add - d.capital_reduce + d.profit - d.loss + d.dividend;
+    const totalIn = d.capital_add + d.profit + d.dividend;
+    const totalOut = d.capital_reduce + d.loss;
     const totalFlow = totalIn + totalOut;
     const inPct = totalFlow > 0 ? (totalIn / totalFlow) * 100 : 0;
     return { ...d, net, totalIn, totalOut, inPct };
@@ -837,11 +841,13 @@ export default function PortfolioApp() {
       if (isNaN(amt) || amt <= 0) { setLedgerError('กรอกจำนวนเงินให้มากกว่า 0'); return; }
     }
 
-    // ข้อ 1: ปุ่มเพิ่มทุน/ลดทุน ให้นำไปคำนวณกับทุนเริ่มต้นทันที (ไม่บันทึกเป็นรายการแยก)
+    // ข้อ 2: ปุ่มเพิ่มทุน/ลดทุน ให้นำไปคำนวณกับทุนเริ่มต้นทันที พร้อมบันทึกประวัติให้แสดงในประวัติด้วย
     if (ledgerType === 'capital_add' || (ledgerType === 'rebalance' && typeToSave === 'capital_add')) {
       const nextCap = initialCapital + amt;
       setInitialCapital(nextCap);
       window.storage.set('initial-capital', String(nextCap), false);
+      const entry = { id: Date.now().toString(), type: 'capital_add', amount: amt, date: ledgerDate || todayStr(), note: ledgerNote.trim() };
+      saveLedger([...ledger, entry]);
       showToast('เพิ่มทุนสำเร็จ');
       setPanel('cashManage');
       return;
@@ -850,6 +856,8 @@ export default function PortfolioApp() {
       const nextCap = Math.max(0, initialCapital - amt);
       setInitialCapital(nextCap);
       window.storage.set('initial-capital', String(nextCap), false);
+      const entry = { id: Date.now().toString(), type: 'capital_reduce', amount: amt, date: ledgerDate || todayStr(), note: ledgerNote.trim() };
+      saveLedger([...ledger, entry]);
       showToast('ลดทุนสำเร็จ');
       setPanel('cashManage');
       return;
@@ -1462,12 +1470,11 @@ export default function PortfolioApp() {
                 <span className="pf-dot" style={{ background: 'var(--gold)' }} />พอร์ตรวม (Portfolio Overview)
               </div>
 
-              {/* ข้อ 2 & 3: ย้ายการ์ด "สัดส่วนสินทรัพย์รวม" มาไว้บนสุด และย้าย "อัปเดตล่าสุด" มาไว้ที่นี่ */}
+              {/* ข้อ 2 & 3: การ์ดสัดส่วนสินทรัพย์รวม (ย้ายมาไว้บนสุด พร้อมย้ายอัปเดตล่าสุดมาไว้มุมขวาบน) */}
               <div className="pf-hero" style={{ background: '#111827', padding: '20px', borderRadius: '16px', border: '1px solid var(--divider)', position: 'relative' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                  <div style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '15.5px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '7px', margin: 0 }}>
-                    <span className="pf-dot" style={{ background: 'var(--gold)' }} />สัดส่วนสินทรัพย์รวม
-                  </div>
+                  {/* ข้อ 3: ปรับรูปแบบข้อความ "สัดส่วนสินทรัพย์รวม" ให้เหมือนกับ "มูลค่าสินทรัพย์ทั้งหมด" (.pf-hero-label) */}
+                  <div className="pf-hero-label" style={{ margin: 0 }}>สัดส่วนสินทรัพย์รวม</div>
                   <div className="pf-updated" style={{ whiteSpace: 'nowrap' }}>
                     อัปเดตล่าสุด: {lastUpdated ? thaiDateAD(lastUpdated) : 'ยังไม่มีการอัปเดต'}
                   </div>
@@ -1499,7 +1506,7 @@ export default function PortfolioApp() {
                 )}
               </div>
 
-              {/* การ์ดที่ 2: มูลค่าสินทรัพย์ทั้งหมด (ไม่มีอัปเดตล่าสุดที่มุมขวาบนแล้ว เพราะย้ายไปข้างบน) */}
+              {/* การ์ดที่ 2: มูลค่าสินทรัพย์ทั้งหมด */}
               <div className="pf-hero" style={{ border: '2px solid rgba(251, 191, 36, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #1f2937 100%)' }}>
                 <div className="pf-hero-label">มูลค่าสินทรัพย์ทั้งหมด</div>
                 <div className="pf-hero-value pf-mono" style={{ fontSize: '44px' }}>฿{fmt(displayTotalValue)}</div>
@@ -1614,61 +1621,60 @@ export default function PortfolioApp() {
                   </ResponsiveContainer>
                 </div>
               </div>
-
-              {/* การ์ดเงินสด / สภาพคล่อง */}
-              {byType.find((t) => t.key === 'cash') && (
-                <div className="pf-type-section" style={{ marginTop: '20px' }}>
-                  <div className="pf-type-section-head">
-                    <div className="pf-type-section-info" style={{ flex: 1 }}>
-                      <div className="pf-type-section-title"><span className="pf-dot" style={{ background: '#7C8B9E' }} />เงินสด / สภาพคล่อง</div>
-                      <div className="pf-type-section-value pf-mono">฿{fmt(computedCash, 0)}</div>
-
-                      <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                        <div className="pf-capital-row">
-                          <span style={{ color: 'var(--muted)' }}>ทุนเริ่มต้น</span>
-                          <span className="pf-mono">฿{fmt(initialCapital, 0)}</span>
-                        </div>
-                        <div className="pf-capital-row">
-                          <span style={{ color: 'var(--muted)' }}>เงินที่ลงทุนไป</span>
-                          <span className="pf-mono">฿{fmt(totalInvestedCost, 0)}</span>
-                        </div>
-                        <div className="pf-capital-row">
-                          <span style={{ color: 'var(--muted)' }}>ผลประกอบการ</span>
-                          <span className={`pf-mono ${performanceTotal >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
-                            {performanceTotal >= 0 ? '+' : ''}฿{fmt(performanceTotal, 0)}
-                          </span>
-                        </div>
-                        <div className="pf-capital-row">
-                          <span style={{ color: 'var(--muted)' }}>ปันผล</span>
-                          <span className="pf-mono pf-chip-pos">฿{fmt(ledger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0), 0)}</span>
-                        </div>
-                        <div className="pf-capital-row">
-                          <span style={{ color: 'var(--muted)' }}>รีบาลานซ์</span>
-                          <span className="pf-mono">฿{fmt(ledger.filter((e) => e.type === 'rebalance').reduce((s, e) => s + e.amount, 0), 0)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <button className="pf-cash-manage-btn" onClick={() => setPanel('cashManage')}>
-                    <span className="pf-cash-manage-icon"><Wallet size={16} /></span>
-                    <span>จัดการเงินสด & สรุปรายปี</span>
-                    <ChevronRight size={14} style={{ opacity: 0.5 }} />
-                  </button>
-                </div>
-              )}
             </div>
           )}
 
-          {/* ================= 4. สินทรัพย์อื่นๆ (กองทุน ทอง คริปโต) ================= */}
+          {/* ================= 4. สินทรัพย์อื่นๆ (กองทุน ทอง คริปโต & เงินสด) ================= */}
           {activeTab === 4 && (
             <div>
               <div style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '15.5px', color: 'var(--text)', margin: '0 0 14px 2px', display: 'flex', alignItems: 'center', gap: '7px' }}>
-                <span className="pf-dot" style={{ background: '#D9823F' }} />สินทรัพย์อื่นๆ (กองทุน ทอง คริปโต)
+                <span className="pf-dot" style={{ background: '#7C8B9E' }} />เงินสดและสินทรัพย์อื่นๆ (Cash & Others)
               </div>
+
+              {/* ข้อ 1 & 4: ย้ายการ์ดเงินสดมาไว้ที่นี่ และปรับหัวข้อ "เงินสด / สภาพคล่อง" ให้เหมือนกับ "มูลค่าสินทรัพย์ทั้งหมด" (.pf-hero-label) */}
+              <div className="pf-type-section" style={{ marginTop: 0, marginBottom: '20px' }}>
+                <div className="pf-type-section-head">
+                  <div className="pf-type-section-info" style={{ flex: 1 }}>
+                    <div className="pf-hero-label" style={{ marginBottom: '6px' }}>เงินสด / สภาพคล่อง</div>
+                    <div className="pf-type-section-value pf-mono">฿{fmt(computedCash, 0)}</div>
+
+                    <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                      <div className="pf-capital-row">
+                        <span style={{ color: 'var(--muted)' }}>ทุนเริ่มต้น</span>
+                        <span className="pf-mono">฿{fmt(initialCapital, 0)}</span>
+                      </div>
+                      <div className="pf-capital-row">
+                        <span style={{ color: 'var(--muted)' }}>เงินที่ลงทุนไป</span>
+                        <span className="pf-mono">฿{fmt(totalInvestedCost, 0)}</span>
+                      </div>
+                      <div className="pf-capital-row">
+                        <span style={{ color: 'var(--muted)' }}>ผลประกอบการ</span>
+                        <span className={`pf-mono ${performanceTotal >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
+                          {performanceTotal >= 0 ? '+' : ''}฿{fmt(performanceTotal, 0)}
+                        </span>
+                      </div>
+                      <div className="pf-capital-row">
+                        <span style={{ color: 'var(--muted)' }}>ปันผล</span>
+                        <span className="pf-mono pf-chip-pos">฿{fmt(ledger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0), 0)}</span>
+                      </div>
+                      <div className="pf-capital-row">
+                        <span style={{ color: 'var(--muted)' }}>รีบาลานซ์</span>
+                        <span className="pf-mono">฿{fmt(ledger.filter((e) => e.type === 'rebalance').reduce((s, e) => s + e.amount, 0), 0)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <button className="pf-cash-manage-btn" onClick={() => setPanel('cashManage')}>
+                  <span className="pf-cash-manage-icon"><Wallet size={16} /></span>
+                  <span>จัดการเงินสด & สรุปรายปี</span>
+                  <ChevronRight size={14} style={{ opacity: 0.5 }} />
+                </button>
+              </div>
+
               {holdings.filter((h) => h.type === 'crypto' || h.type === 'gold' || h.type === 'fund' || h.type === 'other').length === 0 ? (
                 <div className="pf-empty">
                   <Inbox size={26} style={{ marginBottom: 8, opacity: 0.6 }} />
-                  <div>ยังไม่มีสินทรัพย์อื่นๆ ในพอร์ต</div>
+                  <div>ยังไม่มีรายการสินทรัพย์อื่นๆ ในพอร์ต</div>
                   <button className="pf-btn pf-btn-primary pf-empty-cta" onClick={openAdd}><Plus size={16} /> เพิ่มสินทรัพย์อื่นๆ</button>
                 </div>
               ) : (
@@ -2041,6 +2047,12 @@ export default function PortfolioApp() {
               )}
 
               <div className="pf-year-rows">
+                {yearSummary.capital_add > 0 && (
+                  <div className="pf-year-row"><PlusCircle size={15} className="pf-year-row-icon" /><span>เพิ่มทุน</span><span className="pf-mono">฿{fmt(yearSummary.capital_add, 0)}</span></div>
+                )}
+                {yearSummary.capital_reduce > 0 && (
+                  <div className="pf-year-row"><MinusCircle size={15} className="pf-year-row-icon" /><span>ลดทุน</span><span className="pf-mono">฿{fmt(yearSummary.capital_reduce, 0)}</span></div>
+                )}
                 {yearSummary.profit > 0 && (
                   <div className="pf-year-row"><TrendingUp size={15} className="pf-year-row-icon" /><span>กำไร</span><span className="pf-mono">฿{fmt(yearSummary.profit, 0)}</span></div>
                 )}
