@@ -370,6 +370,10 @@ export default function PortfolioApp() {
   const totalInvestedValue = useMemo(() => enriched.filter((h) => h.type !== 'cash').reduce((s, h) => s + h.marketValue, 0), [enriched]);
   const totalInvestedCost = useMemo(() => enriched.filter((h) => h.type !== 'cash').reduce((s, h) => s + h.costValue, 0), [enriched]);
 
+  const capitalAddTotal = useMemo(() => ledger.filter((e) => e.type === 'capital_add').reduce((s, e) => s + e.amount, 0), [ledger]);
+  const capitalReduceTotal = useMemo(() => ledger.filter((e) => e.type === 'capital_reduce').reduce((s, e) => s + e.amount, 0), [ledger]);
+  const capitalAdjTotal = useMemo(() => capitalAddTotal - capitalReduceTotal, [capitalAddTotal, capitalReduceTotal]);
+
   const performanceTotal = useMemo(() => (
     ledger.filter((e) => e.type === 'profit').reduce((s, e) => s + e.amount, 0)
     - ledger.filter((e) => e.type === 'loss').reduce((s, e) => s + e.amount, 0)
@@ -383,8 +387,7 @@ export default function PortfolioApp() {
     performanceTotal + ledger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0) + rebalanceTotal
   ), [ledger, performanceTotal, rebalanceTotal]);
 
-  // ข้อ 1: ทุนเริ่มต้นคำนวณจาก initialCapital โดยตรง ซึ่งถูกปรับโดยปุ่มเพิ่ม/ลดทุนแล้ว
-  const totalCapital = initialCapital;
+  const totalCapital = initialCapital + capitalAdjTotal;
   const cashActive = initialCapital > 0 || ledger.length > 0;
   const computedCash = cashActive ? (totalCapital - totalInvestedCost + cashAdjTotal) : 0;
 
@@ -423,7 +426,15 @@ export default function PortfolioApp() {
 
   const yearSummary = useMemo(() => {
     const d = { capital_add: 0, capital_reduce: 0, profit: 0, loss: 0, dividend: 0, rebalance: 0 };
-    ledger.forEach((e) => { if ((e.date || '').slice(0, 4) === selectedYear && d[e.type] !== undefined) d[e.type] = (d[e.type] || 0) + e.amount; });
+    ledger.forEach((e) => {
+      if ((e.date || '').slice(0, 4) === selectedYear) {
+        if (e.type === 'rebalance') {
+          d.rebalance = (d.rebalance || 0) + e.amount;
+        } else if (d[e.type] !== undefined) {
+          d[e.type] = (d[e.type] || 0) + e.amount;
+        }
+      }
+    });
     const net = d.capital_add - d.capital_reduce + d.profit - d.loss + d.dividend + d.rebalance;
     const totalIn = d.capital_add + d.profit + d.dividend + (d.rebalance > 0 ? d.rebalance : 0);
     const totalOut = d.capital_reduce + d.loss + (d.rebalance < 0 ? Math.abs(d.rebalance) : 0);
@@ -835,7 +846,6 @@ export default function PortfolioApp() {
     setLedgerType(type); setLedgerAmount(''); setLedgerNote(''); setLedgerDate(todayStr()); setLedgerError(''); setPanel('ledger');
   };
 
-  // ข้อ 1: ปุ่มเพิ่ม/ลดทุน คำนวณตรงกับทุนเริ่มต้น (Initial Capital)
   const submitLedger = () => {
     const rawVal = ledgerAmount.trim();
     let amt = parseFloat(rawVal);
@@ -880,7 +890,6 @@ export default function PortfolioApp() {
     setPanel('cashManage');
   };
 
-  // เมื่อลบรายการในประวัติ คืนค่าทุนเริ่มต้นกลับด้วย
   const deleteLedgerEntry = (id) => {
     const target = ledger.find((e) => e.id === id);
     if (target) {
