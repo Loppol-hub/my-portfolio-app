@@ -20,7 +20,6 @@ const TICKER_HINT = {
 };
 
 const LEDGER_LABELS = { capital_add: 'เพิ่มทุน', capital_reduce: 'ลดทุน', profit: 'กำไร', loss: 'ขาดทุน', dividend: 'ปันผล', rebalance: 'รีบาลานซ์' };
-const LEDGER_SIGN = { capital_add: 1, capital_reduce: -1, profit: 1, loss: -1, dividend: 1, rebalance: 1 };
 
 function hexToHsl(hex) {
   const c = hex.replace('#', '');
@@ -342,6 +341,11 @@ export default function PortfolioApp() {
     catch (e) { showToast('บันทึกประวัติไม่สำเร็จ'); }
   };
 
+  const saveLedger = async (next) => {
+    setLedger(next);
+    try { await window.storage.set('cash-ledger', JSON.stringify(next), false); } catch (e) { /* ignore */ }
+  };
+
   const getEffectiveRate = (type, rate) => {
     if (type === 'foreign_stock' || type === 'gold') return Math.max(0, rate - 0.05);
     if (type === 'crypto') return Math.max(0, rate - 0.1);
@@ -387,12 +391,10 @@ export default function PortfolioApp() {
     performanceTotal + ledger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0) + rebalanceTotal
   ), [ledger, performanceTotal, rebalanceTotal]);
 
-  // Single Source of Truth: ทุนเริ่มต้นสะสมคำนวณจาก ทุนตั้งต้น + เพิ่มทุน - ลดทุน จาก ledger แบบสดๆ ป้องกันการคำนวณซ้ำซ้อน
   const totalCapital = initialCapital + capitalAdjTotal;
   const cashActive = initialCapital > 0 || ledger.length > 0;
   const computedCash = cashActive ? (totalCapital - totalInvestedCost + cashAdjTotal) : 0;
 
-  // เปอร์เซ็นต์สภาพคล่องเทียบกับ "มูลค่าพอร์ตลงทุน" (totalInvestedValue)
   const cashRatio = useMemo(() => {
     const invVal = totalInvestedValue;
     if (invVal <= 0) return 0;
@@ -400,7 +402,7 @@ export default function PortfolioApp() {
   }, [totalInvestedValue, computedCash]);
 
   const recentLedger = useMemo(() => {
-    let list = ledger.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || String(b.id).localeCompare(String(a.id)));
+    let list = ledger.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || String(b.id).localeCompare(String(b.id)));
     const q = ledgerSearchQuery.trim().toLowerCase();
     if (q) {
       list = list.filter((e) => {
@@ -548,11 +550,36 @@ export default function PortfolioApp() {
     return base;
   }, [monthlyList, graphModeUs, graphYearUs, enriched]);
 
-  const openAdd = () => { setForm(emptyForm); setEditingId(null); setFormError(''); setPanel('form'); };
-  const openEdit = (h) => {
-    setForm({ name: h.name, ticker: h.ticker || '', type: h.type, quantity: String(h.quantity), avgCost: String(h.avgCost), currentPrice: String(h.currentPrice), currency: h.currency === 'USD' ? 'USD' : 'THB', industry: h.industry || '', instrumentType: h.instrumentType || 'stock' });
-    setEditingId(h.id); setFormError(''); setPanel('form');
+  const openAdd = () => { 
+    setForm(emptyForm); 
+    setEditingId(null); 
+    setFormError(''); 
+    setPanel('form'); 
   };
+
+  const openEdit = (h) => {
+    setForm({ 
+      name: h.name, 
+      ticker: h.ticker || '', 
+      type: h.type, 
+      quantity: String(h.quantity), 
+      avgCost: String(h.avgCost), 
+      currentPrice: String(h.currentPrice), 
+      currency: h.currency === 'USD' ? 'USD' : 'THB', 
+      industry: h.industry || '', 
+      instrumentType: h.instrumentType || 'stock',
+      tradeAction: 'none',
+      tradeQty: '',
+      tradePrice: String(h.currentPrice || ''),
+      feePct: '0.15',
+      tradeDate: todayStr(),
+      note: ''
+    });
+    setEditingId(h.id); 
+    setFormError(''); 
+    setPanel('form');
+  };
+
   const closePanel = () => { setPanel(null); setEditingId(null); setUpdateDraft({}); setLedgerSearchQuery(''); };
   const onFormTypeChange = (type) => {
     setForm((f) => ({ ...f, type, currency: editingId ? f.currency : typeInfo(type).defaultCurrency }));
@@ -560,22 +587,86 @@ export default function PortfolioApp() {
 
   const submitForm = () => {
     const isCash = form.type === 'cash';
-    const qty = parseFloat(form.quantity);
-    const avg = isCash ? 1 : parseFloat(form.avgCost);
-    const price = isCash ? 1 : parseFloat(form.currentPrice);
-    if (!form.name.trim()) { setFormError('กรอกชื่อสินทรัพย์ก่อนนะ'); return; }
-    if (isNaN(qty) || qty <= 0) { setFormError(isCash ? 'จำนวนเงินต้องมากกว่า 0' : 'จำนวนต้องเป็นตัวเลขมากกว่า 0'); return; }
-    if (!isCash && (isNaN(avg) || avg < 0)) { setFormError('ราคาต้นทุนไม่ถูกต้อง'); return; }
-    if (!isCash && (isNaN(price) || price < 0)) { setFormError('ราคาปัจจุบันไม่ถูกต้อง'); return; }
+    const name = form.name.trim();
+    if (!name) { setFormError('กรอกชื่อสินทรัพย์ก่อนนะ'); return; }
+
     const currency = form.currency === 'USD' ? 'USD' : 'THB';
     const industry = form.industry.trim();
     const instrumentType = (form.type === 'th_stock' || form.type === 'foreign_stock') ? (form.instrumentType || 'stock') : 'stock';
+
     if (editingId) {
-      const next = holdings.map((h) => h.id === editingId ? { ...h, name: form.name.trim(), ticker: form.ticker.trim(), type: form.type, quantity: qty, avgCost: avg, currentPrice: price, currency, industry, instrumentType } : h);
+      const target = holdings.find((h) => h.id === editingId);
+      if (!target) return;
+
+      let currentQty = parseFloat(target.quantity) || 0;
+      let currentAvg = parseFloat(target.avgCost) || 0;
+      let currentPrice = parseFloat(target.currentPrice) || parseFloat(form.currentPrice) || 0;
+      let newLedgerEntries = [...ledger];
+
+      if (form.tradeAction === 'buy') {
+        const addQty = parseFloat(form.tradeQty);
+        const addPrice = parseFloat(form.tradePrice);
+        const feePct = parseFloat(form.feePct) || 0;
+        if (isNaN(addQty) || addQty <= 0 || isNaN(addPrice) || addPrice < 0) {
+          setFormError('กรอกจำนวนและราคาซื้อเพิ่มให้ถูกต้อง');
+          return;
+        }
+        const subtotal = addQty * addPrice;
+        const feeAmount = (subtotal * feePct) / 100;
+        const totalCostBefore = currentQty * currentAvg;
+        const newQty = currentQty + addQty;
+        const totalNewCost = totalCostBefore + subtotal + feeAmount;
+        currentAvg = newQty > 0 ? totalNewCost / newQty : 0;
+        currentQty = newQty;
+      } else if (form.tradeAction === 'sell') {
+        const sellQty = parseFloat(form.tradeQty);
+        const sellPrice = parseFloat(form.tradePrice);
+        const feePct = parseFloat(form.feePct) || 0;
+        if (isNaN(sellQty) || sellQty <= 0 || sellQty > currentQty || isNaN(sellPrice) || sellPrice < 0) {
+          setFormError('จำนวนหรือราคาขายไม่ถูกต้อง (ห้ามขายเกินจำนวนที่มี)');
+          return;
+        }
+        const subtotal = sellQty * sellPrice;
+        const feeAmount = (subtotal * feePct) / 100;
+        const netProceeds = subtotal - feeAmount;
+        const soldCost = sellQty * currentAvg;
+        const pnl = netProceeds - soldCost;
+
+        currentQty = currentQty - sellQty;
+
+        if (Math.abs(pnl) > 0.001) {
+          const entryType = pnl >= 0 ? 'profit' : 'loss';
+          newLedgerEntries.push({
+            id: Date.now().toString(),
+            type: entryType,
+            amount: Math.abs(pnl),
+            date: form.tradeDate || todayStr(),
+            note: `ขาย ${name} (${sellQty} หุ้น)` + (form.note ? ` - ${form.note}` : '')
+          });
+        }
+      } else {
+        const qty = parseFloat(form.quantity);
+        const avg = isCash ? 1 : parseFloat(form.avgCost);
+        const price = isCash ? 1 : parseFloat(form.currentPrice);
+        if (isNaN(qty) || qty <= 0) { setFormError('จำนวนต้องเป็นตัวเลขมากกว่า 0'); return; }
+        currentQty = qty;
+        currentAvg = avg;
+        currentPrice = price;
+      }
+
+      saveLedger(newLedgerEntries);
+      const next = holdings.map((h) => h.id === editingId ? { ...h, name, ticker: form.ticker.trim(), type: form.type, quantity: currentQty, avgCost: Number(currentAvg.toFixed(2)), currentPrice: currentPrice, currency, industry, instrumentType } : h);
       saveHoldings(next);
-      showToast('แก้ไขรายการแล้ว');
+      showToast('บันทึกข้อมูลเรียบร้อย');
     } else {
-      const next = [...holdings, { id: Date.now().toString(), name: form.name.trim(), ticker: form.ticker.trim(), type: form.type, quantity: qty, avgCost: avg, currentPrice: price, currency, industry, instrumentType, lastUpdated: todayStr() }];
+      const qty = parseFloat(form.quantity);
+      const avg = isCash ? 1 : parseFloat(form.avgCost);
+      const price = isCash ? 1 : parseFloat(form.currentPrice);
+      if (isNaN(qty) || qty <= 0) { setFormError(isCash ? 'จำนวนเงินต้องมากกว่า 0' : 'จำนวนต้องเป็นตัวเลขมากกว่า 0'); return; }
+      if (!isCash && (isNaN(avg) || avg < 0)) { setFormError('ราคาต้นทุนไม่ถูกต้อง'); return; }
+      if (!isCash && (isNaN(price) || price < 0)) { setFormError('ราคาปัจจุบันไม่ถูกต้อง'); return; }
+
+      const next = [...holdings, { id: Date.now().toString(), name, ticker: form.ticker.trim(), type: form.type, quantity: qty, avgCost: avg, currentPrice: price, currency, industry, instrumentType, lastUpdated: todayStr() }];
       saveHoldings(next);
       showToast('เพิ่มสินทรัพย์แล้ว');
     }
@@ -815,11 +906,6 @@ export default function PortfolioApp() {
     reader.readAsText(file);
   };
 
-  const saveLedger = async (next) => {
-    setLedger(next);
-    try { await window.storage.set('cash-ledger', JSON.stringify(next), false); } catch (e) { /* ignore */ }
-  };
-
   const confirmImport = async () => {
     if (!pendingImport) return;
     await saveHoldings(Array.isArray(pendingImport.holdings) ? pendingImport.holdings : []);
@@ -979,7 +1065,6 @@ export default function PortfolioApp() {
         .pf-legend-toggle { background: transparent; border: none; padding: 2px 0; cursor: pointer; text-align: left; font-family: inherit; }
         .pf-legend-name-included { color: var(--gold); font-weight: 600; }
         .pf-legend-name-excluded { color: var(--muted); text-decoration: line-through; }
-        .pf-legend-hint { color: var(--muted); font-size: 11px; margin: -4px 0 10px; }
         .pf-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
         .pf-legend-val { color: var(--muted); }
         .pf-empty { text-align: center; padding: 50px 20px; color: var(--muted); border: 1px dashed var(--divider); border-radius: 16px; }
@@ -1270,7 +1355,11 @@ export default function PortfolioApp() {
                             <div className="pf-row-top">
                               <div className="pf-row-name">
                                 <span className="pf-dot" style={{ background: colorById[h.id] }} />
-                                <span className="pf-row-name-text">{h.name}</span>
+                                <span className="pf-row-name-text">
+                                  {h.name}
+                                  {h.instrumentType === 'dr' && <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.1)', padding: '1px 6px', borderRadius: '4px', marginLeft: '6px', color: '#38bdf8' }}>DR</span>}
+                                  {h.instrumentType === 'etf' && <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.1)', padding: '1px 6px', borderRadius: '4px', marginLeft: '6px', color: '#6E8CB0' }}>ETF</span>}
+                                </span>
                               </div>
                               <div className="pf-row-actions">
                                 <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
@@ -1279,10 +1368,10 @@ export default function PortfolioApp() {
                             </div>
                             <div className="pf-row-meta pf-mono">
                               <span>จำนวน <b>{fmt(h.qty, h.qty % 1 === 0 ? 0 : 2)}</b></span>
-                              <span>ทุนเฉลี่ย <b>฿{fmt(h.avg)}</b></span>
+                              <span>ทุนเฉลี่ย <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.avg)}</b></span>
                             </div>
                             <div className="pf-row-meta pf-mono">
-                              <span>ราคาล่าสุด <b style={{ color: 'var(--gold)' }}>฿{fmt(h.price)}</b></span>
+                              <span>ราคาล่าสุด <b style={{ color: 'var(--gold)' }}>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.price)}</b></span>
                               <span>ต้นทุนรวม <b>฿{fmt(h.costValue)}</b></span>
                             </div>
                             <div className="pf-row-meta pf-mono">
@@ -1507,7 +1596,7 @@ export default function PortfolioApp() {
                 )}
               </div>
 
-              {/* ข้อ 4 & 5: การ์ดเงินสดหน้าพอร์ตรวม พร้อมสถานะสภาพคล่องและซ่อนค่า 0 */}
+              {/* การ์ดเงินสด */}
               {byType.find((t) => t.key === 'cash') && (
                 <div className="pf-hero" style={{ border: '2px solid rgba(124, 139, 158, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #1a2230 100%)', position: 'relative' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
@@ -1684,14 +1773,13 @@ export default function PortfolioApp() {
             </div>
           )}
 
-          {/* ================= 4. สินทรัพย์อื่นๆ (พร้อมการ์ดเงินสดดีไซน์ใหม่) ================= */}
+          {/* ================= 4. สินทรัพย์อื่นๆ ================= */}
           {activeTab === 4 && (
             <div>
               <div style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '15.5px', color: 'var(--text)', margin: '0 0 14px 2px', display: 'flex', alignItems: 'center', gap: '7px' }}>
                 <span className="pf-dot" style={{ background: '#7C8B9E' }} />เงินสดและสินทรัพย์อื่นๆ (Cash & Others)
               </div>
 
-              {/* การ์ดเงินสดพร้อมหลอด Progress Bar และเกณฑ์สัดส่วนใหม่ */}
               <div className="pf-type-section" style={{ marginTop: 0, marginBottom: '20px', background: 'linear-gradient(135deg, rgba(17,24,39,0.9) 0%, rgba(31,41,55,0.7) 100%)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
                   <div>
@@ -1766,21 +1854,6 @@ export default function PortfolioApp() {
                           </div>
                         </div>
 
-                        <div style={{ maxHeight: '180px', overflowY: 'auto', marginTop: '14px', paddingRight: '4px' }}>
-                          {typeHoldings.map((h) => {
-                            const itemPct = t.value > 0 ? (h.marketValue / t.value) * 100 : 0;
-                            return (
-                              <div key={h.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: '13px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <span className="pf-dot" style={{ background: colorById[h.id] }} />
-                                  <span>{h.name}</span>
-                                </div>
-                                <span className="pf-mono" style={{ color: 'var(--gold)', fontWeight: '600' }}>{fmt(itemPct, 1)}%</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-
                         <div className="pf-type-section-holdings">
                           {typeHoldings.map((h) => (
                             <div className="pf-subrow" style={{ padding: '12px 0' }} key={h.id}>
@@ -1803,7 +1876,7 @@ export default function PortfolioApp() {
                                 <span>ต้นทุนรวม <b>฿{fmt(h.costValue)}</b></span>
                               </div>
                               <div className="pf-row-meta pf-mono">
-                                <span>มูลค่า <b className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>฿{fmt(h.marketValue)}</b> {h.currency === 'USD' && <span style={{ fontSize: '11px', opacity: 0.7 }}>(${fmt(h.qty * h.price)})</span>}</span>
+                                <span>มูลค่า <b className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>฿{fmt(h.marketValue)}</b></span>
                                 <span className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
                                   {h.gain >= 0 ? '+' : ''}{fmt(h.gain)} ({h.gain >= 0 ? '+' : ''}{fmt(h.gainPct, 1)}%)
                                 </span>
@@ -1886,10 +1959,51 @@ export default function PortfolioApp() {
         <div className="pf-overlay" onClick={closePanel}>
           <div className="pf-panel" onClick={(e) => e.stopPropagation()}>
             <div className="pf-panel-head">
-              <div className="pf-panel-title">{editingId ? 'แก้ไขสินทรัพย์' : 'เพิ่มสินทรัพย์'}</div>
+              <div className="pf-panel-title">{editingId ? 'แก้ไขสินทรัพย์ & ซื้อ/ขาย' : 'เพิ่มสินทรัพย์'}</div>
               <button className="pf-icon-btn" onClick={closePanel} aria-label="ปิด"><X size={16} /></button>
             </div>
             {formError && <div className="pf-error">{formError}</div>}
+
+            {editingId && (
+              <div className="pf-field" style={{ background: 'rgba(56, 189, 248, 0.08)', padding: '12px', borderRadius: '10px', border: '1px solid var(--divider)' }}>
+                <label className="pf-label" style={{ fontWeight: '600', color: 'var(--gold)', marginBottom: '8px' }}>ทำรายการซื้อเพิ่ม / ขายออก</label>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                  <button type="button" className={`pf-btn ${form.tradeAction === 'none' ? 'pf-btn-primary' : 'pf-btn-ghost'}`} style={{ flex: 1, padding: '8px', justifyContent: 'center', fontSize: '13px' }} onClick={() => setForm({ ...form, tradeAction: 'none' })}>แก้ไขข้อมูล</button>
+                  <button type="button" className={`pf-btn ${form.tradeAction === 'buy' ? 'pf-btn-primary' : 'pf-btn-ghost'}`} style={{ flex: 1, padding: '8px', justifyContent: 'center', fontSize: '13px' }} onClick={() => setForm({ ...form, tradeAction: 'buy' })}>ซื้อเพิ่ม</button>
+                  <button type="button" className={`pf-btn ${form.tradeAction === 'sell' ? 'pf-btn-primary' : 'pf-btn-ghost'}`} style={{ flex: 1, padding: '8px', justifyContent: 'center', fontSize: '13px' }} onClick={() => setForm({ ...form, tradeAction: 'sell' })}>ขายออก</button>
+                </div>
+
+                {form.tradeAction !== 'none' && (
+                  <>
+                    <div className="pf-row2" style={{ marginBottom: '10px' }}>
+                      <div>
+                        <label className="pf-label">จำนวนหุ้นที่{form.tradeAction === 'buy' ? 'ซื้อเพิ่ม' : 'ขายออก'}</label>
+                        <input className="pf-input pf-mono" inputMode="decimal" value={form.tradeQty} onChange={(e) => setForm({ ...form, tradeQty: e.target.value })} placeholder="0" />
+                      </div>
+                      <div>
+                        <label className="pf-label">ราคาต่อหน่วย</label>
+                        <input className="pf-input pf-mono" inputMode="decimal" value={form.tradePrice} onChange={(e) => setForm({ ...form, tradePrice: e.target.value })} placeholder="0.00" />
+                      </div>
+                    </div>
+                    <div className="pf-row2" style={{ marginBottom: '10px' }}>
+                      <div>
+                        <label className="pf-label">ค่าธรรมเนียม (%)</label>
+                        <input className="pf-input pf-mono" inputMode="decimal" value={form.feePct} onChange={(e) => setForm({ ...form, feePct: e.target.value })} placeholder="0.15" />
+                      </div>
+                      <div>
+                        <label className="pf-label">วันที่ทำรายการ</label>
+                        <input className="pf-input pf-mono" type="date" value={form.tradeDate} onChange={(e) => setForm({ ...form, tradeDate: e.target.value })} />
+                      </div>
+                    </div>
+                    <div className="pf-field" style={{ marginBottom: 0 }}>
+                      <label className="pf-label">หมายเหตุการซื้อขาย</label>
+                      <input className="pf-input" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="เช่น เติมพอร์ต / ขายทำกำไร" />
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             <div className="pf-field">
               <label className="pf-label">ชื่อสินทรัพย์</label>
               <input className="pf-input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="เช่น PTT, AAPL, Bitcoin" />
@@ -2034,10 +2148,6 @@ export default function PortfolioApp() {
                 )}
               </div>
               <input className="pf-input pf-mono" inputMode="decimal" value={ledgerAmount} onChange={(e) => setLedgerAmount(e.target.value)} placeholder="0.00" autoFocus />
-              <div className="pf-currency-hint">
-                {ledgerType === 'rebalance' && 'เลือกปุ่ม - ลบออก หรือ + เพิ่มเข้าด้านบน หรือพิมพ์ตัวเลขติดลบได้เลย'}
-                {ledgerType === 'dividend' && `ระบบจะบันทึกเงินที่ลงทุนไปขณะนี้ (฿${fmt(totalInvestedCost, 0)}) ไว้คู่กับปันผลรายการนี้ เพื่อใช้ในกราฟ`}
-              </div>
             </div>
             <div className="pf-field">
               <label className="pf-label">วันที่</label>
