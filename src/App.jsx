@@ -387,6 +387,7 @@ export default function PortfolioApp() {
     performanceTotal + ledger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0) + rebalanceTotal
   ), [ledger, performanceTotal, rebalanceTotal]);
 
+  // Single Source of Truth: ทุนเริ่มต้นสะสมคำนวณจาก ทุนตั้งต้น + เพิ่มทุน - ลดทุน จาก ledger แบบสดๆ ป้องกันการคำนวณซ้ำซ้อน
   const totalCapital = initialCapital + capitalAdjTotal;
   const cashActive = initialCapital > 0 || ledger.length > 0;
   const computedCash = cashActive ? (totalCapital - totalInvestedCost + cashAdjTotal) : 0;
@@ -861,28 +862,6 @@ export default function PortfolioApp() {
 
     if (isNaN(amt) || amt <= 0) { setLedgerError('กรอกจำนวนเงินให้มากกว่า 0'); return; }
 
-    if (ledgerType === 'capital_add') {
-      const nextCap = initialCapital + amt;
-      setInitialCapital(nextCap);
-      window.storage.set('initial-capital', String(nextCap), false);
-      const entry = { id: Date.now().toString(), type: 'capital_add', amount: amt, date: ledgerDate || todayStr(), note: ledgerNote.trim() };
-      saveLedger([...ledger, entry]);
-      showToast('เพิ่มทุนสำเร็จ');
-      setPanel('cashManage');
-      return;
-    }
-
-    if (ledgerType === 'capital_reduce') {
-      const nextCap = Math.max(0, initialCapital - amt);
-      setInitialCapital(nextCap);
-      window.storage.set('initial-capital', String(nextCap), false);
-      const entry = { id: Date.now().toString(), type: 'capital_reduce', amount: amt, date: ledgerDate || todayStr(), note: ledgerNote.trim() };
-      saveLedger([...ledger, entry]);
-      showToast('ลดทุนสำเร็จ');
-      setPanel('cashManage');
-      return;
-    }
-
     const entry = { id: Date.now().toString(), type: ledgerType, amount: amt, date: ledgerDate || todayStr(), note: ledgerNote.trim() };
     if (ledgerType === 'dividend') entry.invested = totalInvestedCost;
     saveLedger([...ledger, entry]);
@@ -891,18 +870,6 @@ export default function PortfolioApp() {
   };
 
   const deleteLedgerEntry = (id) => {
-    const target = ledger.find((e) => e.id === id);
-    if (target) {
-      if (target.type === 'capital_add') {
-        const nextCap = Math.max(0, initialCapital - target.amount);
-        setInitialCapital(nextCap);
-        window.storage.set('initial-capital', String(nextCap), false);
-      } else if (target.type === 'capital_reduce') {
-        const nextCap = initialCapital + target.amount;
-        setInitialCapital(nextCap);
-        window.storage.set('initial-capital', String(nextCap), false);
-      }
-    }
     saveLedger(ledger.filter((e) => e.id !== id));
     showToast('ลบรายการแล้ว');
   };
@@ -1564,19 +1531,7 @@ export default function PortfolioApp() {
                     {initialCapital > 0 && (
                       <div className="pf-capital-row">
                         <span style={{ color: 'var(--muted)' }}>ทุนเริ่มต้นสะสม</span>
-                        <span className="pf-mono">฿{fmt(initialCapital, 0)}</span>
-                      </div>
-                    )}
-                    {capitalAddTotal > 0 && (
-                      <div className="pf-capital-row">
-                        <span style={{ color: 'var(--muted)' }}>เพิ่มทุน</span>
-                        <span className="pf-mono pf-chip-pos">+฿{fmt(capitalAddTotal, 0)}</span>
-                      </div>
-                    )}
-                    {capitalReduceTotal > 0 && (
-                      <div className="pf-capital-row">
-                        <span style={{ color: 'var(--muted)' }}>ลดทุน</span>
-                        <span className="pf-mono pf-chip-neg">-฿{fmt(capitalReduceTotal, 0)}</span>
+                        <span className="pf-mono">฿{fmt(totalCapital, 0)}</span>
                       </div>
                     )}
                     {totalInvestedCost > 0 && (
