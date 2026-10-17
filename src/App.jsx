@@ -1428,23 +1428,26 @@ export default function PortfolioApp() {
           {/* ================= 3. พอร์ตรวม ================= */}
           {activeTab === 3 && (
             <div>
-              <div className="pf-section-label" style={{ marginTop: 0 }}>พอร์ตรวม (Portfolio Overview)</div>
+              {/* ปรับขนาด, สี และข้อความ "พอร์ตรวม (Portfolio Overview)" ให้เท่ากับ "เงินสด / สภาพคล่อง" */}
+              <div style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '15.5px', color: 'var(--text)', margin: '0 0 14px 2px', display: 'flex', alignItems: 'center', gap: '7px' }}>
+                <span className="pf-dot" style={{ background: 'var(--gold)' }} />พอร์ตรวม (Portfolio Overview)
+              </div>
 
-              {/* การ์ดที่ 1: มูลค่าพอร์ตรวมทั้งหมด */}
-              <div className="pf-hero" style={{ border: '2px solid rgba(251, 191, 36, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #1f2937 100%)', position: 'relative' }}>
-                <div style={{ position: 'absolute', top: '16px', right: '20px' }} className="pf-updated">
-                  อัปเดตล่าสุด: {lastUpdated ? thaiDateAD(lastUpdated) : 'ยังไม่มีการอัปเดต'}
+              {/* การ์ดที่ 1: มูลค่าสินทรัพย์ทั้งหมด (เปลี่ยนชื่อ + บรรทัดเดียวกับอัปเดตล่าสุด + ลบเทียบกับทุนสะสมออก) */}
+              <div className="pf-hero" style={{ border: '2px solid rgba(251, 191, 36, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #1f2937 100%)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                  <div className="pf-hero-label" style={{ margin: 0 }}>มูลค่าสินทรัพย์ทั้งหมด</div>
+                  <div className="pf-updated" style={{ whiteSpace: 'nowrap' }}>
+                    อัปเดตล่าสุด: {lastUpdated ? thaiDateAD(lastUpdated) : 'ยังไม่มีการอัปเดต'}
+                  </div>
                 </div>
 
-                <div className="pf-hero-label">มูลค่าพอร์ตรวมทั้งหมด</div>
                 <div className="pf-hero-value pf-mono" style={{ fontSize: '44px' }}>฿{fmt(displayTotalValue)}</div>
-                {heroProfitPct === null ? (
-                  <div className="pf-hero-sub-hint">ตั้งค่าทุนเริ่มต้นในเมนูตั้งค่าเพื่อดู % กำไรเทียบกับทุน</div>
-                ) : (
+                
+                {heroProfitPct !== null && (
                   <div className={`pf-hero-sub ${heroProfitAmount >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`} style={{ fontSize: '15px' }}>
                     {heroProfitAmount >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
                     <span className="pf-mono">{heroProfitAmount >= 0 ? '+' : ''}{fmt(heroProfitAmount)} บาท ({heroProfitAmount >= 0 ? '+' : ''}{fmt(heroProfitPct)}%)</span>
-                    <span className="pf-hero-sub-label">เทียบกับทุนสะสม</span>
                   </div>
                 )}
 
@@ -1518,7 +1521,7 @@ export default function PortfolioApp() {
                 </div>
               </div>
 
-              {/* การ์ดที่ 3: กราฟปันผล — แสดง 5 ปีอัตโนมัติ */}
+              {/* การ์ดที่ 3: กราฟปันผล */}
               <div className="pf-hero" style={{ border: '2px solid rgba(56, 189, 248, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #0f172a 100%)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <div className="pf-hero-label" style={{ margin: 0 }}>กราฟปันผล เทียบ เงินที่ลงทุนไป</div>
