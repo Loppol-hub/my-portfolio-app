@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Pencil, Trash2, RefreshCw, X, TrendingUp, TrendingDown, Inbox, Zap, Wallet, ChevronRight, ArrowUpDown, PlusCircle, MinusCircle, Gift, Sliders, Home, LayoutGrid, BarChart3, Settings, Search } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, LabelList } from 'recharts';
-import TradeHistory from './TradeHistory';
 
 const ASSET_TYPES = [
   { key: 'th_stock', label: 'หุ้นไทย', color: '#C7A344', market: 'th', defaultCurrency: 'THB' },
@@ -184,7 +183,6 @@ const getMonthlyAxisData = () => {
 export default function PortfolioApp() {
   const [activeTab, setActiveTab] = useState(3);
   const [holdings, setHoldings] = useState([]);
-  const [trades, setTrades] = useState([]);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -281,15 +279,10 @@ export default function PortfolioApp() {
     setLoadError(false);
     try {
       let h = [];
-      let tr = [];
       let hist = [];
       try {
         const r = await window.storage.get('holdings', false);
         if (r && r.value) h = JSON.parse(r.value);
-      } catch (e) { /* no data */ }
-      try {
-        const rTr = await window.storage.get('trades', false);
-        if (rTr && rTr.value) tr = JSON.parse(rTr.value);
       } catch (e) { /* no data */ }
       try {
         const r2 = await window.storage.get('portfolio-history', false);
@@ -321,7 +314,6 @@ export default function PortfolioApp() {
         if (r7 && r7.value) excluded = JSON.parse(r7.value);
       } catch (e) { /* not set */ }
       setHoldings(Array.isArray(h) ? h : []);
-      setTrades(Array.isArray(tr) ? tr : []);
       setHistory(Array.isArray(hist) ? hist : []);
       setBackendUrl(url);
       setBackendDraft(url);
@@ -344,61 +336,10 @@ export default function PortfolioApp() {
     catch (e) { showToast('บันทึกไม่สำเร็จ'); }
   };
 
-  const saveTrades = async (next) => {
-    setTrades(next);
-    try { await window.storage.set('trades', JSON.stringify(next), false); }
-    catch (e) { showToast('บันทึกประวัติไม่สำเร็จ'); }
-  };
-
   const saveHistory = async (next) => {
     setHistory(next);
     try { await window.storage.set('portfolio-history', JSON.stringify(next), false); }
     catch (e) { showToast('บันทึกประวัติไม่สำเร็จ'); }
-  };
-
-  const handleTradeAction = (tradeData) => {
-    const newTrade = { ...tradeData, id: Date.now() };
-    saveTrades([newTrade, ...trades]);
-
-    setHoldings(prevHoldings => {
-      return prevHoldings.map(h => {
-        if (h.id === tradeData.holdingId) {
-          let currentQty = parseFloat(h.quantity) || 0;
-          let currentAvg = parseFloat(h.avgCost) || 0;
-          let newQty = currentQty;
-          let newAvg = currentAvg;
-
-          if (tradeData.type === 'buy' || tradeData.type === 'initial') {
-            if (tradeData.type === 'initial') {
-              newQty = tradeData.quantity;
-              newAvg = tradeData.price;
-            } else {
-              const addedQty = tradeData.quantity;
-              const totalCostBefore = currentQty * currentAvg;
-              newQty = currentQty + addedQty;
-              const totalNewCost = totalCostBefore + (addedQty * tradeData.price) + (tradeData.feeAmount || 0);
-              newAvg = newQty > 0 ? totalNewCost / newQty : 0;
-            }
-          } else if (tradeData.type === 'sell') {
-            newQty = Math.max(0, currentQty - tradeData.quantity);
-          }
-
-          return { ...h, quantity: newQty, avgCost: Number(newAvg.toFixed(2)) };
-        }
-        return h;
-      });
-    });
-
-    setCash(prevCash => {
-      const totalVal = tradeData.quantity * tradeData.price;
-      if (tradeData.type === 'buy') {
-        return Math.max(0, prevCash - (totalVal + (tradeData.feeAmount || 0)));
-      } else if (tradeData.type === 'sell') {
-        return prevCash + (totalVal - (tradeData.feeAmount || 0));
-      }
-      return prevCash;
-    });
-    showToast('บันทึกรายการสำเร็จ');
   };
 
   const getEffectiveRate = (type, rate) => {
@@ -446,10 +387,12 @@ export default function PortfolioApp() {
     performanceTotal + ledger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0) + rebalanceTotal
   ), [ledger, performanceTotal, rebalanceTotal]);
 
+  // Single Source of Truth: ทุนเริ่มต้นสะสมคำนวณจาก ทุนตั้งต้น + เพิ่มทุน - ลดทุน จาก ledger แบบสดๆ ป้องกันการคำนวณซ้ำซ้อน
   const totalCapital = initialCapital + capitalAdjTotal;
   const cashActive = initialCapital > 0 || ledger.length > 0;
   const computedCash = cashActive ? (totalCapital - totalInvestedCost + cashAdjTotal) : 0;
 
+  // เปอร์เซ็นต์สภาพคล่องเทียบกับ "มูลค่าพอร์ตลงทุน" (totalInvestedValue)
   const cashRatio = useMemo(() => {
     const invVal = totalInvestedValue;
     if (invVal <= 0) return 0;
@@ -839,7 +782,7 @@ export default function PortfolioApp() {
   };
 
   const exportData = () => {
-    const payload = { app: 'portfolio-tracker', version: 2, exportedAt: new Date().toISOString(), holdings, trades, history, fxRate, backendUrl, initialCapital, ledger };
+    const payload = { app: 'portfolio-tracker', version: 2, exportedAt: new Date().toISOString(), holdings, history, fxRate, backendUrl, initialCapital, ledger };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -880,7 +823,6 @@ export default function PortfolioApp() {
   const confirmImport = async () => {
     if (!pendingImport) return;
     await saveHoldings(Array.isArray(pendingImport.holdings) ? pendingImport.holdings : []);
-    if (Array.isArray(pendingImport.trades)) await saveTrades(pendingImport.trades);
     await saveHistory(Array.isArray(pendingImport.history) ? pendingImport.history : []);
     if (typeof pendingImport.fxRate === 'number' && pendingImport.fxRate > 0) {
       setFxRate(pendingImport.fxRate);
@@ -941,7 +883,7 @@ export default function PortfolioApp() {
   };
 
   const clearAll = async () => {
-    await saveHoldings([]); await saveTrades([]); await saveHistory([]); await saveLedger([]);
+    await saveHoldings([]); await saveHistory([]); await saveLedger([]);
     setConfirmClear(false);
     showToast('ล้างข้อมูลทั้งหมดแล้ว');
   };
@@ -1324,15 +1266,32 @@ export default function PortfolioApp() {
 
                       <div className="pf-type-section-holdings">
                         {typeHoldings.map((h) => (
-                          <TradeHistory 
-                            key={h.id} 
-                            holding={h} 
-                            trades={trades} 
-                            onTradeAction={handleTradeAction} 
-                            fxRate={fxRate}
-                            onEdit={openEdit}
-                            onRequestDelete={requestDelete}
-                          />
+                          <div className="pf-subrow" style={{ padding: '12px 0' }} key={h.id}>
+                            <div className="pf-row-top">
+                              <div className="pf-row-name">
+                                <span className="pf-dot" style={{ background: colorById[h.id] }} />
+                                <span className="pf-row-name-text">{h.name}</span>
+                              </div>
+                              <div className="pf-row-actions">
+                                <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
+                                <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)}><Trash2 size={15} /></button>
+                              </div>
+                            </div>
+                            <div className="pf-row-meta pf-mono">
+                              <span>จำนวน <b>{fmt(h.qty, h.qty % 1 === 0 ? 0 : 2)}</b></span>
+                              <span>ทุนเฉลี่ย <b>฿{fmt(h.avg)}</b></span>
+                            </div>
+                            <div className="pf-row-meta pf-mono">
+                              <span>ราคาล่าสุด <b style={{ color: 'var(--gold)' }}>฿{fmt(h.price)}</b></span>
+                              <span>ต้นทุนรวม <b>฿{fmt(h.costValue)}</b></span>
+                            </div>
+                            <div className="pf-row-meta pf-mono">
+                              <span>มูลค่า <b className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>฿{fmt(h.marketValue)}</b></span>
+                              <span className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
+                                {h.gain >= 0 ? '+' : ''}{fmt(h.gain)} ({h.gain >= 0 ? '+' : ''}{fmt(h.gainPct, 1)}%)
+                              </span>
+                            </div>
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -1467,15 +1426,36 @@ export default function PortfolioApp() {
 
                       <div className="pf-type-section-holdings">
                         {typeHoldings.map((h) => (
-                          <TradeHistory 
-                            key={h.id} 
-                            holding={h} 
-                            trades={trades} 
-                            onTradeAction={handleTradeAction} 
-                            fxRate={fxRate}
-                            onEdit={openEdit}
-                            onRequestDelete={requestDelete}
-                          />
+                          <div className="pf-subrow" style={{ padding: '12px 0' }} key={h.id}>
+                            <div className="pf-row-top">
+                              <div className="pf-row-name">
+                                <span className="pf-dot" style={{ background: colorById[h.id] }} />
+                                <span className="pf-row-name-text">
+                                  {h.name}
+                                  {h.instrumentType === 'dr' && <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.1)', padding: '1px 6px', borderRadius: '4px', marginLeft: '6px', color: '#38bdf8' }}>DR</span>}
+                                  {h.instrumentType === 'etf' && <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.1)', padding: '1px 6px', borderRadius: '4px', marginLeft: '6px', color: '#6E8CB0' }}>ETF</span>}
+                                </span>
+                              </div>
+                              <div className="pf-row-actions">
+                                <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
+                                <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)}><Trash2 size={15} /></button>
+                              </div>
+                            </div>
+                            <div className="pf-row-meta pf-mono">
+                              <span>จำนวน <b>{fmt(h.qty, h.qty % 1 === 0 ? 0 : 2)}</b></span>
+                              <span>ทุนเฉลี่ย <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.avg)}</b></span>
+                            </div>
+                            <div className="pf-row-meta pf-mono">
+                              <span>ราคาล่าสุด <b style={{ color: 'var(--gold)' }}>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.price)}</b></span>
+                              <span>ต้นทุนรวม <b>฿{fmt(h.costValue)}</b></span>
+                            </div>
+                            <div className="pf-row-meta pf-mono">
+                              <span>มูลค่า <b className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>฿{fmt(h.marketValue)}</b> {h.currency === 'USD' && <span style={{ fontSize: '11px', opacity: 0.7 }}>(${fmt(h.qty * h.price)})</span>}</span>
+                              <span className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
+                                {h.gain >= 0 ? '+' : ''}{fmt(h.gain)} ({h.gain >= 0 ? '+' : ''}{fmt(h.gainPct, 1)}%)
+                              </span>
+                            </div>
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -1803,15 +1783,32 @@ export default function PortfolioApp() {
 
                         <div className="pf-type-section-holdings">
                           {typeHoldings.map((h) => (
-                            <TradeHistory 
-                              key={h.id} 
-                              holding={h} 
-                              trades={trades} 
-                              onTradeAction={handleTradeAction} 
-                              fxRate={fxRate}
-                              onEdit={openEdit}
-                              onRequestDelete={requestDelete}
-                            />
+                            <div className="pf-subrow" style={{ padding: '12px 0' }} key={h.id}>
+                              <div className="pf-row-top">
+                                <div className="pf-row-name">
+                                  <span className="pf-dot" style={{ background: colorById[h.id] }} />
+                                  <span className="pf-row-name-text">{h.name}</span>
+                                </div>
+                                <div className="pf-row-actions">
+                                  <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
+                                  <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)}><Trash2 size={15} /></button>
+                                </div>
+                              </div>
+                              <div className="pf-row-meta pf-mono">
+                                <span>จำนวน <b>{fmt(h.qty, h.qty % 1 === 0 ? 0 : 4)}</b></span>
+                                <span>ทุนเฉลี่ย <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.avg)}</b></span>
+                              </div>
+                              <div className="pf-row-meta pf-mono">
+                                <span>ราคาล่าสุด <b style={{ color: 'var(--gold)' }}>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.price)}</b></span>
+                                <span>ต้นทุนรวม <b>฿{fmt(h.costValue)}</b></span>
+                              </div>
+                              <div className="pf-row-meta pf-mono">
+                                <span>มูลค่า <b className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>฿{fmt(h.marketValue)}</b> {h.currency === 'USD' && <span style={{ fontSize: '11px', opacity: 0.7 }}>(${fmt(h.qty * h.price)})</span>}</span>
+                                <span className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
+                                  {h.gain >= 0 ? '+' : ''}{fmt(h.gain)} ({h.gain >= 0 ? '+' : ''}{fmt(h.gainPct, 1)}%)
+                                </span>
+                              </div>
+                            </div>
                           ))}
                         </div>
                       </div>
