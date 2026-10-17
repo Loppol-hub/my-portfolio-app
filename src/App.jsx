@@ -370,11 +370,6 @@ export default function PortfolioApp() {
   const totalInvestedValue = useMemo(() => enriched.filter((h) => h.type !== 'cash').reduce((s, h) => s + h.marketValue, 0), [enriched]);
   const totalInvestedCost = useMemo(() => enriched.filter((h) => h.type !== 'cash').reduce((s, h) => s + h.costValue, 0), [enriched]);
 
-  const capitalAdjTotal = useMemo(() => (
-    ledger.filter((e) => e.type === 'capital_add').reduce((s, e) => s + e.amount, 0)
-    - ledger.filter((e) => e.type === 'capital_reduce').reduce((s, e) => s + e.amount, 0)
-  ), [ledger]);
-
   const performanceTotal = useMemo(() => (
     ledger.filter((e) => e.type === 'profit').reduce((s, e) => s + e.amount, 0)
     - ledger.filter((e) => e.type === 'loss').reduce((s, e) => s + e.amount, 0)
@@ -385,10 +380,11 @@ export default function PortfolioApp() {
   ), [ledger]);
 
   const cashAdjTotal = useMemo(() => (
-    performanceTotal + ledger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0) + capitalAdjTotal + rebalanceTotal
-  ), [ledger, performanceTotal, capitalAdjTotal, rebalanceTotal]);
+    performanceTotal + ledger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0) + rebalanceTotal
+  ), [ledger, performanceTotal, rebalanceTotal]);
 
-  const totalCapital = initialCapital + capitalAdjTotal;
+  // ข้อ 1: ทุนเริ่มต้นคำนวณจาก initialCapital โดยตรง ซึ่งถูกปรับโดยปุ่มเพิ่ม/ลดทุนแล้ว
+  const totalCapital = initialCapital;
   const cashActive = initialCapital > 0 || ledger.length > 0;
   const computedCash = cashActive ? (totalCapital - totalInvestedCost + cashAdjTotal) : 0;
 
@@ -839,22 +835,21 @@ export default function PortfolioApp() {
     setLedgerType(type); setLedgerAmount(''); setLedgerNote(''); setLedgerDate(todayStr()); setLedgerError(''); setPanel('ledger');
   };
 
+  // ข้อ 1: ปุ่มเพิ่ม/ลดทุน คำนวณตรงกับทุนเริ่มต้น (Initial Capital)
   const submitLedger = () => {
     const rawVal = ledgerAmount.trim();
     let amt = parseFloat(rawVal);
-    let typeToSave = ledgerType;
 
     if (ledgerType === 'rebalance') {
       if (isNaN(amt)) { setLedgerError('กรอกจำนวนเงินให้ถูกต้อง'); return; }
-      // ข้อ 1: ปุ่มรีบาลานซ์ บันทึกเป็น type: 'rebalance' โดยตรง
       const entry = { id: Date.now().toString(), type: 'rebalance', amount: amt, date: ledgerDate || todayStr(), note: ledgerNote.trim() || 'รีบาลานซ์เงินสด' };
       saveLedger([...ledger, entry]);
       showToast('บันทึกรีบาลานซ์สำเร็จ');
       setPanel('cashManage');
       return;
-    } else {
-      if (isNaN(amt) || amt <= 0) { setLedgerError('กรอกจำนวนเงินให้มากกว่า 0'); return; }
     }
+
+    if (isNaN(amt) || amt <= 0) { setLedgerError('กรอกจำนวนเงินให้มากกว่า 0'); return; }
 
     if (ledgerType === 'capital_add') {
       const nextCap = initialCapital + amt;
@@ -866,6 +861,7 @@ export default function PortfolioApp() {
       setPanel('cashManage');
       return;
     }
+
     if (ledgerType === 'capital_reduce') {
       const nextCap = Math.max(0, initialCapital - amt);
       setInitialCapital(nextCap);
@@ -877,14 +873,14 @@ export default function PortfolioApp() {
       return;
     }
 
-    const entry = { id: Date.now().toString(), type: typeToSave, amount: amt, date: ledgerDate || todayStr(), note: ledgerNote.trim() };
-    if (typeToSave === 'dividend') entry.invested = totalInvestedCost;
+    const entry = { id: Date.now().toString(), type: ledgerType, amount: amt, date: ledgerDate || todayStr(), note: ledgerNote.trim() };
+    if (ledgerType === 'dividend') entry.invested = totalInvestedCost;
     saveLedger([...ledger, entry]);
     showToast('บันทึกรายการสำเร็จ');
     setPanel('cashManage');
   };
 
-  // ข้อ 3: เมื่อลบรายการในประวัติ คืนค่าทุนเริ่มต้นหรือสถานะที่เกี่ยวข้องกลับด้วย
+  // เมื่อลบรายการในประวัติ คืนค่าทุนเริ่มต้นกลับด้วย
   const deleteLedgerEntry = (id) => {
     const target = ledger.find((e) => e.id === id);
     if (target) {
@@ -1535,37 +1531,73 @@ export default function PortfolioApp() {
                 )}
               </div>
 
-              {/* ข้อ 2: การ์ดเงินสดสำหรับหน้าพอร์ตรวม แสดงหัวข้อ รีบาลานซ์ ถูกต้อง */}
+              {/* ข้อ 4 & 5: การ์ดเงินสดหน้าพอร์ตรวม พร้อมสถานะสภาพคล่องและซ่อนค่า 0 */}
               {byType.find((t) => t.key === 'cash') && (
-                <div className="pf-hero" style={{ border: '2px solid rgba(124, 139, 158, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #1a2230 100%)' }}>
-                  <div className="pf-hero-label">เงินสด / สภาพคล่องในพอร์ต</div>
+                <div className="pf-hero" style={{ border: '2px solid rgba(124, 139, 158, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #1a2230 100%)', position: 'relative' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                    <div className="pf-hero-label" style={{ margin: 0 }}>เงินสด / สภาพคล่องในพอร์ต</div>
+                    <span style={{
+                      display: 'inline-block',
+                      padding: '3px 8px',
+                      borderRadius: '20px',
+                      fontSize: '11px',
+                      fontWeight: '600',
+                      background: cashRatio >= 30 ? 'rgba(52, 211, 153, 0.15)' : cashRatio >= 10 ? 'rgba(56, 189, 248, 0.15)' : 'rgba(251, 191, 36, 0.15)',
+                      color: cashRatio >= 30 ? '#34d399' : cashRatio >= 10 ? '#38bdf8' : '#fbbf24',
+                      border: `1px solid ${cashRatio >= 30 ? 'rgba(52, 211, 153, 0.4)' : cashRatio >= 10 ? 'rgba(56, 189, 248, 0.4)' : 'rgba(251, 191, 36, 0.4)'}`
+                    }} className="pf-mono">
+                      {cashRatio >= 30 ? 'สภาพคล่องสูง' : cashRatio >= 10 ? 'สภาพคล่องสมดุล' : 'สภาพคล่องต่ำ'} ({fmt(cashRatio, 1)}%)
+                    </span>
+                  </div>
                   <div className="pf-hero-value pf-mono" style={{ fontSize: '38px', color: '#EDF1F5' }}>฿{fmt(computedCash, 0)}</div>
 
                   <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--divider)' }}>
-                    <div className="pf-capital-row">
-                      <span style={{ color: 'var(--muted)' }}>ทุนเริ่มต้นสะสม</span>
-                      <span className="pf-mono">฿{fmt(initialCapital, 0)}</span>
-                    </div>
-                    <div className="pf-capital-row">
-                      <span style={{ color: 'var(--muted)' }}>เงินที่นำไปลงทุน</span>
-                      <span className="pf-mono">฿{fmt(totalInvestedCost, 0)}</span>
-                    </div>
-                    <div className="pf-capital-row">
-                      <span style={{ color: 'var(--muted)' }}>ผลประกอบการรวม</span>
-                      <span className={`pf-mono ${performanceTotal >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
-                        {performanceTotal >= 0 ? '+' : ''}฿{fmt(performanceTotal, 0)}
-                      </span>
-                    </div>
-                    <div className="pf-capital-row">
-                      <span style={{ color: 'var(--muted)' }}>เงินปันผลรับ</span>
-                      <span className="pf-mono pf-chip-pos">฿{fmt(ledger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0), 0)}</span>
-                    </div>
-                    <div className="pf-capital-row">
-                      <span style={{ color: 'var(--muted)' }}>รีบาลานซ์</span>
-                      <span className={`pf-mono ${rebalanceTotal >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
-                        {rebalanceTotal >= 0 ? '+' : ''}฿{fmt(rebalanceTotal, 0)}
-                      </span>
-                    </div>
+                    {initialCapital > 0 && (
+                      <div className="pf-capital-row">
+                        <span style={{ color: 'var(--muted)' }}>ทุนเริ่มต้นสะสม</span>
+                        <span className="pf-mono">฿{fmt(initialCapital, 0)}</span>
+                      </div>
+                    )}
+                    {capitalAddTotal > 0 && (
+                      <div className="pf-capital-row">
+                        <span style={{ color: 'var(--muted)' }}>เพิ่มทุน</span>
+                        <span className="pf-mono pf-chip-pos">+฿{fmt(capitalAddTotal, 0)}</span>
+                      </div>
+                    )}
+                    {capitalReduceTotal > 0 && (
+                      <div className="pf-capital-row">
+                        <span style={{ color: 'var(--muted)' }}>ลดทุน</span>
+                        <span className="pf-mono pf-chip-neg">-฿{fmt(capitalReduceTotal, 0)}</span>
+                      </div>
+                    )}
+                    {totalInvestedCost > 0 && (
+                      <div className="pf-capital-row">
+                        <span style={{ color: 'var(--muted)' }}>เงินที่นำไปลงทุน</span>
+                        <span className="pf-mono">฿{fmt(totalInvestedCost, 0)}</span>
+                      </div>
+                    )}
+                    {performanceTotal !== 0 && (
+                      <div className="pf-capital-row">
+                        <span style={{ color: 'var(--muted)' }}>ผลประกอบการรวม</span>
+                        <span className={`pf-mono ${performanceTotal >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
+                          {performanceTotal >= 0 ? '+' : ''}฿{fmt(performanceTotal, 0)}
+                        </span>
+                      </div>
+                    )}
+                    {totalDividendAmount > 0 && (
+                      <div className="pf-capital-row">
+                        <span style={{ color: 'var(--muted)' }}>เงินปันผลรับ</span>
+                        <span className="pf-mono pf-chip-pos">฿{fmt(totalDividendAmount, 0)}</span>
+                      </div>
+                    )}
+                    {rebalanceTotal !== 0 && (
+                      <div className="pf-capital-row">
+                        <span style={{ color: 'var(--muted)' }}>รีบาลานซ์</span>
+                        <span className={`pf-mono ${rebalanceTotal >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
+                          {rebalanceTotal >= 0 ? '+' : ''}฿{fmt(rebalanceTotal, 0)}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -2023,12 +2055,23 @@ export default function PortfolioApp() {
             </div>
             {ledgerError && <div className="pf-error">{ledgerError}</div>}
             <div className="pf-field">
-              <label className="pf-label">
-                {ledgerType === 'rebalance' ? 'จำนวนเงิน (ใส่เครื่องหมาย - หากต้องการลบออก)' : 'จำนวนเงิน (บาท)'}
-              </label>
-              <input className="pf-input pf-mono" inputMode="decimal" value={ledgerAmount} onChange={(e) => setLedgerAmount(e.target.value)} placeholder={ledgerType === 'rebalance' ? 'เช่น 150 หรือ -50' : '0.00'} autoFocus />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <label className="pf-label" style={{ margin: 0 }}>จำนวนเงิน (บาท)</label>
+                {ledgerType === 'rebalance' && (
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button type="button" className="pf-btn pf-btn-ghost" style={{ padding: '2px 8px', fontSize: '12px', height: '26px' }} onClick={() => {
+                      const clean = ledgerAmount.replace(/^-/, '');
+                      setLedgerAmount('-' + clean);
+                    }}>- ลบออก</button>
+                    <button type="button" className="pf-btn pf-btn-ghost" style={{ padding: '2px 8px', fontSize: '12px', height: '26px' }} onClick={() => {
+                      setLedgerAmount(ledgerAmount.replace(/^-/, ''));
+                    }}>+ เพิ่มเข้า</button>
+                  </div>
+                )}
+              </div>
+              <input className="pf-input pf-mono" inputMode="decimal" value={ledgerAmount} onChange={(e) => setLedgerAmount(e.target.value)} placeholder="0.00" autoFocus />
               <div className="pf-currency-hint">
-                {ledgerType === 'rebalance' && 'กรอกตัวเลขติดลบ เช่น -150 เพื่อนำไปหักออก หรือกรอกบวกเพื่อเพิ่มเข้า เพื่อปรับแก้ความคลาดเคลื่อนจากค่าธรรมเนียม'}
+                {ledgerType === 'rebalance' && 'เลือกปุ่ม - ลบออก หรือ + เพิ่มเข้าด้านบน หรือพิมพ์ตัวเลขติดลบได้เลย'}
                 {ledgerType === 'dividend' && `ระบบจะบันทึกเงินที่ลงทุนไปขณะนี้ (฿${fmt(totalInvestedCost, 0)}) ไว้คู่กับปันผลรายการนี้ เพื่อใช้ในกราฟ`}
               </div>
             </div>
@@ -2113,19 +2156,19 @@ export default function PortfolioApp() {
                   <div className="pf-year-row"><PlusCircle size={15} className="pf-year-row-icon" /><span>เพิ่มทุน</span><span className="pf-mono">฿{fmt(yearSummary.capital_add, 0)}</span></div>
                 )}
                 {yearSummary.capital_reduce > 0 && (
-                  <div className="pf-year-row"><MinusCircle size={15} className="pf-year-row-icon" /><span>ลดทุน</span><span className="pf-mono">฿{fmt(yearSummary.capital_reduce, 0)}</span></div>
+                  <div className="pf-year-row"><MinusCircle size={15} className="pf-year-row-icon" /><span>ลดทุน</span><span className="pf-mono pf-chip-neg">-฿{fmt(yearSummary.capital_reduce, 0)}</span></div>
                 )}
                 {yearSummary.profit > 0 && (
                   <div className="pf-year-row"><TrendingUp size={15} className="pf-year-row-icon" /><span>กำไร</span><span className="pf-mono">฿{fmt(yearSummary.profit, 0)}</span></div>
                 )}
                 {yearSummary.loss > 0 && (
-                  <div className="pf-year-row"><TrendingDown size={15} className="pf-year-row-icon" /><span>ขาดทุน</span><span className="pf-mono">฿{fmt(yearSummary.loss, 0)}</span></div>
+                  <div className="pf-year-row"><TrendingDown size={15} className="pf-year-row-icon" /><span>ขาดทุน</span><span className="pf-mono pf-chip-neg">-฿{fmt(yearSummary.loss, 0)}</span></div>
                 )}
                 {yearSummary.dividend > 0 && (
                   <div className="pf-year-row"><Gift size={15} className="pf-year-row-icon" /><span>ปันผล</span><span className="pf-mono">฿{fmt(yearSummary.dividend, 0)}</span></div>
                 )}
                 {yearSummary.rebalance !== 0 && (
-                  <div className="pf-year-row"><Sliders size={15} className="pf-year-row-icon" /><span>รีบาลานซ์</span><span className="pf-mono">{yearSummary.rebalance >= 0 ? '+' : ''}฿{fmt(yearSummary.rebalance, 0)}</span></div>
+                  <div className="pf-year-row"><Sliders size={15} className="pf-year-row-icon" /><span>รีบาลานซ์</span><span className={`pf-mono ${yearSummary.rebalance >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>{yearSummary.rebalance >= 0 ? '+' : ''}฿{fmt(yearSummary.rebalance, 0)}</span></div>
                 )}
               </div>
             </div>
@@ -2151,24 +2194,29 @@ export default function PortfolioApp() {
               </div>
             ) : (
               <div className="pf-type-section-holdings" style={{ borderTop: 'none', marginTop: 0, paddingTop: 0 }}>
-                {recentLedger.map((e) => (
-                  <div className="pf-subrow" key={e.id}>
-                    <div className="pf-row-top">
-                      <div className="pf-row-name">
-                        <span className="pf-row-name-text">{LEDGER_LABELS[e.type] || e.type}{e.note ? ` · ${e.note}` : ''}</span>
+                {recentLedger.map((e) => {
+                  const amtVal = parseFloat(e.amount) || 0;
+                  const isNeg = e.type === 'capital_reduce' || e.type === 'loss' || (e.type === 'rebalance' && amtVal < 0);
+                  const displayAmt = Math.abs(amtVal);
+                  return (
+                    <div className="pf-subrow" key={e.id}>
+                      <div className="pf-row-top">
+                        <div className="pf-row-name">
+                          <span className="pf-row-name-text">{LEDGER_LABELS[e.type] || e.type}{e.note ? ` · ${e.note}` : ''}</span>
+                        </div>
+                        <div className="pf-row-actions">
+                          <button aria-label="ลบ" onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type])}><Trash2 size={15} /></button>
+                        </div>
                       </div>
-                      <div className="pf-row-actions">
-                        <button aria-label="ลบ" onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type])}><Trash2 size={15} /></button>
+                      <div className="pf-row-meta pf-mono">
+                        <span className={`pf-ledger-amount ${isNeg ? 'pf-chip-neg' : 'pf-chip-pos'}`}>
+                          {isNeg ? '-' : '+'}฿{fmt(displayAmt)}
+                        </span>
+                        <span style={{ marginLeft: 'auto' }}>{thaiDateAD(e.date)}</span>
                       </div>
                     </div>
-                    <div className="pf-row-meta pf-mono">
-                      <span className={`pf-ledger-amount ${LEDGER_SIGN[e.type] > 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
-                        {LEDGER_SIGN[e.type] > 0 ? '+' : '-'}฿{fmt(e.amount)}
-                      </span>
-                      <span style={{ marginLeft: 'auto' }}>{thaiDateAD(e.date)}</span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
