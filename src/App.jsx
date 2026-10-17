@@ -19,7 +19,7 @@ const TICKER_HINT = {
   gold: 'เช่น XAU (ถ้ามี)',
 };
 
-const LEDGER_LABELS = { capital_add: 'เพิ่มทุน', capital_reduce: 'ลดทุน', profit: 'กำไร', loss: 'ขาดทุน', dividend: 'ปันผล', rebalance: 'รีบาลานซ์เงินสด' };
+const LEDGER_LABELS = { capital_add: 'เพิ่มทุน', capital_reduce: 'ลดทุน', profit: 'กำไร', loss: 'ขาดทุน', dividend: 'ปันผล', rebalance: 'รีบาลานซ์' };
 const LEDGER_SIGN = { capital_add: 1, capital_reduce: -1, profit: 1, loss: -1, dividend: 1, rebalance: 1 };
 
 function hexToHsl(hex) {
@@ -380,15 +380,19 @@ export default function PortfolioApp() {
     - ledger.filter((e) => e.type === 'loss').reduce((s, e) => s + e.amount, 0)
   ), [ledger]);
 
+  const rebalanceTotal = useMemo(() => (
+    ledger.filter((e) => e.type === 'rebalance').reduce((s, e) => s + e.amount, 0)
+  ), [ledger]);
+
   const cashAdjTotal = useMemo(() => (
-    performanceTotal + ledger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0) + capitalAdjTotal
-  ), [ledger, performanceTotal, capitalAdjTotal]);
+    performanceTotal + ledger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0) + capitalAdjTotal + rebalanceTotal
+  ), [ledger, performanceTotal, capitalAdjTotal, rebalanceTotal]);
 
   const totalCapital = initialCapital + capitalAdjTotal;
   const cashActive = initialCapital > 0 || ledger.length > 0;
   const computedCash = cashActive ? (totalCapital - totalInvestedCost + cashAdjTotal) : 0;
 
-  // คำนวณสัดส่วนสภาพคล่อง (%) เทียบกับ "มูลค่าพอร์ตลงทุน" (totalInvestedValue) อย่างถูกต้องตามที่คุณแนะนำ
+  // เปอร์เซ็นต์สภาพคล่องเทียบกับ "มูลค่าพอร์ตลงทุน" (totalInvestedValue)
   const cashRatio = useMemo(() => {
     const invVal = totalInvestedValue;
     if (invVal <= 0) return 0;
@@ -425,8 +429,8 @@ export default function PortfolioApp() {
     const d = { capital_add: 0, capital_reduce: 0, profit: 0, loss: 0, dividend: 0, rebalance: 0 };
     ledger.forEach((e) => { if ((e.date || '').slice(0, 4) === selectedYear && d[e.type] !== undefined) d[e.type] = (d[e.type] || 0) + e.amount; });
     const net = d.capital_add - d.capital_reduce + d.profit - d.loss + d.dividend + d.rebalance;
-    const totalIn = d.capital_add + d.profit + d.dividend;
-    const totalOut = d.capital_reduce + d.loss;
+    const totalIn = d.capital_add + d.profit + d.dividend + (d.rebalance > 0 ? d.rebalance : 0);
+    const totalOut = d.capital_reduce + d.loss + (d.rebalance < 0 ? Math.abs(d.rebalance) : 0);
     const totalFlow = totalIn + totalOut;
     const inPct = totalFlow > 0 ? (totalIn / totalFlow) * 100 : 0;
     return { ...d, net, totalIn, totalOut, inPct };
@@ -842,13 +846,17 @@ export default function PortfolioApp() {
 
     if (ledgerType === 'rebalance') {
       if (isNaN(amt)) { setLedgerError('กรอกจำนวนเงินให้ถูกต้อง'); return; }
-      typeToSave = rawVal.startsWith('-') ? 'capital_reduce' : 'capital_add';
-      amt = Math.abs(amt);
+      // ข้อ 1: ปุ่มรีบาลานซ์ บันทึกเป็น type: 'rebalance' โดยตรง
+      const entry = { id: Date.now().toString(), type: 'rebalance', amount: amt, date: ledgerDate || todayStr(), note: ledgerNote.trim() || 'รีบาลานซ์เงินสด' };
+      saveLedger([...ledger, entry]);
+      showToast('บันทึกรีบาลานซ์สำเร็จ');
+      setPanel('cashManage');
+      return;
     } else {
       if (isNaN(amt) || amt <= 0) { setLedgerError('กรอกจำนวนเงินให้มากกว่า 0'); return; }
     }
 
-    if (ledgerType === 'capital_add' || (ledgerType === 'rebalance' && typeToSave === 'capital_add')) {
+    if (ledgerType === 'capital_add') {
       const nextCap = initialCapital + amt;
       setInitialCapital(nextCap);
       window.storage.set('initial-capital', String(nextCap), false);
@@ -858,21 +866,13 @@ export default function PortfolioApp() {
       setPanel('cashManage');
       return;
     }
-    if (ledgerType === 'capital_reduce' || (ledgerType === 'rebalance' && typeToSave === 'capital_reduce')) {
+    if (ledgerType === 'capital_reduce') {
       const nextCap = Math.max(0, initialCapital - amt);
       setInitialCapital(nextCap);
       window.storage.set('initial-capital', String(nextCap), false);
       const entry = { id: Date.now().toString(), type: 'capital_reduce', amount: amt, date: ledgerDate || todayStr(), note: ledgerNote.trim() };
       saveLedger([...ledger, entry]);
       showToast('ลดทุนสำเร็จ');
-      setPanel('cashManage');
-      return;
-    }
-
-    if (ledgerType === 'rebalance') {
-      const entry = { id: Date.now().toString(), type: 'rebalance', amount: amt, date: ledgerDate || todayStr(), note: ledgerNote.trim() || 'รีบาลานซ์เงินสด' };
-      saveLedger([...ledger, entry]);
-      showToast('บันทึกรีบาลานซ์สำเร็จ');
       setPanel('cashManage');
       return;
     }
@@ -884,7 +884,23 @@ export default function PortfolioApp() {
     setPanel('cashManage');
   };
 
-  const deleteLedgerEntry = (id) => { saveLedger(ledger.filter((e) => e.id !== id)); };
+  // ข้อ 3: เมื่อลบรายการในประวัติ คืนค่าทุนเริ่มต้นหรือสถานะที่เกี่ยวข้องกลับด้วย
+  const deleteLedgerEntry = (id) => {
+    const target = ledger.find((e) => e.id === id);
+    if (target) {
+      if (target.type === 'capital_add') {
+        const nextCap = Math.max(0, initialCapital - target.amount);
+        setInitialCapital(nextCap);
+        window.storage.set('initial-capital', String(nextCap), false);
+      } else if (target.type === 'capital_reduce') {
+        const nextCap = initialCapital + target.amount;
+        setInitialCapital(nextCap);
+        window.storage.set('initial-capital', String(nextCap), false);
+      }
+    }
+    saveLedger(ledger.filter((e) => e.id !== id));
+    showToast('ลบรายการแล้ว');
+  };
 
   const toggleTypeInclusion = (typeKey) => {
     setExcludedTypes((prev) => {
@@ -1519,7 +1535,7 @@ export default function PortfolioApp() {
                 )}
               </div>
 
-              {/* การ์ดเงินสดสำหรับหน้าพอร์ตรวม */}
+              {/* ข้อ 2: การ์ดเงินสดสำหรับหน้าพอร์ตรวม แสดงหัวข้อ รีบาลานซ์ ถูกต้อง */}
               {byType.find((t) => t.key === 'cash') && (
                 <div className="pf-hero" style={{ border: '2px solid rgba(124, 139, 158, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #1a2230 100%)' }}>
                   <div className="pf-hero-label">เงินสด / สภาพคล่องในพอร์ต</div>
@@ -1546,7 +1562,9 @@ export default function PortfolioApp() {
                     </div>
                     <div className="pf-capital-row">
                       <span style={{ color: 'var(--muted)' }}>รีบาลานซ์</span>
-                      <span className="pf-mono">฿{fmt(ledger.filter((e) => e.type === 'rebalance').reduce((s, e) => s + e.amount, 0), 0)}</span>
+                      <span className={`pf-mono ${rebalanceTotal >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
+                        {rebalanceTotal >= 0 ? '+' : ''}฿{fmt(rebalanceTotal, 0)}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1670,14 +1688,14 @@ export default function PortfolioApp() {
             </div>
           )}
 
-          {/* ================= 4. สินทรัพย์อื่นๆ (พร้อมการ์ดเงินสดที่นำหลอดเลือดกลับมา + เทียบกับพอร์ตลงทุน) ================= */}
+          {/* ================= 4. สินทรัพย์อื่นๆ (พร้อมการ์ดเงินสดดีไซน์ใหม่) ================= */}
           {activeTab === 4 && (
             <div>
               <div style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '15.5px', color: 'var(--text)', margin: '0 0 14px 2px', display: 'flex', alignItems: 'center', gap: '7px' }}>
                 <span className="pf-dot" style={{ background: '#7C8B9E' }} />เงินสดและสินทรัพย์อื่นๆ (Cash & Others)
               </div>
 
-              {/* การ์ดเงินสด (นำหลอด Progress Bar กลับมา พร้อมป้ายสถานะและคำอธิบาย "เทียบกับมูลค่าพอร์ตลงทุน") */}
+              {/* การ์ดเงินสดพร้อมหลอด Progress Bar และเกณฑ์สัดส่วนใหม่ */}
               <div className="pf-type-section" style={{ marginTop: 0, marginBottom: '20px', background: 'linear-gradient(135deg, rgba(17,24,39,0.9) 0%, rgba(31,41,55,0.7) 100%)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
                   <div>
@@ -2105,6 +2123,9 @@ export default function PortfolioApp() {
                 )}
                 {yearSummary.dividend > 0 && (
                   <div className="pf-year-row"><Gift size={15} className="pf-year-row-icon" /><span>ปันผล</span><span className="pf-mono">฿{fmt(yearSummary.dividend, 0)}</span></div>
+                )}
+                {yearSummary.rebalance !== 0 && (
+                  <div className="pf-year-row"><Sliders size={15} className="pf-year-row-icon" /><span>รีบาลานซ์</span><span className="pf-mono">{yearSummary.rebalance >= 0 ? '+' : ''}฿{fmt(yearSummary.rebalance, 0)}</span></div>
                 )}
               </div>
             </div>
