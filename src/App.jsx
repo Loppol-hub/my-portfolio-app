@@ -841,7 +841,6 @@ export default function PortfolioApp() {
       if (isNaN(amt) || amt <= 0) { setLedgerError('กรอกจำนวนเงินให้มากกว่า 0'); return; }
     }
 
-    // ข้อ 2: ปุ่มเพิ่มทุน/ลดทุน ให้นำไปคำนวณกับทุนเริ่มต้นทันที พร้อมบันทึกประวัติให้แสดงในประวัติด้วย
     if (ledgerType === 'capital_add' || (ledgerType === 'rebalance' && typeToSave === 'capital_add')) {
       const nextCap = initialCapital + amt;
       setInitialCapital(nextCap);
@@ -1470,10 +1469,9 @@ export default function PortfolioApp() {
                 <span className="pf-dot" style={{ background: 'var(--gold)' }} />พอร์ตรวม (Portfolio Overview)
               </div>
 
-              {/* ข้อ 2 & 3: การ์ดสัดส่วนสินทรัพย์รวม (ย้ายมาไว้บนสุด พร้อมย้ายอัปเดตล่าสุดมาไว้มุมขวาบน) */}
+              {/* การ์ดสัดส่วนสินทรัพย์รวม */}
               <div className="pf-hero" style={{ background: '#111827', padding: '20px', borderRadius: '16px', border: '1px solid var(--divider)', position: 'relative' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                  {/* ข้อ 3: ปรับรูปแบบข้อความ "สัดส่วนสินทรัพย์รวม" ให้เหมือนกับ "มูลค่าสินทรัพย์ทั้งหมด" (.pf-hero-label) */}
                   <div className="pf-hero-label" style={{ margin: 0 }}>สัดส่วนสินทรัพย์รวม</div>
                   <div className="pf-updated" style={{ whiteSpace: 'nowrap' }}>
                     อัปเดตล่าสุด: {lastUpdated ? thaiDateAD(lastUpdated) : 'ยังไม่มีการอัปเดต'}
@@ -1505,6 +1503,45 @@ export default function PortfolioApp() {
                   </div>
                 )}
               </div>
+
+              {/* สร้างและออกแบบการ์ดเงินสด ต่อจากการ์ดสัดส่วนสินทรัพย์รวม ตามคำขอ */}
+              {byType.find((t) => t.key === 'cash') && (
+                <div className="pf-hero" style={{ border: '1px solid var(--divider)', background: 'linear-gradient(135deg, #111827 0%, #1a2332 100%)' }}>
+                  <div className="pf-hero-label">เงินสด / สภาพคล่อง</div>
+                  <div className="pf-hero-value pf-mono" style={{ fontSize: '36px' }}>฿{fmt(computedCash, 0)}</div>
+
+                  <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div className="pf-capital-row">
+                      <span style={{ color: 'var(--muted)' }}>ทุนเริ่มต้น</span>
+                      <span className="pf-mono">฿{fmt(initialCapital, 0)}</span>
+                    </div>
+                    <div className="pf-capital-row">
+                      <span style={{ color: 'var(--muted)' }}>เงินที่ลงทุนไป</span>
+                      <span className="pf-mono">฿{fmt(totalInvestedCost, 0)}</span>
+                    </div>
+                    <div className="pf-capital-row">
+                      <span style={{ color: 'var(--muted)' }}>ผลประกอบการ</span>
+                      <span className={`pf-mono ${performanceTotal >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
+                        {performanceTotal >= 0 ? '+' : ''}฿{fmt(performanceTotal, 0)}
+                      </span>
+                    </div>
+                    <div className="pf-capital-row">
+                      <span style={{ color: 'var(--muted)' }}>ปันผล</span>
+                      <span className="pf-mono pf-chip-pos">฿{fmt(ledger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0), 0)}</span>
+                    </div>
+                    <div className="pf-capital-row">
+                      <span style={{ color: 'var(--muted)' }}>รีบาลานซ์</span>
+                      <span className="pf-mono">฿{fmt(ledger.filter((e) => e.type === 'rebalance').reduce((s, e) => s + e.amount, 0), 0)}</span>
+                    </div>
+                  </div>
+
+                  <button className="pf-cash-manage-btn" onClick={() => setPanel('cashManage')}>
+                    <span className="pf-cash-manage-icon"><Wallet size={16} /></span>
+                    <span>จัดการเงินสด & สรุปรายปี</span>
+                    <ChevronRight size={14} style={{ opacity: 0.5 }} />
+                  </button>
+                </div>
+              )}
 
               {/* การ์ดที่ 2: มูลค่าสินทรัพย์ทั้งหมด */}
               <div className="pf-hero" style={{ border: '2px solid rgba(251, 191, 36, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #1f2937 100%)' }}>
@@ -1624,53 +1661,12 @@ export default function PortfolioApp() {
             </div>
           )}
 
-          {/* ================= 4. สินทรัพย์อื่นๆ (กองทุน ทอง คริปโต & เงินสด) ================= */}
+          {/* ================= 4. สินทรัพย์อื่นๆ (กองทุน ทอง คริปโต) ================= */}
           {activeTab === 4 && (
             <div>
               <div style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '15.5px', color: 'var(--text)', margin: '0 0 14px 2px', display: 'flex', alignItems: 'center', gap: '7px' }}>
-                <span className="pf-dot" style={{ background: '#7C8B9E' }} />เงินสดและสินทรัพย์อื่นๆ (Cash & Others)
+                <span className="pf-dot" style={{ background: '#D9823F' }} />สินทรัพย์อื่นๆ (กองทุน ทอง คริปโต)
               </div>
-
-              {/* ข้อ 1 & 4: ย้ายการ์ดเงินสดมาไว้ที่นี่ และปรับหัวข้อ "เงินสด / สภาพคล่อง" ให้เหมือนกับ "มูลค่าสินทรัพย์ทั้งหมด" (.pf-hero-label) */}
-              <div className="pf-type-section" style={{ marginTop: 0, marginBottom: '20px' }}>
-                <div className="pf-type-section-head">
-                  <div className="pf-type-section-info" style={{ flex: 1 }}>
-                    <div className="pf-hero-label" style={{ marginBottom: '6px' }}>เงินสด / สภาพคล่อง</div>
-                    <div className="pf-type-section-value pf-mono">฿{fmt(computedCash, 0)}</div>
-
-                    <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                      <div className="pf-capital-row">
-                        <span style={{ color: 'var(--muted)' }}>ทุนเริ่มต้น</span>
-                        <span className="pf-mono">฿{fmt(initialCapital, 0)}</span>
-                      </div>
-                      <div className="pf-capital-row">
-                        <span style={{ color: 'var(--muted)' }}>เงินที่ลงทุนไป</span>
-                        <span className="pf-mono">฿{fmt(totalInvestedCost, 0)}</span>
-                      </div>
-                      <div className="pf-capital-row">
-                        <span style={{ color: 'var(--muted)' }}>ผลประกอบการ</span>
-                        <span className={`pf-mono ${performanceTotal >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
-                          {performanceTotal >= 0 ? '+' : ''}฿{fmt(performanceTotal, 0)}
-                        </span>
-                      </div>
-                      <div className="pf-capital-row">
-                        <span style={{ color: 'var(--muted)' }}>ปันผล</span>
-                        <span className="pf-mono pf-chip-pos">฿{fmt(ledger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0), 0)}</span>
-                      </div>
-                      <div className="pf-capital-row">
-                        <span style={{ color: 'var(--muted)' }}>รีบาลานซ์</span>
-                        <span className="pf-mono">฿{fmt(ledger.filter((e) => e.type === 'rebalance').reduce((s, e) => s + e.amount, 0), 0)}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <button className="pf-cash-manage-btn" onClick={() => setPanel('cashManage')}>
-                  <span className="pf-cash-manage-icon"><Wallet size={16} /></span>
-                  <span>จัดการเงินสด & สรุปรายปี</span>
-                  <ChevronRight size={14} style={{ opacity: 0.5 }} />
-                </button>
-              </div>
-
               {holdings.filter((h) => h.type === 'crypto' || h.type === 'gold' || h.type === 'fund' || h.type === 'other').length === 0 ? (
                 <div className="pf-empty">
                   <Inbox size={26} style={{ marginBottom: 8, opacity: 0.6 }} />
@@ -2087,7 +2083,7 @@ export default function PortfolioApp() {
             ) : (
               <div className="pf-type-section-holdings" style={{ borderTop: 'none', marginTop: 0, paddingTop: 0 }}>
                 {recentLedger.map((e) => (
-                  <div className="pf-subrow" key={e.id}>
+                  <div className="pf-subrow" style={{ key: e.id }}>
                     <div className="pf-row-top">
                       <div className="pf-row-name">
                         <span className="pf-row-name-text">{LEDGER_LABELS[e.type] || e.type}{e.note ? ` · ${e.note}` : ''}</span>
