@@ -388,6 +388,13 @@ export default function PortfolioApp() {
   const cashActive = initialCapital > 0 || ledger.length > 0;
   const computedCash = cashActive ? (totalCapital - totalInvestedCost + cashAdjTotal) : 0;
 
+  // คำนวณสัดส่วนสภาพคล่อง (%) สำหรับไอเดียที่ 3
+  const cashRatio = useMemo(() => {
+    const totalVal = totalInvestedValue + Math.max(0, computedCash);
+    if (totalVal <= 0) return 0;
+    return (Math.max(0, computedCash) / totalVal) * 100;
+  }, [totalInvestedValue, computedCash]);
+
   const recentLedger = useMemo(() => {
     let list = ledger.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || String(b.id).localeCompare(String(a.id)));
     const q = ledgerSearchQuery.trim().toLowerCase();
@@ -858,6 +865,15 @@ export default function PortfolioApp() {
       const entry = { id: Date.now().toString(), type: 'capital_reduce', amount: amt, date: ledgerDate || todayStr(), note: ledgerNote.trim() };
       saveLedger([...ledger, entry]);
       showToast('ลดทุนสำเร็จ');
+      setPanel('cashManage');
+      return;
+    }
+
+    // ข้อ 1: ปุ่มรีบาลานซ์ เมื่อใช้งาน บันทึกในประวัติด้วย
+    if (ledgerType === 'rebalance') {
+      const entry = { id: Date.now().toString(), type: 'rebalance', amount: amt, date: ledgerDate || todayStr(), note: ledgerNote.trim() || 'รีบาลานซ์เงินสด' };
+      saveLedger([...ledger, entry]);
+      showToast('บันทึกรีบาลานซ์สำเร็จ');
       setPanel('cashManage');
       return;
     }
@@ -1504,7 +1520,7 @@ export default function PortfolioApp() {
                 )}
               </div>
 
-              {/* ออกแบบการ์ดเงินสดขึ้นมาใหม่สำหรับแสดงในหน้าพอร์ตรวมโดยเฉพาะ กลมกลืนกับการ์ดอื่น */}
+              {/* การ์ดเงินสดสำหรับหน้าพอร์ตรวม */}
               {byType.find((t) => t.key === 'cash') && (
                 <div className="pf-hero" style={{ border: '2px solid rgba(124, 139, 158, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #1a2230 100%)' }}>
                   <div className="pf-hero-label">เงินสด / สภาพคล่องในพอร์ต</div>
@@ -1655,47 +1671,46 @@ export default function PortfolioApp() {
             </div>
           )}
 
-          {/* ================= 4. สินทรัพย์อื่นๆ (กองทุน ทอง คริปโต & การ์ดเงินสดพร้อมปุ่มจัดการ) ================= */}
+          {/* ================= 4. สินทรัพย์อื่นๆ (พร้อมการ์ดเงินสดดีไซน์ใหม่ ไอเดียที่ 3) ================= */}
           {activeTab === 4 && (
             <div>
               <div style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '15.5px', color: 'var(--text)', margin: '0 0 14px 2px', display: 'flex', alignItems: 'center', gap: '7px' }}>
                 <span className="pf-dot" style={{ background: '#7C8B9E' }} />เงินสดและสินทรัพย์อื่นๆ (Cash & Others)
               </div>
 
-              {/* การ์ดเงินสดพร้อมปุ่มจัดการในหน้าสินทรัพย์อื่นๆ */}
-              <div className="pf-type-section" style={{ marginTop: 0, marginBottom: '20px' }}>
-                <div className="pf-type-section-head">
-                  <div className="pf-type-section-info" style={{ flex: 1 }}>
-                    <div className="pf-hero-label" style={{ marginBottom: '6px' }}>เงินสด / สภาพคล่อง</div>
-                    <div className="pf-type-section-value pf-mono">฿{fmt(computedCash, 0)}</div>
-
-                    <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                      <div className="pf-capital-row">
-                        <span style={{ color: 'var(--muted)' }}>ทุนเริ่มต้น</span>
-                        <span className="pf-mono">฿{fmt(initialCapital, 0)}</span>
-                      </div>
-                      <div className="pf-capital-row">
-                        <span style={{ color: 'var(--muted)' }}>เงินที่ลงทุนไป</span>
-                        <span className="pf-mono">฿{fmt(totalInvestedCost, 0)}</span>
-                      </div>
-                      <div className="pf-capital-row">
-                        <span style={{ color: 'var(--muted)' }}>ผลประกอบการ</span>
-                        <span className={`pf-mono ${performanceTotal >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
-                          {performanceTotal >= 0 ? '+' : ''}฿{fmt(performanceTotal, 0)}
-                        </span>
-                      </div>
-                      <div className="pf-capital-row">
-                        <span style={{ color: 'var(--muted)' }}>ปันผล</span>
-                        <span className="pf-mono pf-chip-pos">฿{fmt(ledger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0), 0)}</span>
-                      </div>
-                      <div className="pf-capital-row">
-                        <span style={{ color: 'var(--muted)' }}>รีบาลานซ์</span>
-                        <span className="pf-mono">฿{fmt(ledger.filter((e) => e.type === 'rebalance').reduce((s, e) => s + e.amount, 0), 0)}</span>
-                      </div>
-                    </div>
+              {/* การ์ดเงินสดดีไซน์ใหม่ (ไม่มีรายละเอียดซ้ำซ้อน แต่เพิ่ม Cash Ratio Badge & Progress Bar ตามไอเดียที่ 3) */}
+              <div className="pf-type-section" style={{ marginTop: 0, marginBottom: '20px', background: 'linear-gradient(135deg, rgba(17,24,39,0.9) 0%, rgba(31,41,55,0.7) 100%)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                  <div>
+                    <div className="pf-hero-label" style={{ marginBottom: '4px' }}>เงินสด / สภาพคล่องในมือ</div>
+                    <div className="pf-type-section-value pf-mono" style={{ fontSize: '36px' }}>฿{fmt(computedCash, 0)}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <span style={{
+                      display: 'inline-block',
+                      padding: '4px 10px',
+                      borderRadius: '20px',
+                      fontSize: '11.5px',
+                      fontWeight: '600',
+                      background: cashRatio >= 20 ? 'rgba(52, 211, 153, 0.15)' : cashRatio >= 10 ? 'rgba(56, 189, 248, 0.15)' : 'rgba(251, 191, 36, 0.15)',
+                      color: cashRatio >= 20 ? '#34d399' : cashRatio >= 10 ? '#38bdf8' : '#fbbf24',
+                      border: `1px solid ${cashRatio >= 20 ? 'rgba(52, 211, 153, 0.4)' : cashRatio >= 10 ? 'rgba(56, 189, 248, 0.4)' : 'rgba(251, 191, 36, 0.4)'}`
+                    }} className="pf-mono">
+                      {cashRatio >= 20 ? 'สภาพคล่องสูง / พร้อมช้อนซื้อ' : cashRatio >= 10 ? 'สภาพคล่องปลอดภัย' : 'สภาพคล่องต่ำ'} ({fmt(cashRatio, 1)}%)
+                    </span>
                   </div>
                 </div>
-                <button className="pf-cash-manage-btn" onClick={() => setPanel('cashManage')}>
+
+                {/* หลอด Progress Bar แสดงสัดส่วนสภาพคล่อง */}
+                <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden', margin: '16px 0 6px' }}>
+                  <div style={{ width: `${Math.min(100, Math.max(0, cashRatio))}%`, height: '100%', background: cashRatio >= 20 ? '#34d399' : cashRatio >= 10 ? '#38bdf8' : '#fbbf24', borderRadius: '3px', transition: 'width 0.4s ease' }} />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--muted)', marginBottom: '4px' }}>
+                  <span>เทียบกับมูลค่าพอร์ตทั้งหมด</span>
+                  <span className="pf-mono">{fmt(cashRatio, 1)}%</span>
+                </div>
+
+                <button className="pf-cash-manage-btn" onClick={() => setPanel('cashManage')} style={{ marginTop: '12px' }}>
                   <span className="pf-cash-manage-icon"><Wallet size={16} /></span>
                   <span>จัดการเงินสด & สรุปรายปี</span>
                   <ChevronRight size={14} style={{ opacity: 0.5 }} />
