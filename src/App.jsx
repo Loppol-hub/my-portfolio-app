@@ -374,11 +374,16 @@ export default function PortfolioApp() {
     ledger.filter((e) => e.type === 'capital_add').reduce((s, e) => s + e.amount, 0)
     - ledger.filter((e) => e.type === 'capital_reduce').reduce((s, e) => s + e.amount, 0)
   ), [ledger]);
-  const cashAdjTotal = useMemo(() => (
+  
+  // ผลรวมของ ปุ่มกำไร กับ ปุ่มขาดทุน สำหรับผลประกอบการ
+  const performanceTotal = useMemo(() => (
     ledger.filter((e) => e.type === 'profit').reduce((s, e) => s + e.amount, 0)
     - ledger.filter((e) => e.type === 'loss').reduce((s, e) => s + e.amount, 0)
-    + ledger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0)
   ), [ledger]);
+
+  const cashAdjTotal = useMemo(() => (
+    performanceTotal + ledger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0)
+  ), [ledger, performanceTotal]);
 
   const totalCapital = initialCapital + capitalAdjTotal;
   const cashActive = initialCapital > 0 || ledger.length > 0;
@@ -496,6 +501,10 @@ export default function PortfolioApp() {
     }
     return dividendByYear;
   }, [dividendGraphMode, dividendByYear, ledger, totalInvestedCost]);
+
+  const totalDividendAmount = useMemo(() => {
+    return ledger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0);
+  }, [ledger]);
 
   const dividendMaxVal = useMemo(() => {
     const rawMax = Math.max(...dividendChartData.map((d) => Math.max(d.dividend, d.invested)), 1000);
@@ -684,18 +693,22 @@ export default function PortfolioApp() {
   const saveBackendUrl = async () => {
     const url = backendDraft.trim();
     const fx = parseFloat(fxDraft);
-    const capital = parseFloat(initialCapitalDraft);
     setBackendUrl(url);
     try { await window.storage.set('backend-url', url, false); } catch (e) { /* ignore */ }
     if (!isNaN(fx) && fx > 0) {
       setFxRate(fx);
       try { await window.storage.set('fx-usdthb', String(fx), false); } catch (e) { /* ignore */ }
     }
+    showToast('บันทึกการตั้งค่าแล้ว');
+    closePanel();
+  };
+
+  const saveInitialCapital = async () => {
+    const capital = parseFloat(initialCapitalDraft);
     const nextCapital = !isNaN(capital) && capital >= 0 ? capital : 0;
     setInitialCapital(nextCapital);
     try { await window.storage.set('initial-capital', String(nextCapital), false); } catch (e) { /* ignore */ }
-    showToast('บันทึกการตั้งค่าแล้ว');
-    closePanel();
+    showToast('บันทึกทุนเริ่มต้นแล้ว');
   };
 
   const fetchAutoPrices = async () => {
@@ -1108,7 +1121,9 @@ export default function PortfolioApp() {
           {/* ================= 1. หุ้นไทย ================= */}
           {activeTab === 1 && (
             <div>
-              <div className="pf-section-label" style={{ marginTop: 0 }}>หุ้นไทย (Thai Stocks)</div>
+              <div style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '15.5px', color: 'var(--text)', margin: '0 0 14px 2px', display: 'flex', alignItems: 'center', gap: '7px' }}>
+                <span className="pf-dot" style={{ background: '#C7A344' }} />หุ้นไทย (Thai Stocks)
+              </div>
               {holdings.filter((h) => h.type === 'th_stock').length === 0 ? (
                 <div className="pf-empty">
                   <Inbox size={26} style={{ marginBottom: 8, opacity: 0.6 }} />
@@ -1266,7 +1281,9 @@ export default function PortfolioApp() {
           {/* ================= 2. หุ้นต่างประเทศ & DR & ETF ================= */}
           {activeTab === 2 && (
             <div>
-              <div className="pf-section-label" style={{ marginTop: 0 }}>หุ้นต่างประเทศ & DR (Global Stocks & DR & ETF)</div>
+              <div style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '15.5px', color: 'var(--text)', margin: '0 0 14px 2px', display: 'flex', alignItems: 'center', gap: '7px' }}>
+                <span className="pf-dot" style={{ background: '#38bdf8' }} />หุ้นต่างประเทศ & DR (Global Stocks & DR & ETF)
+              </div>
               {enriched.filter((h) => h.type === 'foreign_stock').length === 0 ? (
                 <div className="pf-empty">
                   <Inbox size={26} style={{ marginBottom: 8, opacity: 0.6 }} />
@@ -1428,12 +1445,11 @@ export default function PortfolioApp() {
           {/* ================= 3. พอร์ตรวม ================= */}
           {activeTab === 3 && (
             <div>
-              {/* ปรับขนาด, สี และข้อความ "พอร์ตรวม (Portfolio Overview)" ให้เท่ากับ "เงินสด / สภาพคล่อง" */}
               <div style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '15.5px', color: 'var(--text)', margin: '0 0 14px 2px', display: 'flex', alignItems: 'center', gap: '7px' }}>
                 <span className="pf-dot" style={{ background: 'var(--gold)' }} />พอร์ตรวม (Portfolio Overview)
               </div>
 
-              {/* การ์ดที่ 1: มูลค่าสินทรัพย์ทั้งหมด (เปลี่ยนชื่อ + บรรทัดเดียวกับอัปเดตล่าสุด + ลบเทียบกับทุนสะสมออก) */}
+              {/* การ์ดที่ 1: มูลค่าสินทรัพย์ทั้งหมด (เปลี่ยนชื่อ + บรรทัดเดียวกับอัปเดตล่าสุด + ลบเทียบกับทุนสะสม) */}
               <div className="pf-hero" style={{ border: '2px solid rgba(251, 191, 36, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #1f2937 100%)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
                   <div className="pf-hero-label" style={{ margin: 0 }}>มูลค่าสินทรัพย์ทั้งหมด</div>
@@ -1453,7 +1469,7 @@ export default function PortfolioApp() {
 
                 <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--divider)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <span style={{ fontSize: '12px', color: 'var(--muted)' }}>มูลค่าสินทรัพย์เทียบกับเงินต้น</span>
+                    <span style={{ fontSize: '12px', color: 'var(--muted)' }}>กราฟมูลค่าสินทรัพย์ / ทุนเริ่มต้น</span>
                     <div style={{ display: 'flex', gap: '4px' }}>
                       <button className={graphModeTotal === 'all' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeTotal('all')} style={{ padding: '2px 8px', fontSize: '11px' }}>ตั้งแต่เริ่มต้น</button>
                       <button className={graphModeTotal === 'year' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeTotal('year')} style={{ padding: '2px 8px', fontSize: '11px' }}>รายปี</button>
@@ -1480,16 +1496,15 @@ export default function PortfolioApp() {
                 </div>
               </div>
 
-              {/* การ์ดที่ 2: กำไร/ขาดทุนรวมทุกสินทรัพย์ */}
+              {/* การ์ดที่ 2: มูลค่าพอร์ตลงทุน (ลดขนาดตัวเลขลง + ลบต้นทุนที่ลงทุนไป) */}
               <div className="pf-hero" style={{ border: '2px solid rgba(52, 211, 153, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #172a3a 100%)' }}>
-                <div className="pf-hero-label">กำไร/ขาดทุนรวมทุกสินทรัพย์</div>
-                <div className="pf-hero-value pf-mono" style={{ fontSize: '44px', color: '#ffffff' }}>
+                <div className="pf-hero-label">มูลค่าพอร์ตลงทุน</div>
+                <div className="pf-hero-value pf-mono" style={{ fontSize: '32px', color: '#ffffff' }}>
                   ฿{fmt(totalInvestedCost + totalGain)}
                 </div>
-                <div className={`pf-hero-sub ${totalGain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`} style={{ fontSize: '15px' }}>
-                  {totalGain >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
+                <div className={`pf-hero-sub ${totalGain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`} style={{ fontSize: '14px' }}>
+                  {totalGain >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
                   <span className="pf-mono">{totalGain >= 0 ? '+' : ''}{fmt(totalGain)} ({totalGain >= 0 ? '+' : ''}{fmt(totalGainPct, 1)}%)</span>
-                  <span className="pf-hero-sub-label">ต้นทุนที่ลงทุนไป</span>
                 </div>
 
                 <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--divider)' }}>
@@ -1521,10 +1536,15 @@ export default function PortfolioApp() {
                 </div>
               </div>
 
-              {/* การ์ดที่ 3: กราฟปันผล */}
+              {/* การ์ดที่ 3: กราฟปันผล (เพิ่มชื่อการ์ดปันผลรวม + ขนาด 32px + เปลี่ยนชื่อกราฟ + ลบข้อความ Yield on Cost) */}
               <div className="pf-hero" style={{ border: '2px solid rgba(56, 189, 248, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #0f172a 100%)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <div className="pf-hero-label" style={{ margin: 0 }}>กราฟปันผล เทียบ เงินที่ลงทุนไป</div>
+                <div className="pf-hero-label">ปันผลรวม</div>
+                <div className="pf-hero-value pf-mono" style={{ fontSize: '32px', color: '#34d399' }}>
+                  ฿{fmt(totalDividendAmount)}
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '14px 0 8px', paddingTop: '12px', borderTop: '1px solid var(--divider)' }}>
+                  <div className="pf-hero-label" style={{ margin: 0 }}>กราฟปันผล / เงินที่ลงทุนไป</div>
                   <div style={{ display: 'flex', gap: '4px' }}>
                     <button className={dividendGraphMode === 'all' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setDividendGraphMode('all')} style={{ padding: '2px 8px', fontSize: '11px' }}>ตั้งแต่เริ่มต้น</button>
                     <button className={dividendGraphMode === 'year' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setDividendGraphMode('year')} style={{ padding: '2px 8px', fontSize: '11px' }}>รายปี</button>
@@ -1549,9 +1569,6 @@ export default function PortfolioApp() {
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-                <div style={{ marginTop: '10px', fontSize: '12px', color: 'var(--muted)', textAlign: 'center' }}>
-                  เปรียบเทียบกระแสเงินสดปันผลกับเงินลงทุนจริง (Yield on Cost)
-                </div>
               </div>
 
               {holdings.length === 0 && !cashActive ? (
@@ -1562,23 +1579,27 @@ export default function PortfolioApp() {
                 </div>
               ) : (
                 <>
-                  <div className="pf-section-label">สัดส่วนสินทรัพย์รวม</div>
-                  <div className="pf-legend-hint">แตะชื่อสินทรัพย์เพื่อเลือก/ไม่นับรวมในมูลค่าพอร์ตรวมและกราฟ</div>
-                  <div className="pf-donut-row" style={{ justifyContent: 'center', background: '#111827', padding: '20px', borderRadius: '16px', border: '1px solid var(--divider)' }}>
-                    <ExplodedPie3D data={displayByType.map((t) => ({ key: t.key, label: t.label, color: t.color, value: t.value }))} rx={95} />
-                    <div className="pf-legend pf-legend-col">
-                      {byType.map((t) => {
-                        const isExcluded = !!excludedTypes[t.key];
-                        return (
-                          <button className="pf-legend-item pf-legend-toggle" key={t.key} onClick={() => toggleTypeInclusion(t.key)}>
-                            <span className="pf-dot" style={{ background: isExcluded ? '#5B6779' : t.color }} />
-                            <span className={isExcluded ? 'pf-legend-name-excluded' : 'pf-legend-name-included'}>{t.label}</span>
-                            <span className="pf-legend-val pf-mono">
-                              {isExcluded ? `฿${fmt(t.value, 0)}` : `${fmt((t.value / (displayTotalValue || 1)) * 100, 1)}% · ฿${fmt(t.value, 0)}`}
-                            </span>
-                          </button>
-                        );
-                      })}
+                  {/* สัดส่วนสินทรัพย์รวม (ย้ายข้อความมาไว้ในการ์ด และลบคำแนะนำยาวออก) */}
+                  <div className="pf-hero" style={{ background: '#111827', padding: '20px', borderRadius: '16px', border: '1px solid var(--divider)' }}>
+                    <div style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '15px', color: 'var(--text)', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '7px' }}>
+                      <span className="pf-dot" style={{ background: 'var(--gold)' }} />สัดส่วนสินทรัพย์รวม
+                    </div>
+                    <div className="pf-donut-row" style={{ justifyContent: 'center' }}>
+                      <ExplodedPie3D data={displayByType.map((t) => ({ key: t.key, label: t.label, color: t.color, value: t.value }))} rx={95} />
+                      <div className="pf-legend pf-legend-col">
+                        {byType.map((t) => {
+                          const isExcluded = !!excludedTypes[t.key];
+                          return (
+                            <button className="pf-legend-item pf-legend-toggle" key={t.key} onClick={() => toggleTypeInclusion(t.key)}>
+                              <span className="pf-dot" style={{ background: isExcluded ? '#5B6779' : t.color }} />
+                              <span className={isExcluded ? 'pf-legend-name-excluded' : 'pf-legend-name-included'}>{t.label}</span>
+                              <span className="pf-legend-val pf-mono">
+                                {isExcluded ? `฿${fmt(t.value, 0)}` : `${fmt((t.value / (displayTotalValue || 1)) * 100, 1)}% · ฿${fmt(t.value, 0)}`}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
 
@@ -1598,10 +1619,11 @@ export default function PortfolioApp() {
                               <span style={{ color: 'var(--muted)' }}>เงินที่ลงทุนไป</span>
                               <span className="pf-mono">฿{fmt(totalInvestedCost, 0)}</span>
                             </div>
+                            {/* เปลี่ยนข้อความ เป็น "ผลประกอบการ" และใช้ผลรวมปุ่มกำไรหักขาดทุน */}
                             <div className="pf-capital-row">
-                              <span style={{ color: 'var(--muted)' }}>กำไร / ขาดทุน</span>
-                              <span className={`pf-mono ${totalGain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
-                                {totalGain >= 0 ? '+' : ''}฿{fmt(totalGain, 0)}
+                              <span style={{ color: 'var(--muted)' }}>ผลประกอบการ</span>
+                              <span className={`pf-mono ${performanceTotal >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
+                                {performanceTotal >= 0 ? '+' : ''}฿{fmt(performanceTotal, 0)}
                               </span>
                             </div>
                             <div className="pf-capital-row">
@@ -1634,7 +1656,9 @@ export default function PortfolioApp() {
           {/* ================= 4. สินทรัพย์อื่นๆ (กองทุน ทอง คริปโต) ================= */}
           {activeTab === 4 && (
             <div>
-              <div className="pf-section-label" style={{ marginTop: 0 }}>สินทรัพย์อื่นๆ (กองทุน ทอง คริปโต)</div>
+              <div style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '15.5px', color: 'var(--text)', margin: '0 0 14px 2px', display: 'flex', alignItems: 'center', gap: '7px' }}>
+                <span className="pf-dot" style={{ background: '#D9823F' }} />สินทรัพย์อื่นๆ (กองทุน ทอง คริปโต)
+              </div>
               {holdings.filter((h) => h.type === 'crypto' || h.type === 'gold' || h.type === 'fund' || h.type === 'other').length === 0 ? (
                 <div className="pf-empty">
                   <Inbox size={26} style={{ marginBottom: 8, opacity: 0.6 }} />
@@ -1727,7 +1751,9 @@ export default function PortfolioApp() {
           {/* ================= 5. ตั้งค่า ================= */}
           {activeTab === 5 && (
             <div>
-              <div className="pf-section-label" style={{ marginTop: 0 }}>ตั้งค่าระบบ (Settings)</div>
+              <div style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '15.5px', color: 'var(--text)', margin: '0 0 14px 2px', display: 'flex', alignItems: 'center', gap: '7px' }}>
+                <span className="pf-dot" style={{ background: '#7C8B9E' }} />ตั้งค่าระบบ (Settings)
+              </div>
               <div className="pf-type-section">
                 <div style={{ marginBottom: '16px' }}>
                   <div style={{ fontWeight: '600', fontSize: '16px', marginBottom: '4px' }}>จัดการข้อมูล & อัปเดตราคา</div>
@@ -1740,7 +1766,7 @@ export default function PortfolioApp() {
                       <RefreshCw size={16} /> อัปเดตราคาวันนี้ (ราคาตลาด)
                     </button>
                   )}
-                  <button className="pf-btn pf-btn-ghost" style={{ justifyContent: 'flex-start', padding: '14px' }} onClick={() => { setBackendDraft(backendUrl); setFxDraft(String(fxRate)); setInitialCapitalDraft(initialCapital > 0 ? String(initialCapital) : ''); setPanel('settings'); }}>
+                  <button className="pf-btn pf-btn-ghost" style={{ justifyContent: 'flex-start', padding: '14px' }} onClick={() => { setBackendDraft(backendUrl); setFxDraft(String(fxRate)); setPanel('settings'); }}>
                     ⚙️ ตั้งค่า API Endpoint และอัตราแลกเปลี่ยน
                   </button>
                   <button className="pf-btn pf-btn-ghost" style={{ justifyContent: 'flex-start', padding: '14px' }} onClick={exportData}>
@@ -1906,10 +1932,6 @@ export default function PortfolioApp() {
                 </button>
               </div>
             </div>
-            <div className="pf-field">
-              <label className="pf-label">ทุนเริ่มต้นทั้งหมด (บาท)</label>
-              <input className="pf-input pf-mono" inputMode="decimal" value={initialCapitalDraft} onChange={(e) => setInitialCapitalDraft(e.target.value)} placeholder="เช่น 100000" />
-            </div>
             <div className="pf-panel-actions">
               <button className="pf-btn pf-btn-ghost" onClick={closePanel}>ยกเลิก</button>
               <button className="pf-btn pf-btn-primary" onClick={saveBackendUrl}>บันทึก</button>
@@ -1958,6 +1980,23 @@ export default function PortfolioApp() {
             <div className="pf-panel-head">
               <div className="pf-panel-title">จัดการเงินสด & สรุปรายปี</div>
               <button className="pf-icon-btn" onClick={closePanel} aria-label="ปิด"><X size={16} /></button>
+            </div>
+
+            {/* ย้ายช่องกรอกทุนเริ่มต้นมาไว้ที่นี่ พร้อมปุ่ม บันทึก/ยกเลิก */}
+            <div style={{ background: 'var(--surface-alt)', padding: '14px', borderRadius: '12px', border: '1px solid var(--divider)', marginBottom: '16px' }}>
+              <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '8px', color: 'var(--gold)' }}>ทุนเริ่มต้นทั้งหมด (บาท)</div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  className="pf-input pf-mono"
+                  style={{ fontSize: '14px', padding: '8px 10px' }}
+                  inputMode="decimal"
+                  value={initialCapitalDraft}
+                  onChange={(e) => setInitialCapitalDraft(e.target.value)}
+                  placeholder="เช่น 100000"
+                />
+                <button className="pf-btn pf-btn-primary" style={{ padding: '8px 14px', fontSize: '13px' }} onClick={saveInitialCapital}>บันทึก</button>
+                <button className="pf-btn pf-btn-ghost" style={{ padding: '8px 12px', fontSize: '13px' }} onClick={() => setInitialCapitalDraft(initialCapital > 0 ? String(initialCapital) : '')}>ยกเลิก</button>
+              </div>
             </div>
 
             <div className="pf-cash-actions-grid">
