@@ -137,7 +137,6 @@ function ExplodedPie3D({ data, rx = 88, depth = 20, explode = 7 }) {
   );
 }
 
-// ฟังก์ชันจัดรูปแบบตัวเลข (ปกติ 2 ตำแหน่ง, ถ้าเป็น crypto ยอมให้แสดงทศนิยมละเอียดตามจริงได้)
 const fmt = (n, digits = 2, isCrypto = false) => {
   if (n === null || n === undefined || isNaN(n)) return '-';
   if (isCrypto) {
@@ -1096,7 +1095,7 @@ export default function PortfolioApp() {
     const price = await fetchFxRateValue();
     if (price) {
       setFxDraft(String(price));
-      showToast(`ดึงอัตราแลกเปลี่ยนแล้ว: 1 USD ≈ ฿${fmt(price)}`);
+      showToast(`ดึงอัตราแลกเปลี่ยนแล้ว: 1 USD ≈ ฿${fmt(price, 2)}`);
     } else {
       showToast('เชื่อมต่อ Backend ไม่สำเร็จ');
     }
@@ -1272,9 +1271,9 @@ export default function PortfolioApp() {
         .pf-mono { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
         .pf-display { font-family: 'Fraunces', serif; }
         .pf-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
-        .pf-icon-btn { background: var(--surface); border: 1px solid var(--divider); color: var(--text); border-radius: 10px; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+        .pf-icon-btn { background: var(--surface); border: 1px solid var(--divider); color: var(--text); border-radius: 10px; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; z-index: 10; }
         .pf-icon-btn:hover { background: var(--surface-alt); }
-        .pf-hero { background: var(--surface); backdrop-filter: blur(12px); border: 1px solid var(--divider); border-radius: 16px; padding: 22px 20px; margin-bottom: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+        .pf-hero { background: var(--surface); backdrop-filter: blur(12px); border: 1px solid var(--divider); border-radius: 16px; padding: 22px 20px; margin-bottom: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); position: relative; z-index: 1; }
         .pf-hero-label { color: var(--muted); font-size: 12px; letter-spacing: 0.4px; margin-bottom: 6px; }
         .pf-hero-value { font-size: 38px; font-weight: 800; line-height: 1.1; letter-spacing: -0.3px; }
         .pf-hero-sub { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 13px; flex-wrap: wrap; }
@@ -1283,7 +1282,7 @@ export default function PortfolioApp() {
         .pf-updated { color: var(--muted); font-size: 12px; }
         .pf-capital-row { display: flex; align-items: center; justify-content: space-between; font-size: 13px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
         .pf-capital-row:last-child { border-bottom: none; }
-        .pf-cash-manage-btn { display: inline-flex; align-items: center; gap: 8px; background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 20px; padding: 6px 14px 6px 6px; font-size: 12.5px; font-weight: 600; cursor: pointer; margin-top: 16px; }
+        .pf-cash-manage-btn { display: inline-flex; align-items: center; gap: 8px; background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 20px; padding: 6px 14px 6px 6px; font-size: 12.5px; font-weight: 600; cursor: pointer; margin-top: 16px; position: relative; z-index: 5; }
         .pf-cash-manage-icon { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: var(--gold); color: #1A1400; flex-shrink: 0; }
         .pf-year-picker { display: flex; gap: 8px; margin-bottom: 12px; overflow-x: auto; }
         .pf-year-pill, .pf-year-pill-active { flex-shrink: 0; border-radius: 20px; padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid var(--divider); background: var(--surface-alt); color: var(--muted); }
@@ -1338,12 +1337,12 @@ export default function PortfolioApp() {
         .pf-row-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
         .pf-row-name-text { font-family: 'Fraunces', serif; font-weight: 600; font-size: 15.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .pf-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
-        .pf-row-actions button { background: transparent; border: none; color: var(--muted); cursor: pointer; padding: 4px; border-radius: 6px; }
+        .pf-row-actions button { background: transparent; border: none; color: var(--muted); cursor: pointer; padding: 4px; border-radius: 6px; position: relative; z-index: 5; }
         .pf-row-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px; font-size: 12.5px; color: var(--muted); }
         .pf-row-meta b { color: var(--text); font-weight: 500; }
         .pf-ledger-amount { font-weight: 700; }
         .pf-fab { position: fixed; right: 20px; bottom: 100px; display: flex; gap: 10px; z-index: 900; }
-        .pf-btn { border-radius: 12px; padding: 11px 16px; font-size: 14px; font-weight: 600; cursor: pointer; border: 1px solid var(--divider); display: flex; align-items: center; gap: 6px; }
+        .pf-btn { border-radius: 12px; padding: 11px 16px; font-size: 14px; font-weight: 600; cursor: pointer; border: 1px solid var(--divider); display: flex; align-items: center; gap: 6px; position: relative; z-index: 5; }
         .pf-btn-primary { background: var(--gold); color: #1A1400; border: none; }
         .pf-btn-ghost { background: var(--surface); color: var(--text); }
         .pf-overlay { position: fixed; inset: 0; background: rgba(3,7,18,0.7); backdrop-filter: blur(5px); display: flex; justify-content: flex-end; z-index: 1200; }
@@ -1355,11 +1354,11 @@ export default function PortfolioApp() {
         .pf-panel-title { font-family: 'Fraunces', serif; font-size: 19px; font-weight: 600; }
         .pf-field { margin-bottom: 14px; }
         .pf-label { font-size: 12.5px; color: var(--muted); display: block; margin-bottom: 6px; }
-        .pf-input, .pf-select { width: 100%; background: var(--surface); border: 1px solid var(--divider); color: var(--text); border-radius: 10px; padding: 10px 12px; font-size: 14.5px; font-family: 'Inter', sans-serif; }
+        .pf-input, .pf-select { width: 100%; background: var(--surface); border: 1px solid var(--divider); color: var(--text); border-radius: 10px; padding: 10px 12px; font-size: 14.5px; font-family: 'Inter', sans-serif; position: relative; z-index: 5; }
         .pf-row2 { display: flex; gap: 10px; }
         .pf-row2 > div { flex: 1; }
         .pf-currency-toggle { display: flex; gap: 8px; }
-        .pf-currency-toggle button { flex: 1; background: var(--surface); border: 1px solid var(--divider); color: var(--muted); border-radius: 10px; padding: 9px 8px; font-size: 13.5px; cursor: pointer; }
+        .pf-currency-toggle button { flex: 1; background: var(--surface); border: 1px solid var(--divider); color: var(--muted); border-radius: 10px; padding: 9px 8px; font-size: 13.5px; cursor: pointer; position: relative; z-index: 5; }
         .pf-currency-toggle button.pf-currency-active { background: var(--gold); color: #1A1400; border-color: var(--gold); font-weight: 600; }
         .pf-currency-hint { color: var(--muted); font-size: 11.5px; margin-top: 6px; line-height: 1.5; }
         .pf-error { color: var(--neg); font-size: 12.5px; margin-bottom: 10px; }
@@ -1374,7 +1373,7 @@ export default function PortfolioApp() {
         .pf-loading { display: flex; align-items: center; justify-content: center; height: 60vh; color: var(--muted); }
 
         /* Bottom Navigation Bar */
-        .pf-nav-container { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); width: 92%; max-width: 420px; z-index: 1000; }
+        .pf-nav-container { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); width: 92%; max-width: 420px; z-index: 1000; pointer-events: none; }
         .pf-bottom-nav {
           position: relative;
           background: linear-gradient(180deg, rgba(8, 20, 42, 0.92) 0%, rgba(3, 9, 22, 0.98) 100%);
@@ -1384,6 +1383,7 @@ export default function PortfolioApp() {
           display: flex; justify-content: space-around; align-items: center;
           padding: 1px 16px 2px;
           box-shadow: 0 10px 40px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(56, 189, 248, 0.3);
+          pointer-events: auto;
         }
         .pf-nav-item {
           background: none; border: none; cursor: pointer;
@@ -1404,11 +1404,12 @@ export default function PortfolioApp() {
 
         .moon-float {
           position: fixed; top: 16px; right: 20px;
-          width: 110px; height: 110px;
+          width: 90px; height: 90px;
           display: flex; align-items: center; justify-content: center;
-          cursor: grab; z-index: 1100;
+          cursor: grab; z-index: 100;
           animation: moonFloat 2.5s ease-in-out infinite;
           user-select: none; touch-action: none;
+          pointer-events: auto;
         }
         .moon-float:active { cursor: grabbing; }
         @keyframes moonFloat {
@@ -2420,6 +2421,125 @@ export default function PortfolioApp() {
               <button className="pf-btn pf-btn-ghost" onClick={closePanel}>ยกเลิก</button>
               <button className="pf-btn pf-btn-primary" onClick={submitForm}>{editingId ? 'บันทึกการแก้ไข' : 'เพิ่มสินทรัพย์'}</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal / Panel: ประวัติการซื้อขายทั้งหมด */}
+      {tradeModalOpen && (
+        <div className="pf-overlay" onClick={() => setTradeModalOpen(false)}>
+          <div className="pf-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '460px' }}>
+            <div className="pf-panel-head" style={{ marginBottom: '14px' }}>
+              <div className="pf-panel-title">ประวัติการซื้อขายทั้งหมด</div>
+              <button className="pf-icon-btn" style={{ width: '32px', height: '32px' }} onClick={() => setTradeModalOpen(false)} aria-label="ปิด"><X size={16} /></button>
+            </div>
+
+            <div style={{ position: 'relative', marginBottom: '10px' }}>
+              <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', pointerEvents: 'none' }} />
+              <input
+                type="text"
+                className="pf-input"
+                style={{ padding: '8px 10px 8px 30px', fontSize: '13px', borderRadius: '10px' }}
+                placeholder="ค้นหาชื่อสินทรัพย์หรือหมายเหตุ..."
+                value={tradeSearchQuery}
+                onChange={(e) => setTradeSearchQuery(e.target.value)}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'center' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: '10.5px', color: 'var(--muted)', display: 'block', marginBottom: '2px' }}>ตั้งแต่</label>
+                <input type="date" className="pf-input pf-mono" style={{ padding: '6px 8px', fontSize: '12px' }} value={tradeStartDate} onChange={(e) => setTradeStartDate(e.target.value)} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: '10.5px', color: 'var(--muted)', display: 'block', marginBottom: '2px' }}>ถึง</label>
+                <input type="date" className="pf-input pf-mono" style={{ padding: '6px 8px', fontSize: '12px' }} value={tradeEndDate} onChange={(e) => setTradeEndDate(e.target.value)} />
+              </div>
+              {(tradeStartDate || tradeEndDate) && (
+                <button style={{ alignSelf: 'flex-end', background: 'transparent', border: 'none', color: 'var(--gold)', fontSize: '11px', cursor: 'pointer', paddingBottom: '8px' }} onClick={() => { setTradeStartDate(''); setTradeEndDate(''); }}>ล้าง</button>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
+              <button 
+                className="pf-btn pf-btn-ghost" 
+                style={{ fontSize: '12px', padding: '6px 14px', height: '34px', borderColor: 'var(--divider)' }}
+                onClick={() => setShowCatMenu(!showCatMenu)}
+              >
+                {tradeFilterType === 'all' ? 'หมวดหมู่: ทั้งหมด' : ASSET_TYPES.find(t => t.key === tradeFilterType)?.label} ▾
+              </button>
+              {showCatMenu && (
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <button className={tradeFilterType === 'all' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => { setTradeFilterType('all'); setShowCatMenu(false); }} style={{ padding: '4px 10px', fontSize: '11px' }}>ทั้งหมด</button>
+                  {ASSET_TYPES.filter(t => t.key !== 'cash').map((t) => (
+                    <button key={t.key} className={tradeFilterType === t.key ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => { setTradeFilterType(t.key); setShowCatMenu(false); }} style={{ padding: '4px 10px', fontSize: '11px' }}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--divider)', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '12px', color: 'var(--muted)' }}>ค่าธรรมเนียมรวม</span>
+              <span className="pf-mono" style={{ fontSize: '14px', fontWeight: '600', color: 'var(--gold)' }}>฿{fmt(totalFilteredFee, 2)}</span>
+            </div>
+
+            {searchFilteredAssetPnL && (
+              <div style={{ background: 'rgba(56,189,248,0.1)', border: '1px solid var(--neon-blue)', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '12px', color: 'var(--muted)' }}>ผลรวมกำไร/ขาดทุน ({searchFilteredAssetPnL.name})</div>
+                  <div style={{ fontSize: '11px', color: 'var(--muted)' }}>จากทั้งหมด {searchFilteredAssetPnL.count} รายการขาย</div>
+                </div>
+                <div className={`pf-mono ${searchFilteredAssetPnL.pnl >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`} style={{ fontSize: '16px', fontWeight: '700' }}>
+                  {searchFilteredAssetPnL.pnl >= 0 ? '+' : ''}{searchFilteredAssetPnL.isUsd ? '$' : '฿'}{fmt(searchFilteredAssetPnL.pnl, 2)}
+                </div>
+              </div>
+            )}
+
+            {filteredTradeLogs.length === 0 ? (
+              <div className="pf-empty" style={{ padding: '30px 0', fontSize: '13px' }}>ยังไม่มีประวัติการซื้อขาย</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '50vh', overflowY: 'auto', paddingRight: '4px' }}>
+                {filteredTradeLogs.map((log) => {
+                  const isBuy = log.action === 'buy';
+                  const showNote = tradeSearchQuery.trim().length > 0 && log.note;
+                  const isUsdAsset = log.currency === 'USD' || log.assetType === 'foreign_stock';
+                  return (
+                    <div key={log.id} style={{ background: 'var(--surface-alt)', border: '1px solid var(--divider)', borderRadius: '10px', padding: '10px 12px', fontSize: '13px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontWeight: '600', fontFamily: 'Fraunces, serif' }}>{log.assetName}</span>
+                          <span style={{ fontSize: '11px', padding: '1px 6px', borderRadius: '4px', background: isBuy ? 'rgba(52,211,153,0.15)' : 'rgba(252,165,165,0.15)', color: isBuy ? '#34d399' : '#fca5a5' }}>{isBuy ? 'ซื้อ' : 'ขาย'}</span>
+                          <button 
+                            onClick={() => revertSpecificTrade(log)}
+                            style={{ background: 'transparent', border: '1px solid var(--divider)', borderRadius: '4px', padding: '2px 6px', fontSize: '10px', color: 'var(--gold)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}
+                            title="คืนค่ารายการนี้"
+                          >
+                            <RotateCcw size={10} /> คืนค่า
+                          </button>
+                        </div>
+                        <span className="pf-mono" style={{ fontSize: '12px', color: 'var(--muted)' }}>{thaiDateAD(log.date)}</span>
+                      </div>
+                      <div className="pf-row-meta pf-mono" style={{ margin: 0, fontSize: '12px' }}>
+                        <span>จำนวน <b>{fmt(log.quantity, 2, log.assetType === 'crypto')}</b></span>
+                        <span>ราคา <b>{isUsdAsset ? '$' : '฿'}{fmt(log.price, 2, log.assetType === 'crypto')}</b></span>
+                        {log.fee > 0 && <span>ค่าธรรมเนียม <b>{isUsdAsset ? '$' : '฿'}{fmt(log.fee, 2)}</b></span>}
+                      </div>
+                      {!isBuy && log.pnl !== undefined && (
+                        <div style={{ marginTop: '4px', paddingTop: '4px', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', fontSize: '12px' }} className="pf-mono">
+                          <span style={{ color: 'var(--muted)' }}>กำไร/ขาดทุนสุทธิ:</span>
+                          <span className={log.pnl >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'} style={{ fontWeight: '700' }}>
+                            {log.pnl >= 0 ? '+' : ''}{isUsdAsset ? '$' : '฿'}{fmt(log.pnl, 2)}
+                          </span>
+                        </div>
+                      )}
+                      {showNote && <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '4px' }}>หมายเหตุ: {log.note}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
