@@ -1404,7 +1404,7 @@ export default function PortfolioApp() {
 
         .moon-float {
           position: fixed; top: 16px; right: 20px;
-          width: 90px; height: 90px;
+          width: 110px; height: 110px;
           display: flex; align-items: center; justify-content: center;
           cursor: grab; z-index: 100;
           animation: moonFloat 2.5s ease-in-out infinite;
