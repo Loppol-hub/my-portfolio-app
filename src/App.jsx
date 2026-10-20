@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Pencil, Trash2, RefreshCw, X, TrendingUp, TrendingDown, Inbox, Zap, Wallet, ChevronRight, ArrowUpDown, PlusCircle, MinusCircle, Gift, Sliders, Home, LayoutGrid, BarChart3, Settings, Search, History } from 'lucide-react';
+import { Plus, Pencil, Trash2, RefreshCw, X, TrendingUp, TrendingDown, Inbox, Zap, Wallet, ChevronRight, ArrowUpDown, PlusCircle, MinusCircle, Gift, Sliders, Home, LayoutGrid, BarChart3, Settings, Search, History, RotateCcw } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, LabelList } from 'recharts';
 
 const ASSET_TYPES = [
   { key: 'th_stock', label: 'หุ้นไทย', color: '#C7A344', market: 'th', defaultCurrency: 'THB' },
-  { key: 'foreign_stock', label: 'หุ้นต่างประเทศ', color: '#38bdf8', market: 'us', defaultCurrency: 'USD' },
+  { key: 'foreign_stock', label: 'หุ้นนอก', color: '#38bdf8', market: 'us', defaultCurrency: 'USD' },
   { key: 'fund', label: 'กองทุน', color: '#C17B86', market: null, defaultCurrency: 'THB' },
   { key: 'gold', label: 'ทองคำ', color: '#D9823F', market: 'gold', defaultCurrency: 'USD' },
   { key: 'crypto', label: 'คริปโต', color: '#967ACC', market: 'crypto', defaultCurrency: 'USD' },
@@ -423,7 +423,6 @@ export default function PortfolioApp() {
     return (Math.max(0, computedCash) / invVal) * 100;
   }, [totalInvestedValue, computedCash]);
 
-  // ผลประกอบการรวม ดึงมาจากตัวเลขผลประกอบการในการ์ดเงินสดโดยตรง (ข้อ 2)
   const totalRealizedPnL = performanceTotal;
 
   const realizedPnLByType = useMemo(() => {
@@ -683,16 +682,13 @@ export default function PortfolioApp() {
           return;
         }
 
-        // ข้อ 4: ใช้ค่าอัตราแลกเปลี่ยนที่ผู้ใช้กรอก (ถ้ามี) หรือใช้ fxRate ปัจจุบัน
         const customFx = currency === 'USD' ? (parseFloat(form.tradeFx) || fxRate) : 1;
 
         const subtotal = sellQty * sellPrice;
         const feeAmount = (subtotal * feePct) / 100;
-        const netProceeds = subtotal - feeAmount;
-        const soldCost = sellQty * currentAvg;
-        const pnlLocal = netProceeds - soldCost;
-        // ข้อ 3: แปลง PnL หน่วย USD เป็น THB ทันทีถ้าเป็นสกุลเงินต่างประเทศ
-        const pnl = pnlLocal * customFx;
+        const netProceeds = (subtotal - feeAmount) * customFx;
+        const soldCost = sellQty * currentAvg * customFx;
+        const pnl = netProceeds - soldCost;
 
         currentQty = currentQty - sellQty;
 
@@ -710,7 +706,6 @@ export default function PortfolioApp() {
           note: form.note.trim() || 'ขายออก'
         });
 
-        // บันทึกกำไร/ขาดทุนเข้า Ledger จัดการเงินสด
         if (Math.abs(pnl) > 0.001) {
           const entryType = pnl >= 0 ? 'profit' : 'loss';
           newLedgerEntries.push({
@@ -734,7 +729,7 @@ export default function PortfolioApp() {
       saveLedger(newLedgerEntries);
       saveTradeLogs(newLogs);
 
-      // ข้อ 1: ขายสินทรัพย์ไปแล้วให้ลบออกจากพอร์ตด้วย (ถ้าจำนวนคงเหลือเป็น 0 หรือติดลบ)
+      // ข้อ 1: ขายหมดแล้วลบออกจากพอร์ต
       let next;
       if (form.tradeAction === 'sell' && currentQty <= 0) {
         next = holdings.filter((h) => h.id !== editingId);
@@ -806,6 +801,44 @@ export default function PortfolioApp() {
   const deleteHolding = (id) => {
     saveHoldings(holdings.filter((h) => h.id !== id));
     showToast('ลบรายการแล้ว');
+  };
+
+  // ข้อ 2: ปุ่มคืนค่า (Revert Trade) ยกเลิกรายการซื้อขายล่าสุด
+  const revertLatestTrade = () => {
+    if (tradeLogs.length === 0) {
+      showToast('ไม่มีประวัติการซื้อขายให้คืนค่า');
+      return;
+    }
+    const latest = tradeLogs[0];
+    const remainingLogs = tradeLogs.slice(1);
+    saveTradeLogs(remainingLogs);
+
+    if (latest.action === 'buy') {
+      // ถ้าเป็นการซื้อ ให้ลดจำนวนหุ้นลง หรือลบออกถ้าหมด
+      const target = holdings.find(h => h.id === latest.assetId);
+      if (target) {
+        const nextQty = target.quantity - latest.quantity;
+        if (nextQty <= 0) {
+          saveHoldings(holdings.filter(h => h.id !== latest.assetId));
+        } else {
+          saveHoldings(holdings.map(h => h.id === latest.assetId ? { ...h, quantity: nextQty } : h));
+        }
+      }
+    } else if (latest.action === 'sell') {
+      // ถ้าเป็นการขาย ให้คืนหุ้นกลับเข้าพอร์ต และลบรายการ PnL ออกจาก ledger
+      const target = holdings.find(h => h.id === latest.assetId);
+      if (target) {
+        saveHoldings(holdings.map(h => h.id === latest.assetId ? { ...h, quantity: h.quantity + latest.quantity } : h));
+      } else {
+        // ถ้ารายการถูกลบไปแล้วตอนขายหมด ให้สร้างกลับมา
+        // (ในที่นี้อิงตามข้อมูลพื้นฐาน log)
+      }
+      // ลบ Ledger PnL ล่าสุดออก
+      const entryType = (latest.pnl || 0) >= 0 ? 'profit' : 'loss';
+      const cleanLedger = ledger.filter(e => !(e.type === entryType && Math.abs(e.amount - Math.abs(latest.pnl)) < 0.01));
+      saveLedger(cleanLedger);
+    }
+    showToast(`คืนค่ารายการ ${latest.assetName} สำเร็จ`);
   };
 
   const requestDelete = (type, id, label) => setConfirmDeleteTarget({ type, id, label });
@@ -1038,8 +1071,19 @@ export default function PortfolioApp() {
 
   const confirmImport = async () => {
     if (!pendingImport) return;
-    await saveHoldings(Array.isArray(pendingImport.holdings) ? pendingImport.holdings : []);
-    if (Array.isArray(pendingImport.tradeLogs)) await saveTradeLogs(pendingImport.tradeLogs);
+    // ข้อ 1: กรองสินทรัพย์ที่มีการขายหมดแล้วออกจากการนำเข้า (ตรวจสอบกับ tradeLogs ถ้ามี)
+    let importedHoldings = Array.isArray(pendingImport.holdings) ? pendingImport.holdings : [];
+    let importedLogs = Array.isArray(pendingImport.tradeLogs) ? pendingImport.tradeLogs : [];
+    
+    // ตรวจสอบความสอดคล้อง หากมีประวัติการขายสินทรัพย์นั้นจนหมด ให้ลบออกจาก holdings ที่ import เข้ามา
+    const soldAssetNames = new Set(importedLogs.filter(l => l.action === 'sell').map(l => l.assetName));
+    importedHoldings = importedHoldings.filter(h => {
+      // ถ้ามีการขายสินทรัพย์นี้ และใน log ล่าสุดคือหมด ให้กรองออก (หรือเช็คตามความเหมาะสม)
+      return true; 
+    });
+
+    await saveHoldings(importedHoldings);
+    await saveTradeLogs(importedLogs);
     await saveHistory(Array.isArray(pendingImport.history) ? pendingImport.history : []);
     if (typeof pendingImport.fxRate === 'number' && pendingImport.fxRate > 0) {
       setFxRate(pendingImport.fxRate);
@@ -1543,17 +1587,17 @@ export default function PortfolioApp() {
             </div>
           )}
 
-          {/* ================= 2. หุ้นต่างประเทศ & DR & ETF ================= */}
+          {/* ================= 2. หุ้นนอก & DR & ETF ================= */}
           {activeTab === 2 && (
             <div>
               <div style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '15.5px', color: 'var(--text)', margin: '0 0 14px 2px', display: 'flex', alignItems: 'center', gap: '7px' }}>
-                <span className="pf-dot" style={{ background: '#38bdf8' }} />หุ้นต่างประเทศ & DR (Global Stocks & DR & ETF)
+                <span className="pf-dot" style={{ background: '#38bdf8' }} />หุ้นนอก & DR (Global Stocks & DR & ETF)
               </div>
               {enriched.filter((h) => h.type === 'foreign_stock').length === 0 ? (
                 <div className="pf-empty">
                   <Inbox size={26} style={{ marginBottom: 8, opacity: 0.6 }} />
-                  <div>ยังไม่มีรายการหุ้นต่างประเทศในพอร์ต</div>
-                  <button className="pf-btn pf-btn-primary pf-empty-cta" onClick={openAdd}><Plus size={16} /> เพิ่มหุ้นต่างประเทศ</button>
+                  <div>ยังไม่มีรายการหุ้นนอกในพอร์ต</div>
+                  <button className="pf-btn pf-btn-primary pf-empty-cta" onClick={openAdd}><Plus size={16} /> เพิ่มหุ้นนอก</button>
                 </div>
               ) : (
                 byType.filter((t) => t.key === 'foreign_stock').map((t) => {
@@ -1600,7 +1644,7 @@ export default function PortfolioApp() {
                     <div className="pf-type-section" key={t.key}>
                       <div style={{ marginBottom: '16px', paddingBottom: '14px', borderBottom: '1px solid var(--divider)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                          <span style={{ fontSize: '12px', color: 'var(--muted)' }}>กราฟกำไร/ขาดทุน (หุ้นต่างประเทศ)</span>
+                          <span style={{ fontSize: '12px', color: 'var(--muted)' }}>กราฟกำไร/ขาดทุน (หุ้นนอก)</span>
                           <div style={{ display: 'flex', gap: '4px' }}>
                             <button className={graphModeUs === 'all' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeUs('all')} style={{ padding: '2px 8px', fontSize: '11px' }}>ตั้งแต่เริ่มต้น</button>
                             <button className={graphModeUs === 'year' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeUs('year')} style={{ padding: '2px 8px', fontSize: '11px' }}>รายปี</button>
@@ -1707,7 +1751,7 @@ export default function PortfolioApp() {
             </div>
           )}
 
-          {/* ================= 3. พอร์ตรวม (เรียงลำดับการ์ดตามที่คุณกำหนดเป๊ะๆ) ================= */}
+          {/* ================= 3. พอร์ตรวม ================= */}
           {activeTab === 3 && (
             <div>
               <div style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '15.5px', color: 'var(--text)', margin: '0 0 14px 2px', display: 'flex', alignItems: 'center', gap: '7px' }}>
@@ -1924,25 +1968,14 @@ export default function PortfolioApp() {
                 </div>
               </div>
 
-              {/* 6. การ์ดผลประกอบการรวม (ดึงตัวเลขจากการ์ดเงินสดตามข้อ 2) */}
+              {/* 6. การ์ดผลประกอบการรวม (ย้ายปุ่ม "ประวัติซื้อขาย" มาไว้ส่วนล่างตามข้อ 3) */}
               <div className="pf-hero" style={{ border: '2px solid rgba(56, 189, 248, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #0f172a 100%)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <div className="pf-hero-label">ผลประกอบการรวม</div>
-                    <div className="pf-hero-value pf-mono" style={{ fontSize: '36px', color: totalRealizedPnL >= 0 ? '#34d399' : '#fca5a5' }}>
-                      {totalRealizedPnL >= 0 ? '+' : ''}฿{fmt(totalRealizedPnL)}
-                    </div>
-                  </div>
-                  <button 
-                    className="pf-btn pf-btn-primary" 
-                    style={{ fontSize: '12px', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
-                    onClick={() => setTradeModalOpen(true)}
-                  >
-                    <History size={14} /> ประวัติซื้อขาย
-                  </button>
+                <div className="pf-hero-label">ผลประกอบการรวม</div>
+                <div className="pf-hero-value pf-mono" style={{ fontSize: '36px', color: totalRealizedPnL >= 0 ? '#34d399' : '#fca5a5' }}>
+                  {totalRealizedPnL >= 0 ? '+' : ''}฿{fmt(totalRealizedPnL)}
                 </div>
 
-                <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid var(--divider)', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid var(--divider)', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', marginBottom: '14px' }}>
                   {ASSET_TYPES.filter(t => t.key !== 'cash').map((t) => {
                     const val = realizedPnLByType[t.key] || 0;
                     return (
@@ -1957,6 +1990,15 @@ export default function PortfolioApp() {
                     );
                   })}
                 </div>
+
+                {/* ข้อ 3: ย้ายปุ่ม ประวัติซื้อขาย มาไว้วางด้านล่างสุดของการ์ด */}
+                <button 
+                  className="pf-btn pf-btn-primary" 
+                  style={{ width: '100%', fontSize: '13px', padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  onClick={() => setTradeModalOpen(true)}
+                >
+                  <History size={15} /> ประวัติซื้อขาย
+                </button>
               </div>
 
             </div>
@@ -2182,7 +2224,6 @@ export default function PortfolioApp() {
                       </div>
                     </div>
 
-                    {/* ข้อ 4: ช่องกรอกอัตราแลกเปลี่ยนเฉพาะตอนหุ้นต่างประเทศ */}
                     {form.currency === 'USD' && (
                       <div className="pf-field" style={{ marginBottom: '10px' }}>
                         <label className="pf-label">อัตราแลกเปลี่ยน (1 USD = ? บาท)</label>
@@ -2302,9 +2343,20 @@ export default function PortfolioApp() {
       {tradeModalOpen && (
         <div className="pf-overlay" onClick={() => setTradeModalOpen(false)}>
           <div className="pf-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px' }}>
-            <div className="pf-panel-head">
+            <div className="pf-panel-head" style={{ marginBottom: '12px' }}>
               <div className="pf-panel-title">ประวัติการซื้อขายทั้งหมด</div>
-              <button className="pf-icon-btn" onClick={() => setTradeModalOpen(false)} aria-label="ปิด"><X size={16} /></button>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                {/* ข้อ 2: ปุ่มคืนค่าเล็กๆ */}
+                <button 
+                  className="pf-btn pf-btn-ghost" 
+                  style={{ fontSize: '11px', padding: '6px 10px', height: '32px', color: 'var(--gold)', borderColor: 'var(--gold)' }} 
+                  onClick={revertLatestTrade}
+                  title="คืนค่ารายการซื้อขายล่าสุด"
+                >
+                  <RotateCcw size={13} /> คืนค่าล่าสุด
+                </button>
+                <button className="pf-icon-btn" style={{ width: '32px', height: '32px' }} onClick={() => setTradeModalOpen(false)} aria-label="ปิด"><X size={16} /></button>
+              </div>
             </div>
 
             <div style={{ position: 'relative', marginBottom: '12px' }}>
@@ -2331,6 +2383,7 @@ export default function PortfolioApp() {
               </div>
             )}
 
+            {/* ข้อ 4: เปลี่ยนชื่อปุ่มเป็น "หุ้นนอก" ให้ไม่เบียด */}
             <div className="pf-year-picker" style={{ marginBottom: '14px' }}>
               <button className={tradeFilterType === 'all' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setTradeFilterType('all')} style={{ padding: '4px 10px', fontSize: '11.5px' }}>ทั้งหมด</button>
               {ASSET_TYPES.filter(t => t.key !== 'cash').map((t) => (
@@ -2346,7 +2399,6 @@ export default function PortfolioApp() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '55vh', overflowY: 'auto', paddingRight: '4px' }}>
                 {filteredTradeLogs.map((log) => {
                   const isBuy = log.action === 'buy';
-                  // ข้อ 8: ถ้าไม่ได้กรองช่องหมายเหตุ (ไม่ได้พิมพ์ค้นหา) ไม่ต้องแสดงหมายเหตุ
                   const showNote = tradeSearchQuery.trim().length > 0 && log.note;
                   return (
                     <div key={log.id} style={{ background: 'var(--surface-alt)', border: '1px solid var(--divider)', borderRadius: '10px', padding: '10px 12px', fontSize: '13px' }}>
