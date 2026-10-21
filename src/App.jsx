@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Pencil, Trash2, RefreshCw, X, TrendingUp, TrendingDown, Inbox, Zap, Wallet, ChevronRight, ArrowUpDown, PlusCircle, MinusCircle, Gift, Sliders, Home, LayoutGrid, BarChart3, Settings, Search, History, RotateCcw, Calendar, ChevronRight as ChevronRightIcon } from 'lucide-react';
+import { Plus, Pencil, Trash2, RefreshCw, X, TrendingUp, TrendingDown, Inbox, Zap, Wallet, ChevronRight, ArrowUpDown, PlusCircle, MinusCircle, Gift, Sliders, Home, LayoutGrid, BarChart3, Settings, Search, History, RotateCcw, Calendar, ChevronRight as ChevronRightIcon, ChevronDown } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, LabelList } from 'recharts';
 
 const ASSET_TYPES = [
@@ -168,6 +168,14 @@ const thaiDateAD = (iso) => {
   return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
 };
 
+const calcDaysAgo = (dateStr) => {
+  if (!dateStr) return 0;
+  const d = new Date(dateStr);
+  const now = new Date();
+  const diffTime = Math.abs(now - d);
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+};
+
 const emptyForm = { 
   name: '', ticker: '', type: 'th_stock', quantity: '', avgCost: '', currentPrice: '', currency: 'THB', industry: '', instrumentType: 'stock',
   feePct: '0.15', tradeDate: todayStr(), note: '',
@@ -217,6 +225,7 @@ export default function PortfolioApp() {
   const [toast, setToast] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmDeleteTarget, setConfirmDeleteTarget] = useState(null);
+  const [confirmRevertTarget, setConfirmRevertTarget] = useState(null); // ข้อ 4: ยืนยันการคืนค่า
   const [pendingImport, setPendingImport] = useState(null);
   const [importError, setImportError] = useState('');
   const fileInputRef = useRef(null);
@@ -228,6 +237,9 @@ export default function PortfolioApp() {
   const [tradeSearchQuery, setTradeSearchQuery] = useState('');
   const [tradeStartDate, setTradeStartDate] = useState('');
   const [tradeEndDate, setTradeEndDate] = useState('');
+
+  // ข้อ 1: สถานะเปิด/ปิดการแสดง "ไม้ที่ถืออยู่" ของแต่ละสินทรัพย์ (เก็บค่า id ที่กำลังกาง)
+  const [expandedLotsId, setExpandedLotsId] = useState(null);
 
   const [sortModeByType, setSortModeByType] = useState({});
   const cycleSortMode = (typeKey, maxMode = 2) => {
@@ -395,15 +407,27 @@ export default function PortfolioApp() {
     return rate;
   };
 
+  // ข้อ 3: หุ้นนอก/คริปโต/ทองคำ ใช้ต้นทุนประวัติศาสตร์ (Historical Cost) ที่ไม่ผันตามเรทกลางรายวัน
   const enriched = useMemo(() => holdings.map((h) => {
     const qty = parseFloat(h.quantity) || 0;
     const avg = parseFloat(h.avgCost) || 0;
     let price = parseFloat(h.currentPrice) || 0;
     if (h.type === 'gold') { price = Math.max(0, price - 25); }
     const currency = h.currency === 'USD' ? 'USD' : 'THB';
-    const rate = currency === 'USD' ? getEffectiveRate(h.type, fxRate) : 1;
-    const marketValue = qty * price * rate;
-    const costValue = qty * avg * rate;
+    
+    // หากเป็น USD หรือสินทรัพย์นอก ให้ใช้เรทประวัติศาสตร์จาก tradeLogs หรือถ้าไม่มีใช้ tradeFx ถ้าไม่มีค่อยใช้ fxRate ตอนซื้อ
+    const assetBuys = tradeLogs.filter(l => l.assetId === h.id && l.action === 'buy');
+    let historicalRate = 1;
+    if (currency === 'USD') {
+      if (assetBuys.length > 0 && assetBuys[0].tradeFx) {
+        historicalRate = assetBuys[0].tradeFx;
+      } else {
+        historicalRate = fxRate; // fallback
+      }
+    }
+
+    const marketValue = qty * price * (currency === 'USD' ? getEffectiveRate(h.type, fxRate) : 1);
+    const costValue = qty * avg * (currency === 'USD' ? historicalRate : 1); // ล็อคต้นทุนตามประวัติ
     const gain = marketValue - costValue;
     const gainPct = costValue > 0 ? (gain / costValue) * 100 : 0;
 
@@ -412,7 +436,7 @@ export default function PortfolioApp() {
       effectiveType = 'foreign_stock';
     }
     return { ...h, type: effectiveType, qty, avg, price, currency, marketValue, costValue, gain, gainPct };
-  }), [holdings, fxRate]);
+  }), [holdings, fxRate, tradeLogs]);
 
   const totalInvestedValue = useMemo(() => enriched.filter((h) => h.type !== 'cash').reduce((s, h) => s + h.marketValue, 0), [enriched]);
   const totalInvestedCost = useMemo(() => enriched.filter((h) => h.type !== 'cash').reduce((s, h) => s + h.costValue, 0), [enriched]);
@@ -865,7 +889,8 @@ export default function PortfolioApp() {
     showToast('ลบรายการแล้ว');
   };
 
-  const revertSpecificTrade = (log) => {
+  // ข้อ 4: ฟังก์ชันยืนยันการคืนค่า
+  const executeRevertTrade = (log) => {
     const nextLogs = tradeLogs.filter(l => l.id !== log.id);
     saveTradeLogs(nextLogs);
 
@@ -905,6 +930,7 @@ export default function PortfolioApp() {
       }
     }
 
+    setConfirmRevertTarget(null);
     showToast(`คืนค่ารายการ ${log.assetName} สำเร็จ`);
   };
 
@@ -1240,6 +1266,42 @@ export default function PortfolioApp() {
     return { name: assetName, pnl: totalPnl, count: matchingLogs.length, isUsd };
   }, [tradeLogs, tradeSearchQuery]);
 
+  // ฟังก์ชันคำนวณแบ่งไม้ (Lots) แบบจำลอง FIFO สำหรับแสดงผลประวัติการซื้อในสินทรัพย์นั้นๆ
+  const getAssetLots = (assetId, currentQty, currentPrice) => {
+    const logs = tradeLogs.filter(l => l.assetId === assetId).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    let lots = [];
+    logs.forEach(l => {
+      if (l.action === 'buy') {
+        lots.push({ date: l.date, qty: l.quantity, price: l.price });
+      } else if (l.action === 'sell') {
+        let remSell = l.quantity;
+        while (remSell > 0 && lots.length > 0) {
+          if (lots[0].qty <= remSell) {
+            remSell -= lots[0].qty;
+            lots.shift();
+          } else {
+            lots[0].qty -= remSell;
+            remSell = 0;
+          }
+        }
+      }
+    });
+    // คำนวณกำไรขาดทุนต่อไม้
+    return lots.map(lot => {
+      const days = calcDaysAgo(lot.date);
+      const lotVal = lot.qty * currentPrice;
+      const lotCost = lot.qty * lot.price;
+      const lotGain = lotVal - lotCost;
+      const lotGainPct = lotCost > 0 ? (lotGain / lotCost) * 100 : 0;
+      return {
+        ...lot,
+        days,
+        gain: lotGain,
+        gainPct: lotGainPct
+      };
+    });
+  };
+
   return (
     <div className="pf-root">
       <style>{`
@@ -1322,7 +1384,7 @@ export default function PortfolioApp() {
         .pf-sort-btn { background: var(--surface-alt); border: 1px solid var(--divider); border-radius: 8px; padding: 4px 10px; font-size: 12px; color: var(--gold); cursor: pointer; display: flex; align-items: center; gap: 6px; font-family: 'Inter', sans-serif; font-weight: 500; }
         .pf-sort-btn:hover { background: rgba(56, 189, 248, 0.1); }
         .pf-type-section-holdings { border-top: 1px solid var(--divider); margin-top: 16px; padding-top: 6px; }
-        .pf-subrow { padding: 14px 0; border-bottom: 1px solid var(--divider); }
+        .pf-subrow { padding: 14px 0; border-bottom: 1px solid var(--divider); cursor: pointer; }
         .pf-subrow:last-child { border-bottom: none; padding-bottom: 0; }
         .pf-legend { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-top: 12px; }
         .pf-legend-item { display: flex; align-items: center; gap: 7px; font-size: 12.5px; }
@@ -1404,7 +1466,7 @@ export default function PortfolioApp() {
 
         .moon-float {
           position: fixed; top: 16px; right: 20px;
-          width: 110px; height: 110px;
+          width: 90px; height: 90px;
           display: flex; align-items: center; justify-content: center;
           cursor: grab; z-index: 100;
           animation: moonFloat 2.5s ease-in-out infinite;
@@ -1618,36 +1680,67 @@ export default function PortfolioApp() {
                       <div className="pf-type-section-holdings">
                         {typeHoldings.map((h) => {
                           const isCrypto = h.type === 'crypto';
+                          const isExpanded = expandedLotsId === h.id;
+                          const lots = getAssetLots(h.id, h.qty, h.price);
+
                           return (
-                            <div className="pf-subrow" style={{ padding: '12px 0' }} key={h.id}>
-                              <div className="pf-row-top">
-                                <div className="pf-row-name">
-                                  <span className="pf-dot" style={{ background: colorById[h.id] }} />
-                                  <span className="pf-row-name-text">
-                                    {h.name}
-                                    {h.instrumentType === 'dr' && <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.1)', padding: '1px 6px', borderRadius: '4px', marginLeft: '6px', color: '#38bdf8' }}>DR</span>}
-                                    {h.instrumentType === 'etf' && <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.1)', padding: '1px 6px', borderRadius: '4px', marginLeft: '6px', color: '#6E8CB0' }}>ETF</span>}
+                            <div key={h.id}>
+                              <div className="pf-subrow" style={{ padding: '12px 0' }} onClick={() => setExpandedLotsId(isExpanded ? null : h.id)}>
+                                <div className="pf-row-top">
+                                  <div className="pf-row-name">
+                                    <span className="pf-dot" style={{ background: colorById[h.id] }} />
+                                    <span className="pf-row-name-text">
+                                      {h.name}
+                                      {h.instrumentType === 'dr' && <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.1)', padding: '1px 6px', borderRadius: '4px', marginLeft: '6px', color: '#38bdf8' }}>DR</span>}
+                                      {h.instrumentType === 'etf' && <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.1)', padding: '1px 6px', borderRadius: '4px', marginLeft: '6px', color: '#6E8CB0' }}>ETF</span>}
+                                    </span>
+                                  </div>
+                                  <div className="pf-row-actions" onClick={(e) => e.stopPropagation()}>
+                                    <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
+                                    <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)}><Trash2 size={15} /></button>
+                                  </div>
+                                </div>
+                                <div className="pf-row-meta pf-mono">
+                                  <span>จำนวน <b>{fmt(h.qty, 2, isCrypto)}</b></span>
+                                  <span>ทุนเฉลี่ย <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.avg, 2, isCrypto)}</b></span>
+                                </div>
+                                <div className="pf-row-meta pf-mono">
+                                  <span>ราคาล่าสุด <b style={{ color: 'var(--gold)' }}>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.price, 2, isCrypto)}</b></span>
+                                  <span>ต้นทุนรวม <b>฿{fmt(h.costValue, 2)}</b></span>
+                                </div>
+                                <div className="pf-row-meta pf-mono">
+                                  <span>มูลค่า <b className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>฿{fmt(h.marketValue, 2)}</b></span>
+                                  <span className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
+                                    {h.gain >= 0 ? '+' : ''}{fmt(h.gain, 2)} ({h.gain >= 0 ? '+' : ''}{fmt(h.gainPct, 2)}%)
                                   </span>
                                 </div>
-                                <div className="pf-row-actions">
-                                  <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
-                                  <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)}><Trash2 size={15} /></button>
+                              </div>
+
+                              {/* ข้อ 1: ส่วนแสดงไม้ที่ถืออยู่ (กางออกเมื่อคลิก) แสดงในบรรทัดเดียวเลื่อน scrollbar ได้ */}
+                              {isExpanded && lots.length > 0 && (
+                                <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px 12px', borderRadius: '10px', margin: '6px 0 12px', border: '1px solid var(--divider)' }}>
+                                  <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '6px', fontWeight: '600' }}>ไม้ที่ถืออยู่ ({lots.length})</div>
+                                  <div style={{ overflowX: 'auto', whiteSpace: 'nowrap', paddingBottom: '4px' }}>
+                                    <div style={{ display: 'inline-flex', gap: '12px' }}>
+                                      {lots.map((lot, idx) => (
+                                        <div key={idx} style={{ background: 'var(--surface-alt)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '8px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '12px' }} className="pf-mono">
+                                          <span>{thaiDateAD(lot.date)}</span>
+                                          <span style={{ color: 'var(--muted)' }}>·</span>
+                                          <span>{lot.days} วัน</span>
+                                          <span style={{ color: 'var(--muted)' }}>·</span>
+                                          <span>จำนวน <b>{fmt(lot.qty, 2, isCrypto)}</b></span>
+                                          <span style={{ color: 'var(--muted)' }}>·</span>
+                                          <span>ต้นทุน <b>{fmt(lot.price, 2)}</b></span>
+                                          <span style={{ color: 'var(--muted)' }}>·</span>
+                                          <span className={lot.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
+                                            {lot.gain >= 0 ? '+' : ''}{fmt(lot.gain, 2)} ({lot.gain >= 0 ? '+' : ''}{fmt(lot.gainPct, 2)}%)
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
                                 </div>
-                              </div>
-                              <div className="pf-row-meta pf-mono">
-                                <span>จำนวน <b>{fmt(h.qty, 2, isCrypto)}</b></span>
-                                <span>ทุนเฉลี่ย <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.avg, 2, isCrypto)}</b></span>
-                              </div>
-                              <div className="pf-row-meta pf-mono">
-                                <span>ราคาล่าสุด <b style={{ color: 'var(--gold)' }}>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.price, 2, isCrypto)}</b></span>
-                                <span>ต้นทุนรวม <b>฿{fmt(h.costValue, 2)}</b></span>
-                              </div>
-                              <div className="pf-row-meta pf-mono">
-                                <span>มูลค่า <b className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>฿{fmt(h.marketValue, 2)}</b></span>
-                                <span className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
-                                  {h.gain >= 0 ? '+' : ''}{fmt(h.gain, 2)} ({h.gain >= 0 ? '+' : ''}{fmt(h.gainPct, 2)}%)
-                                </span>
-                              </div>
+                              )}
                             </div>
                           );
                         })}
@@ -1785,36 +1878,66 @@ export default function PortfolioApp() {
                       <div className="pf-type-section-holdings">
                         {typeHoldings.map((h) => {
                           const isCrypto = h.type === 'crypto';
+                          const isExpanded = expandedLotsId === h.id;
+                          const lots = getAssetLots(h.id, h.qty, h.price);
+
                           return (
-                            <div className="pf-subrow" style={{ padding: '12px 0' }} key={h.id}>
-                              <div className="pf-row-top">
-                                <div className="pf-row-name">
-                                  <span className="pf-dot" style={{ background: colorById[h.id] }} />
-                                  <span className="pf-row-name-text">
-                                    {h.name}
-                                    {h.instrumentType === 'dr' && <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.1)', padding: '1px 6px', borderRadius: '4px', marginLeft: '6px', color: '#38bdf8' }}>DR</span>}
-                                    {h.instrumentType === 'etf' && <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.1)', padding: '1px 6px', borderRadius: '4px', marginLeft: '6px', color: '#6E8CB0' }}>ETF</span>}
+                            <div key={h.id}>
+                              <div className="pf-subrow" style={{ padding: '12px 0' }} onClick={() => setExpandedLotsId(isExpanded ? null : h.id)}>
+                                <div className="pf-row-top">
+                                  <div className="pf-row-name">
+                                    <span className="pf-dot" style={{ background: colorById[h.id] }} />
+                                    <span className="pf-row-name-text">
+                                      {h.name}
+                                      {h.instrumentType === 'dr' && <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.1)', padding: '1px 6px', borderRadius: '4px', marginLeft: '6px', color: '#38bdf8' }}>DR</span>}
+                                      {h.instrumentType === 'etf' && <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.1)', padding: '1px 6px', borderRadius: '4px', marginLeft: '6px', color: '#6E8CB0' }}>ETF</span>}
+                                    </span>
+                                  </div>
+                                  <div className="pf-row-actions" onClick={(e) => e.stopPropagation()}>
+                                    <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
+                                    <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)}><Trash2 size={15} /></button>
+                                  </div>
+                                </div>
+                                <div className="pf-row-meta pf-mono">
+                                  <span>จำนวน <b>{fmt(h.qty, 2, isCrypto)}</b></span>
+                                  <span>ทุนเฉลี่ย <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.avg, 2, isCrypto)}</b></span>
+                                </div>
+                                <div className="pf-row-meta pf-mono">
+                                  <span>ราคาล่าสุด <b style={{ color: 'var(--gold)' }}>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.price, 2, isCrypto)}</b></span>
+                                  <span>ต้นทุนรวม <b>฿{fmt(h.costValue, 2)}</b></span>
+                                </div>
+                                <div className="pf-row-meta pf-mono">
+                                  <span>มูลค่า <b className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>฿{fmt(h.marketValue, 2)}</b> {h.currency === 'USD' && <span style={{ fontSize: '11px', opacity: 0.7 }}>(${fmt(h.qty * h.price, 2)})</span>}</span>
+                                  <span className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
+                                    {h.gain >= 0 ? '+' : ''}{fmt(h.gain, 2)} ({h.gain >= 0 ? '+' : ''}{fmt(h.gainPct, 2)}%)
                                   </span>
                                 </div>
-                                <div className="pf-row-actions">
-                                  <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
-                                  <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)}><Trash2 size={15} /></button>
+                              </div>
+
+                              {isExpanded && lots.length > 0 && (
+                                <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px 12px', borderRadius: '10px', margin: '6px 0 12px', border: '1px solid var(--divider)' }}>
+                                  <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '6px', fontWeight: '600' }}>ไม้ที่ถืออยู่ ({lots.length})</div>
+                                  <div style={{ overflowX: 'auto', whiteSpace: 'nowrap', paddingBottom: '4px' }}>
+                                    <div style={{ display: 'inline-flex', gap: '12px' }}>
+                                      {lots.map((lot, idx) => (
+                                        <div key={idx} style={{ background: 'var(--surface-alt)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '8px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '12px' }} className="pf-mono">
+                                          <span>{thaiDateAD(lot.date)}</span>
+                                          <span style={{ color: 'var(--muted)' }}>·</span>
+                                          <span>{lot.days} วัน</span>
+                                          <span style={{ color: 'var(--muted)' }}>·</span>
+                                          <span>จำนวน <b>{fmt(lot.qty, 2, isCrypto)}</b></span>
+                                          <span style={{ color: 'var(--muted)' }}>·</span>
+                                          <span>ต้นทุน <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(lot.price, 2)}</b></span>
+                                          <span style={{ color: 'var(--muted)' }}>·</span>
+                                          <span className={lot.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
+                                            {lot.gain >= 0 ? '+' : ''}{h.currency === 'USD' ? '$' : '฿'}{fmt(lot.gain, 2)} ({lot.gain >= 0 ? '+' : ''}{fmt(lot.gainPct, 2)}%)
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
                                 </div>
-                              </div>
-                              <div className="pf-row-meta pf-mono">
-                                <span>จำนวน <b>{fmt(h.qty, 2, isCrypto)}</b></span>
-                                <span>ทุนเฉลี่ย <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.avg, 2, isCrypto)}</b></span>
-                              </div>
-                              <div className="pf-row-meta pf-mono">
-                                <span>ราคาล่าสุด <b style={{ color: 'var(--gold)' }}>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.price, 2, isCrypto)}</b></span>
-                                <span>ต้นทุนรวม <b>฿{fmt(h.costValue, 2)}</b></span>
-                              </div>
-                              <div className="pf-row-meta pf-mono">
-                                <span>มูลค่า <b className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>฿{fmt(h.marketValue, 2)}</b> {h.currency === 'USD' && <span style={{ fontSize: '11px', opacity: 0.7 }}>(${fmt(h.qty * h.price, 2)})</span>}</span>
-                                <span className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
-                                  {h.gain >= 0 ? '+' : ''}{fmt(h.gain, 2)} ({h.gain >= 0 ? '+' : ''}{fmt(h.gainPct, 2)}%)
-                                </span>
-                              </div>
+                              )}
                             </div>
                           );
                         })}
@@ -2164,32 +2287,62 @@ export default function PortfolioApp() {
                         <div className="pf-type-section-holdings">
                           {typeHoldings.map((h) => {
                             const isCrypto = h.type === 'crypto';
+                            const isExpanded = expandedLotsId === h.id;
+                            const lots = getAssetLots(h.id, h.qty, h.price);
+
                             return (
-                              <div className="pf-subrow" style={{ padding: '12px 0' }} key={h.id}>
-                                <div className="pf-row-top">
-                                  <div className="pf-row-name">
-                                    <span className="pf-dot" style={{ background: colorById[h.id] }} />
-                                    <span className="pf-row-name-text">{h.name}</span>
+                              <div key={h.id}>
+                                <div className="pf-subrow" style={{ padding: '12px 0' }} onClick={() => setExpandedLotsId(isExpanded ? null : h.id)}>
+                                  <div className="pf-row-top">
+                                    <div className="pf-row-name">
+                                      <span className="pf-dot" style={{ background: colorById[h.id] }} />
+                                      <span className="pf-row-name-text">{h.name}</span>
+                                    </div>
+                                    <div className="pf-row-actions" onClick={(e) => e.stopPropagation()}>
+                                      <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
+                                      <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)}><Trash2 size={15} /></button>
+                                    </div>
                                   </div>
-                                  <div className="pf-row-actions">
-                                    <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
-                                    <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)}><Trash2 size={15} /></button>
+                                  <div className="pf-row-meta pf-mono">
+                                    <span>จำนวน <b>{fmt(h.qty, 2, isCrypto)}</b></span>
+                                    <span>ทุนเฉลี่ย <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.avg, 2, isCrypto)}</b></span>
+                                  </div>
+                                  <div className="pf-row-meta pf-mono">
+                                    <span>ราคาล่าสุด <b style={{ color: 'var(--gold)' }}>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.price, 2, isCrypto)}</b></span>
+                                    <span>ต้นทุนรวม <b>฿{fmt(h.costValue, 2)}</b></span>
+                                  </div>
+                                  <div className="pf-row-meta pf-mono">
+                                    <span>มูลค่า <b className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>฿{fmt(h.marketValue, 2)}</b></span>
+                                    <span className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
+                                      {h.gain >= 0 ? '+' : ''}{fmt(h.gain, 2)} ({h.gain >= 0 ? '+' : ''}{fmt(h.gainPct, 2)}%)
+                                    </span>
                                   </div>
                                 </div>
-                                <div className="pf-row-meta pf-mono">
-                                  <span>จำนวน <b>{fmt(h.qty, 2, isCrypto)}</b></span>
-                                  <span>ทุนเฉลี่ย <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.avg, 2, isCrypto)}</b></span>
-                                </div>
-                                <div className="pf-row-meta pf-mono">
-                                  <span>ราคาล่าสุด <b style={{ color: 'var(--gold)' }}>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.price, 2, isCrypto)}</b></span>
-                                  <span>ต้นทุนรวม <b>฿{fmt(h.costValue, 2)}</b></span>
-                                </div>
-                                <div className="pf-row-meta pf-mono">
-                                  <span>มูลค่า <b className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>฿{fmt(h.marketValue, 2)}</b></span>
-                                  <span className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
-                                    {h.gain >= 0 ? '+' : ''}{fmt(h.gain, 2)} ({h.gain >= 0 ? '+' : ''}{fmt(h.gainPct, 2)}%)
-                                  </span>
-                                </div>
+
+                                {isExpanded && lots.length > 0 && (
+                                  <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px 12px', borderRadius: '10px', margin: '6px 0 12px', border: '1px solid var(--divider)' }}>
+                                    <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '6px', fontWeight: '600' }}>ไม้ที่ถืออยู่ ({lots.length})</div>
+                                    <div style={{ overflowX: 'auto', whiteSpace: 'nowrap', paddingBottom: '4px' }}>
+                                      <div style={{ display: 'inline-flex', gap: '12px' }}>
+                                        {lots.map((lot, idx) => (
+                                          <div key={idx} style={{ background: 'var(--surface-alt)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '8px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '12px' }} className="pf-mono">
+                                            <span>{thaiDateAD(lot.date)}</span>
+                                            <span style={{ color: 'var(--muted)' }}>·</span>
+                                            <span>{lot.days} วัน</span>
+                                            <span style={{ color: 'var(--muted)' }}>·</span>
+                                            <span>จำนวน <b>{fmt(lot.qty, 2, isCrypto)}</b></span>
+                                            <span style={{ color: 'var(--muted)' }}>·</span>
+                                            <span>ต้นทุน <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(lot.price, 2)}</b></span>
+                                            <span style={{ color: 'var(--muted)' }}>·</span>
+                                            <span className={lot.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
+                                              {lot.gain >= 0 ? '+' : ''}{h.currency === 'USD' ? '$' : '฿'}{fmt(lot.gain, 2)} ({lot.gain >= 0 ? '+' : ''}{fmt(lot.gainPct, 2)}%)
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
@@ -2511,8 +2664,9 @@ export default function PortfolioApp() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span style={{ fontWeight: '600', fontFamily: 'Fraunces, serif' }}>{log.assetName}</span>
                           <span style={{ fontSize: '11px', padding: '1px 6px', borderRadius: '4px', background: isBuy ? 'rgba(52,211,153,0.15)' : 'rgba(252,165,165,0.15)', color: isBuy ? '#34d399' : '#fca5a5' }}>{isBuy ? 'ซื้อ' : 'ขาย'}</span>
+                          {/* ข้อ 4: กดปุ่มคืนค่าแล้วจะขึ้น modal ยืนยัน */}
                           <button 
-                            onClick={() => revertSpecificTrade(log)}
+                            onClick={() => setConfirmRevertTarget(log)}
                             style={{ background: 'transparent', border: '1px solid var(--divider)', borderRadius: '4px', padding: '2px 6px', fontSize: '10px', color: 'var(--gold)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}
                             title="คืนค่ารายการนี้"
                           >
@@ -2524,6 +2678,7 @@ export default function PortfolioApp() {
                       <div className="pf-row-meta pf-mono" style={{ margin: 0, fontSize: '12px' }}>
                         <span>จำนวน <b>{fmt(log.quantity, 2, log.assetType === 'crypto')}</b></span>
                         <span>ราคา <b>{isUsdAsset ? '$' : '฿'}{fmt(log.price, 2, log.assetType === 'crypto')}</b></span>
+                        {/* ข้อ 5: แปลงค่าธรรมเนียม USD เป็น THB หรือแสดงตามสกุลเงินที่ถูกต้อง */}
                         {log.fee > 0 && <span>ค่าธรรมเนียม <b>{isUsdAsset ? '$' : '฿'}{fmt(log.fee, 2)}</b></span>}
                       </div>
                       {!isBuy && log.pnl !== undefined && (
@@ -2540,6 +2695,22 @@ export default function PortfolioApp() {
                 })}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ข้อ 4: Modal ยืนยันการคืนค่าประวัติซื้อขาย */}
+      {confirmRevertTarget && (
+        <div className="pf-modal-overlay" onClick={() => setConfirmRevertTarget(null)}>
+          <div className="pf-confirm-modal" onClick={(e) => e.stopPropagation()}>
+            <div style={{ marginBottom: 12, fontSize: 15, fontWeight: '600' }}>ยืนยันการคืนค่ารายการ?</div>
+            <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--muted)' }}>
+              ต้องการคืนค่ารายการ "{confirmRevertTarget.assetName}" ({confirmRevertTarget.action === 'buy' ? 'ซื้อ' : 'ขาย'}) ใช่หรือไม่? ระบบจะปรับจำนวนหุ้นและยอดเงินกลับสู่สถานะเดิม
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="pf-btn pf-btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setConfirmRevertTarget(null)}>ยกเลิก</button>
+              <button className="pf-btn pf-btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => executeRevertTrade(confirmRevertTarget)}>ยืนยันคืนค่า</button>
+            </div>
           </div>
         </div>
       )}
