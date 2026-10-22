@@ -847,7 +847,6 @@ export default function PortfolioApp() {
     showToast('ลบรายการแล้ว');
   };
 
-  // ข้อ 3: แก้ไขตรรกะการ Revert (ขายหุ้นบางส่วน/ทั้งหมด) ให้คำนวณจำนวนหุ้น ทุนเฉลี่ย และต้นทุนรวมกลับมาตรงเป๊ะเหมือนก่อนขาย
   const executeRevertTrade = (log) => {
     const target = holdings.find(h => h.id === log.assetId);
 
@@ -868,7 +867,6 @@ export default function PortfolioApp() {
         const nextQty = target.quantity + log.quantity;
         const oldTotalCost = target.quantity * target.avgCost;
         
-        // คำนวณหาทุนเฉลี่ยแท้จริงจากประวัติการซื้อที่เหลืออยู่ หรือย้อนกลับด้วยต้นทุนก่อนหน้า
         const remainingBuyLogs = tradeLogs.filter(l => l.assetId === log.assetId && l.action === 'buy');
         let restoredAvg = target.avgCost;
         if (remainingBuyLogs.length > 0) {
@@ -1244,6 +1242,48 @@ export default function PortfolioApp() {
     const assetName = matchingLogs[0].assetName;
     return { name: assetName, pnl: totalPnlThb, count: matchingLogs.length };
   }, [tradeLogs, fxRate, tradeSearchQuery]);
+
+  const getAssetLots = (assetId, currentQty, currentPrice, assetCurrency, assetType) => {
+    const logs = tradeLogs.filter(l => l.assetId === assetId).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    let lots = [];
+    logs.forEach(l => {
+      if (l.action === 'buy') {
+        lots.push({ date: l.date, qty: l.quantity, price: l.price, currency: l.currency, tradeFx: l.tradeFx });
+      } else if (l.action === 'sell') {
+        let remSell = l.quantity;
+        while (remSell > 0 && lots.length > 0) {
+          if (lots[0].qty <= remSell) {
+            remSell -= lots[0].qty;
+            lots.shift();
+          } else {
+            lots[0].qty -= remSell;
+            remSell = 0;
+          }
+        }
+      }
+    });
+    if (lots.length === 0) {
+      const targetHolding = holdings.find(h => h.id === assetId);
+      if (targetHolding) {
+        lots.push({
+          date: targetHolding.lastUpdated || todayStr(),
+          qty: targetHolding.quantity,
+          price: targetHolding.avgCost,
+          currency: targetHolding.currency,
+          tradeFx: fxRate
+        });
+      }
+    }
+    const isUsd = assetCurrency === 'USD' || assetType === 'foreign_stock';
+    return lots.map(lot => {
+      const days = calcDaysAgo(lot.date);
+      const lotVal = lot.qty * currentPrice;
+      const lotCost = lot.qty * lot.price;
+      const lotGain = lotVal - lotCost;
+      const lotGainPct = lotCost > 0 ? (lotGain / lotCost) * 100 : 0;
+      return { ...lot, days, gain: lotGain, gainPct: lotGainPct, isUsd };
+    });
+  };
 
   return (
     <div className="pf-root">
@@ -2512,6 +2552,201 @@ export default function PortfolioApp() {
             <div className="pf-panel-actions">
               <button className="pf-btn pf-btn-ghost" onClick={closePanel}>ยกเลิก</button>
               <button className="pf-btn pf-btn-primary" onClick={submitForm}>{editingId ? 'บันทึกการแก้ไข' : 'เพิ่มสินทรัพย์'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Panel: ตั้งค่า API & อัตราแลกเปลี่ยน (เพิ่มกลับเข้ามาเพื่อไม่ให้จอขาว) */}
+      {panel === 'settings' && (
+        <div className="pf-overlay" onClick={closePanel}>
+          <div className="pf-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="pf-panel-head">
+              <div className="pf-panel-title">ตั้งค่า API และอัตราแลกเปลี่ยน</div>
+              <button className="pf-icon-btn" onClick={closePanel} aria-label="ปิด"><X size={16} /></button>
+            </div>
+            <div className="pf-field">
+              <label className="pf-label">Backend API Endpoint</label>
+              <input className="pf-input pf-mono" value={backendDraft} onChange={(e) => setBackendDraft(e.target.value)} placeholder="https://your-api-url.com" />
+            </div>
+            <div className="pf-field">
+              <label className="pf-label">อัตราแลกเปลี่ยนกลาง (1 USD = ? บาท)</label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input className="pf-input pf-mono" inputMode="decimal" value={fxDraft} onChange={(e) => setFxDraft(e.target.value)} placeholder="36.50" />
+                <button className="pf-btn pf-btn-ghost" onClick={fetchFxRate} disabled={fetchingFx} style={{ whiteSpace: 'nowrap' }}>
+                  {fetchingFx ? 'กำลังดึง...' : 'ดึงเรทสด'}
+                </button>
+              </div>
+            </div>
+            <div className="pf-panel-actions">
+              <button className="pf-btn pf-btn-ghost" onClick={closePanel}>ยกเลิก</button>
+              <button className="pf-btn pf-btn-primary" onClick={saveBackendUrl}>บันทึกการตั้งค่า</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Panel: อัปเดตราคาวันนี้ (เพิ่มกลับเข้ามาเพื่อไม่ให้จอขาว) */}
+      {panel === 'update' && (
+        <div className="pf-overlay" onClick={closePanel}>
+          <div className="pf-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="pf-panel-head">
+              <div className="pf-panel-title">อัปเดตราคาวันนี้</div>
+              <button className="pf-icon-btn" onClick={closePanel} aria-label="ปิด"><X size={16} /></button>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <span style={{ fontSize: '13px', color: 'var(--muted)' }}>กรอกราคาตลาดปัจจุบันของสินทรัพย์</span>
+              {backendUrl && (
+                <button className="pf-btn pf-btn-ghost" style={{ fontSize: '12px', padding: '6px 10px' }} onClick={fetchAutoPrices} disabled={fetchingPrices}>
+                  {fetchingPrices ? 'กำลังดึงราคา...' : '⚡ ดึงราคาอัตโนมัติ'}
+                </button>
+              )}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '55vh', overflowY: 'auto', marginBottom: '16px', paddingRight: '4px' }}>
+              {holdings.filter(h => h.type !== 'cash').map(h => (
+                <div className="pf-update-item" key={h.id}>
+                  <div className="pf-update-name"><b>{h.name}</b> <span style={{ fontSize: '11px', color: 'var(--muted)' }}>({h.ticker || '-'})</span></div>
+                  <input 
+                    className="pf-input pf-mono pf-update-input" 
+                    inputMode="decimal" 
+                    value={updateDraft[h.id] !== undefined ? updateDraft[h.id] : h.currentPrice} 
+                    onChange={(e) => setUpdateDraft({ ...updateDraft, [h.id]: e.target.value })} 
+                    placeholder="0.00" 
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="pf-panel-actions">
+              <button className="pf-btn pf-btn-ghost" onClick={closePanel}>ยกเลิก</button>
+              <button className="pf-btn pf-btn-primary" onClick={submitUpdatePrices}>บันทึกราคาอัปเดต</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Panel: จัดการเงินสด & สรุปรายปี (เพิ่มกลับเข้ามาเพื่อไม่ให้จอขาว) */}
+      {panel === 'cashManage' && (
+        <div className="pf-overlay" onClick={closePanel}>
+          <div className="pf-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px' }}>
+            <div className="pf-panel-head" style={{ marginBottom: '14px' }}>
+              <div className="pf-panel-title">จัดการเงินสด & สรุปรายปี</div>
+              <button className="pf-icon-btn" style={{ width: '32px', height: '32px' }} onClick={closePanel} aria-label="ปิด"><X size={16} /></button>
+            </div>
+
+            <div className="pf-field" style={{ background: 'rgba(255,255,255,0.03)', padding: '14px', borderRadius: '12px', border: '1px solid var(--divider)', marginBottom: '16px' }}>
+              <label className="pf-label" style={{ fontWeight: '600', color: 'var(--gold)', marginBottom: '6px' }}>ทุนเริ่มต้นสะสมทั้งหมด</label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input className="pf-input pf-mono" inputMode="decimal" value={initialCapitalDraft} onChange={(e) => setInitialCapitalDraft(e.target.value)} placeholder="0.00" />
+                <button className="pf-btn pf-btn-primary" style={{ whiteSpace: 'nowrap' }} onClick={saveInitialCapital}>บันทึกทุน</button>
+              </div>
+            </div>
+
+            <div className="pf-cash-actions-grid">
+              <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('capital_add')}><PlusCircle size={14} /> เพิ่มทุน</button>
+              <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('capital_reduce')}><MinusCircle size={14} /> ลดทุน</button>
+              <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('dividend')}><Gift size={14} /> รับปันผล</button>
+              <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('profit')}><TrendingUp size={14} /> บันทึกกำไร</button>
+              <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('loss')}><TrendingDown size={14} /> บันทึกขาดทุน</button>
+              <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('rebalance')}><Sliders size={14} /> รีบาลานซ์</button>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', marginBottom: '14px', paddingBottom: '4px' }}>
+              {yearOptions.map(y => (
+                <button key={y} className={y === selectedYear ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setSelectedYear(y)}>{y}</button>
+              ))}
+            </div>
+
+            <div className="pf-year-card">
+              <div className="pf-year-net">
+                <div className="pf-year-net-label">กระแสเงินสดสุทธิปี {selectedYear}</div>
+                <div className={`pf-year-net-value pf-mono ${yearSummary.net >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
+                  {yearSummary.net >= 0 ? '+' : ''}฿{fmt(yearSummary.net, 2)}
+                </div>
+              </div>
+              <div className="pf-year-flow-bar">
+                <div className="pf-year-flow-in" style={{ width: `${yearSummary.inPct}%` }} />
+                <div className="pf-year-flow-out" style={{ width: `${100 - yearSummary.inPct}%` }} />
+              </div>
+              <div className="pf-year-flow-legend">
+                <span>เข้า: ฿{fmt(yearSummary.totalIn, 2)}</span>
+                <span>ออก: ฿{fmt(yearSummary.totalOut, 2)}</span>
+              </div>
+              <div className="pf-year-rows">
+                <div className="pf-year-row"><span className="pf-year-row-icon">➕</span> เพิ่มทุน: <b className="pf-mono">฿{fmt(yearSummary.capital_add, 2)}</b></div>
+                <div className="pf-year-row"><span className="pf-year-row-icon">➖</span> ลดทุน: <b className="pf-mono">฿{fmt(yearSummary.capital_reduce, 2)}</b></div>
+                <div className="pf-year-row"><span className="pf-year-row-icon">📈</span> กำไรขาย: <b className="pf-mono pf-chip-pos">฿{fmt(yearSummary.profit, 2)}</b></div>
+                <div className="pf-year-row"><span className="pf-year-row-icon">📉</span> ขาดทุนขาย: <b className="pf-mono pf-chip-neg">฿{fmt(yearSummary.loss, 2)}</b></div>
+                <div className="pf-year-row"><span className="pf-year-row-icon">🎁</span> ปันผล: <b className="pf-mono pf-chip-pos">฿{fmt(yearSummary.dividend, 2)}</b></div>
+                <div className="pf-year-row"><span className="pf-year-row-icon">⚖️</span> รีบาลานซ์: <b className="pf-mono">฿{fmt(yearSummary.rebalance, 2)}</b></div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '13px', fontWeight: '600' }}>ประวัติรายการเงินสดทั้งหมด</span>
+              </div>
+              <div style={{ position: 'relative', marginBottom: '10px' }}>
+                <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', pointerEvents: 'none' }} />
+                <input
+                  type="text"
+                  className="pf-input"
+                  style={{ padding: '8px 10px 8px 30px', fontSize: '13px', borderRadius: '10px' }}
+                  placeholder="ค้นหาประวัติเงินสด..."
+                  value={ledgerSearchQuery}
+                  onChange={(e) => setLedgerSearchQuery(e.target.value)}
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '180px', overflowY: 'auto' }}>
+                {recentLedger.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '16px 0', fontSize: '12px', color: 'var(--muted)' }}>ยังไม่มีประวัติรายการ</div>
+                ) : (
+                  recentLedger.map(e => (
+                    <div key={e.id} style={{ background: 'var(--surface-alt)', border: '1px solid var(--divider)', borderRadius: '8px', padding: '8px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12.5px' }}>
+                      <div>
+                        <div style={{ fontWeight: '600' }}>{LEDGER_LABELS[e.type] || e.type} <span style={{ fontSize: '11px', color: 'var(--muted)' }}>({thaiDateAD(e.date)})</span></div>
+                        {e.note && <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{e.note}</div>}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span className={`pf-mono pf-ledger-amount ${['capital_add', 'profit', 'dividend'].includes(e.type) || (e.type === 'rebalance' && e.amount >= 0) ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
+                          {['capital_add', 'profit', 'dividend'].includes(e.type) || (e.type === 'rebalance' && e.amount >= 0) ? '+' : '-'}฿{fmt(Math.abs(e.amount), 2)}
+                        </span>
+                        <button style={{ background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: '2px' }} onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type] || e.type)}>
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Panel: ฟอร์มกรอกรายการเงินสดแยกประเภท (เพิ่มกลับเข้ามาเพื่อไม่ให้จอขาว) */}
+      {panel === 'ledger' && (
+        <div className="pf-overlay" onClick={() => setPanel('cashManage')}>
+          <div className="pf-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '380px' }}>
+            <div className="pf-panel-head">
+              <div className="pf-panel-title">บันทึก{LEDGER_LABELS[ledgerType]}</div>
+              <button className="pf-icon-btn" onClick={() => setPanel('cashManage')} aria-label="ปิด"><X size={16} /></button>
+            </div>
+            {ledgerError && <div className="pf-error">{ledgerError}</div>}
+            <div className="pf-field">
+              <label className="pf-label">จำนวนเงิน (บาท)</label>
+              <input className="pf-input pf-mono" inputMode="decimal" value={ledgerAmount} onChange={(e) => setLedgerAmount(e.target.value)} placeholder="0.00" />
+            </div>
+            <div className="pf-field">
+              <label className="pf-label">วันที่</label>
+              <input className="pf-input pf-mono" type="date" value={ledgerDate} onChange={(e) => setLedgerDate(e.target.value)} />
+            </div>
+            <div className="pf-field">
+              <label className="pf-label">หมายเหตุ (ถ้ามี)</label>
+              <input className="pf-input" value={ledgerNote} onChange={(e) => setLedgerNote(e.target.value)} placeholder="ระบุรายละเอียด..." />
+            </div>
+            <div className="pf-panel-actions">
+              <button className="pf-btn pf-btn-ghost" onClick={() => setPanel('cashManage')}>ยกเลิก</button>
+              <button className="pf-btn pf-btn-primary" onClick={submitLedger}>บันทึก</button>
             </div>
           </div>
         </div>
