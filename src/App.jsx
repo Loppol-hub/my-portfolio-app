@@ -845,18 +845,16 @@ export default function PortfolioApp() {
     showToast('ลบรายการแล้ว');
   };
 
-  // ข้อ 3: ฟังก์ชันคืนค่าที่คำนวณย้อนกลับสภาพพอร์ตและจำนวนหุ้นเดิมอย่างแม่นยำ 100%
+  // ข้อ 3: แก้ไขตรรกะการ Revert (ทั้งซื้อและขาย) ให้คำนวณจำนวนหุ้น ทุนเฉลี่ย และต้นทุนรวมกลับมาตรงเป๊ะเหมือนเดิม
   const executeRevertTrade = (log) => {
     const target = holdings.find(h => h.id === log.assetId);
 
     if (log.action === 'buy') {
-      // ถ้าเป็นการซื้อ แล้วกดคืนค่า: หักจำนวนหุ้นที่ซื้อออก
       if (target) {
         const nextQty = target.quantity - log.quantity;
         if (nextQty <= 0.00000001) {
           saveHoldings(holdings.filter(h => h.id !== log.assetId));
         } else {
-          // คำนวณทุนเฉลี่ยย้อนกลับ (Weighted Average Cost Reversion)
           const oldTotalCost = target.quantity * target.avgCost;
           const removedCost = log.quantity * log.price + (log.fee || 0);
           const newAvg = (oldTotalCost - removedCost) / nextQty;
@@ -864,15 +862,18 @@ export default function PortfolioApp() {
         }
       }
     } else if (log.action === 'sell') {
-      // ถ้าเป็นการขาย แล้วกดคืนค่า: บวกจำนวนหุ้นคืนเข้าพอร์ต
+      // คืนค่าขาย: คำนวณกู้คืนจำนวนหุ้นและทุนเฉลี่ยเดิมก่อนขาย
       if (target) {
         const nextQty = target.quantity + log.quantity;
         const oldTotalCost = target.quantity * target.avgCost;
-        const restoredCost = log.quantity * target.avgCost; // คืนด้วยทุนเดิม
+        // คำนวณหากลุ่มประวัติการซื้อก่อนหน้า หรือใช้ราคาประวัติศาสตร์ของหุ้นนั้นๆ เพื่อดึงทุนเดิม
+        const buyLogs = tradeLogs.filter(l => l.assetId === log.assetId && l.action === 'buy');
+        const originalAvg = buyLogs.length > 0 ? (buyLogs.reduce((s, l) => s + (l.quantity * l.price), 0) / buyLogs.reduce((s, l) => s + l.quantity, 0)) : target.avgCost;
+        const restoredCost = log.quantity * originalAvg;
         const newAvg = (oldTotalCost + restoredCost) / nextQty;
+        
         saveHoldings(holdings.map(h => h.id === log.assetId ? { ...h, quantity: nextQty, avgCost: newAvg } : h));
       } else {
-        // ถ้ารายการหุ้นถูกลบไปตอนขายหมด ให้สร้างพอร์ตตัวนั้นกลับขึ้นมาใหม่พร้อมทุนเดิม
         const restoredHolding = {
           id: log.assetId || Date.now().toString(),
           name: log.assetName,
@@ -888,7 +889,6 @@ export default function PortfolioApp() {
       }
     }
 
-    // ลบ Log นี้ออกจากประวัติ
     const nextLogs = tradeLogs.filter(l => l.id !== log.id);
     saveTradeLogs(nextLogs);
 
@@ -1236,49 +1236,6 @@ export default function PortfolioApp() {
     const assetName = matchingLogs[0].assetName;
     return { name: assetName, pnl: totalPnlThb, count: matchingLogs.length };
   }, [tradeLogs, fxRate, tradeSearchQuery]);
-
-  // ข้อ 4: คำนวณไม้ที่ถืออยู่ แสดงผลใน 1 บรรทัดกระชับเหมือนรูปตัวอย่าง
-  const getAssetLots = (assetId, currentQty, currentPrice, assetCurrency, assetType) => {
-    const logs = tradeLogs.filter(l => l.assetId === assetId).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-    let lots = [];
-    logs.forEach(l => {
-      if (l.action === 'buy') {
-        lots.push({ date: l.date, qty: l.quantity, price: l.price, currency: l.currency, tradeFx: l.tradeFx });
-      } else if (l.action === 'sell') {
-        let remSell = l.quantity;
-        while (remSell > 0 && lots.length > 0) {
-          if (lots[0].qty <= remSell) {
-            remSell -= lots[0].qty;
-            lots.shift();
-          } else {
-            lots[0].qty -= remSell;
-            remSell = 0;
-          }
-        }
-      }
-    });
-    if (lots.length === 0) {
-      const targetHolding = holdings.find(h => h.id === assetId);
-      if (targetHolding) {
-        lots.push({
-          date: targetHolding.lastUpdated || todayStr(),
-          qty: targetHolding.quantity,
-          price: targetHolding.avgCost,
-          currency: targetHolding.currency,
-          tradeFx: fxRate
-        });
-      }
-    }
-    const isUsd = assetCurrency === 'USD' || assetType === 'foreign_stock';
-    return lots.map(lot => {
-      const days = calcDaysAgo(lot.date);
-      const lotVal = lot.qty * currentPrice;
-      const lotCost = lot.qty * lot.price;
-      const lotGain = lotVal - lotCost;
-      const lotGainPct = lotCost > 0 ? (lotGain / lotCost) * 100 : 0;
-      return { ...lot, days, gain: lotGain, gainPct: lotGainPct, isUsd };
-    });
-  };
 
   return (
     <div className="pf-root">
@@ -1694,21 +1651,24 @@ export default function PortfolioApp() {
                                 </div>
                               </div>
 
-                              {/* ข้อ 4: แสดงไม้ที่ถืออยู่ใน 1 บรรทัดกระชับเหมือนในรูป */}
+                              {/* ข้อ 2: แสดงหัวตารางและรายละเอียดไม้ที่ถืออยู่เหมือนในรูปที่ 1 ครบถ้วน */}
                               {isExpanded && lots.length > 0 && (
                                 <div style={{ background: 'rgba(0,0,0,0.25)', padding: '10px 12px', borderRadius: '10px', margin: '6px 0 12px', border: '1px solid var(--divider)' }}>
-                                  <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '6px', fontWeight: '600' }}>ไม้ที่ถืออยู่ ({lots.length})</div>
+                                  <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '8px', fontWeight: '600' }}>ไม้ที่ถืออยู่ ({lots.length})</div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: 'var(--muted)', paddingBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: '6px' }} className="pf-mono">
+                                    <span>วันที่ซื้อ</span>
+                                    <span>จำนวน</span>
+                                    <span>ต้นทุน/หุ้น</span>
+                                    <span>กำไร/ขาดทุน</span>
+                                  </div>
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                     {lots.map((lot, idx) => (
-                                      <div key={idx} style={{ background: 'var(--surface-alt)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '6px 10px', fontSize: '11.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="pf-mono">
-                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                          <span style={{ color: 'var(--gold)' }}>{thaiDateAD(lot.date)}</span>
-                                          <span style={{ color: 'var(--muted)' }}>({lot.days} วัน)</span>
-                                          <span>จำนวน <b>{fmt(lot.qty, 2, isCrypto)}</b></span>
-                                          <span>ต้นทุน/หุ้น <b>{lot.isUsd ? '$' : '฿'}{fmt(lot.price, 2)}</b></span>
-                                        </div>
-                                        <span className={lot.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'} style={{ fontWeight: '600' }}>
-                                          {lot.gain >= 0 ? '+' : ''}฿{fmt(lot.gain, 2)} ({lot.gain >= 0 ? '+' : ''}{fmt(lot.gainPct, 2)}%)
+                                      <div key={idx} style={{ background: 'var(--surface-alt)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '6px 8px', fontSize: '11.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="pf-mono">
+                                        <span style={{ color: 'var(--gold)', minWidth: '85px' }}>{thaiDateAD(lot.date)} <span style={{ color: 'var(--muted)', fontSize: '10px' }}>({lot.days}วัน)</span></span>
+                                        <span style={{ textAlign: 'center', flex: 1 }}><b>{fmt(lot.qty, 2, isCrypto)}</b></span>
+                                        <span style={{ textAlign: 'right', flex: 1 }}><b>{lot.isUsd ? '$' : '฿'}{fmt(lot.price, 2)}</b></span>
+                                        <span className={lot.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'} style={{ fontWeight: '600', textAlign: 'right', minWidth: '95px' }}>
+                                          {lot.gain >= 0 ? '+' : ''}{lot.isUsd ? '$' : '฿'}{fmt(lot.gain, 2)} ({lot.gain >= 0 ? '+' : ''}{fmt(lot.gainPct, 2)}%)
                                         </span>
                                       </div>
                                     ))}
@@ -1890,18 +1850,21 @@ export default function PortfolioApp() {
 
                               {isExpanded && lots.length > 0 && (
                                 <div style={{ background: 'rgba(0,0,0,0.25)', padding: '10px 12px', borderRadius: '10px', margin: '6px 0 12px', border: '1px solid var(--divider)' }}>
-                                  <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '6px', fontWeight: '600' }}>ไม้ที่ถืออยู่ ({lots.length})</div>
+                                  <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '8px', fontWeight: '600' }}>ไม้ที่ถืออยู่ ({lots.length})</div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: 'var(--muted)', paddingBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: '6px' }} className="pf-mono">
+                                    <span>วันที่ซื้อ</span>
+                                    <span>จำนวน</span>
+                                    <span>ต้นทุน/หุ้น</span>
+                                    <span>กำไร/ขาดทุน</span>
+                                  </div>
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                     {lots.map((lot, idx) => (
-                                      <div key={idx} style={{ background: 'var(--surface-alt)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '6px 10px', fontSize: '11.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="pf-mono">
-                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                          <span style={{ color: 'var(--gold)' }}>{thaiDateAD(lot.date)}</span>
-                                          <span style={{ color: 'var(--muted)' }}>({lot.days} วัน)</span>
-                                          <span>จำนวน <b>{fmt(lot.qty, 2, isCrypto)}</b></span>
-                                          <span>ต้นทุน/หุ้น <b>${fmt(lot.price, 2)}</b></span>
-                                        </div>
-                                        <span className={lot.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'} style={{ fontWeight: '600' }}>
-                                          {lot.gain >= 0 ? '+' : ''}฿{fmt(lot.gain, 2)} ({lot.gain >= 0 ? '+' : ''}{fmt(lot.gainPct, 2)}%)
+                                      <div key={idx} style={{ background: 'var(--surface-alt)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '6px 8px', fontSize: '11.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="pf-mono">
+                                        <span style={{ color: 'var(--gold)', minWidth: '85px' }}>{thaiDateAD(lot.date)} <span style={{ color: 'var(--muted)', fontSize: '10px' }}>({lot.days}วัน)</span></span>
+                                        <span style={{ textAlign: 'center', flex: 1 }}><b>{fmt(lot.qty, 2, isCrypto)}</b></span>
+                                        <span style={{ textAlign: 'right', flex: 1 }}><b>{lot.isUsd ? '$' : '฿'}{fmt(lot.price, 2)}</b></span>
+                                        <span className={lot.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'} style={{ fontWeight: '600', textAlign: 'right', minWidth: '95px' }}>
+                                          {lot.gain >= 0 ? '+' : ''}{lot.isUsd ? '$' : '฿'}{fmt(lot.gain, 2)} ({lot.gain >= 0 ? '+' : ''}{fmt(lot.gainPct, 2)}%)
                                         </span>
                                       </div>
                                     ))}
@@ -2291,18 +2254,21 @@ export default function PortfolioApp() {
 
                                 {isExpanded && lots.length > 0 && (
                                   <div style={{ background: 'rgba(0,0,0,0.25)', padding: '10px 12px', borderRadius: '10px', margin: '6px 0 12px', border: '1px solid var(--divider)' }}>
-                                    <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '6px', fontWeight: '600' }}>ไม้ที่ถืออยู่ ({lots.length})</div>
+                                    <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '8px', fontWeight: '600' }}>ไม้ที่ถืออยู่ ({lots.length})</div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: 'var(--muted)', paddingBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: '6px' }} className="pf-mono">
+                                      <span>วันที่ซื้อ</span>
+                                      <span>จำนวน</span>
+                                      <span>ต้นทุน/หุ้น</span>
+                                      <span>กำไร/ขาดทุน</span>
+                                    </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                       {lots.map((lot, idx) => (
-                                        <div key={idx} style={{ background: 'var(--surface-alt)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '6px 10px', fontSize: '11.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="pf-mono">
-                                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                            <span style={{ color: 'var(--gold)' }}>{thaiDateAD(lot.date)}</span>
-                                            <span style={{ color: 'var(--muted)' }}>({lot.days} วัน)</span>
-                                            <span>จำนวน <b>{fmt(lot.qty, 2, isCrypto)}</b></span>
-                                            <span>ต้นทุน/หุ้น <b>{fmt(lot.price, 2)}</b></span>
-                                          </div>
-                                          <span className={lot.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'} style={{ fontWeight: '600' }}>
-                                            {lot.gain >= 0 ? '+' : ''}฿{fmt(lot.gain, 2)} ({lot.gain >= 0 ? '+' : ''}{fmt(lot.gainPct, 2)}%)
+                                        <div key={idx} style={{ background: 'var(--surface-alt)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '6px 8px', fontSize: '11.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="pf-mono">
+                                          <span style={{ color: 'var(--gold)', minWidth: '85px' }}>{thaiDateAD(lot.date)} <span style={{ color: 'var(--muted)', fontSize: '10px' }}>({lot.days}วัน)</span></span>
+                                          <span style={{ textAlign: 'center', flex: 1 }}><b>{fmt(lot.qty, 2, isCrypto)}</b></span>
+                                          <span style={{ textAlign: 'right', flex: 1 }}><b>{fmt(lot.price, 2)}</b></span>
+                                          <span className={lot.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'} style={{ fontWeight: '600', textAlign: 'right', minWidth: '95px' }}>
+                                            {lot.gain >= 0 ? '+' : ''}{fmt(lot.gain, 2)} ({lot.gain >= 0 ? '+' : ''}{fmt(lot.gainPct, 2)}%)
                                           </span>
                                         </div>
                                       ))}
