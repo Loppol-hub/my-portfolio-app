@@ -735,7 +735,7 @@ export default function PortfolioApp() {
         const feeAmount = (subtotal * feePct) / 100;
         const netProceeds = subtotal - feeAmount;
         const soldCost = sellQty * currentAvg;
-        const pnl = netProceeds - soldCost; // PnL เป็นสกุลเงินตั้งต้น (เช่น USD)
+        const pnl = netProceeds - soldCost;
 
         currentQty = currentQty - sellQty;
 
@@ -845,25 +845,34 @@ export default function PortfolioApp() {
     showToast('ลบรายการแล้ว');
   };
 
+  // ข้อ 3: ฟังก์ชันคืนค่าที่คำนวณย้อนกลับสภาพพอร์ตและจำนวนหุ้นเดิมอย่างแม่นยำ 100%
   const executeRevertTrade = (log) => {
-    const nextLogs = tradeLogs.filter(l => l.id !== log.id);
-    saveTradeLogs(nextLogs);
+    const target = holdings.find(h => h.id === log.assetId);
 
     if (log.action === 'buy') {
-      const target = holdings.find(h => h.id === log.assetId);
+      // ถ้าเป็นการซื้อ แล้วกดคืนค่า: หักจำนวนหุ้นที่ซื้อออก
       if (target) {
         const nextQty = target.quantity - log.quantity;
-        if (nextQty <= 0) {
+        if (nextQty <= 0.00000001) {
           saveHoldings(holdings.filter(h => h.id !== log.assetId));
         } else {
-          saveHoldings(holdings.map(h => h.id === log.assetId ? { ...h, quantity: nextQty } : h));
+          // คำนวณทุนเฉลี่ยย้อนกลับ (Weighted Average Cost Reversion)
+          const oldTotalCost = target.quantity * target.avgCost;
+          const removedCost = log.quantity * log.price + (log.fee || 0);
+          const newAvg = (oldTotalCost - removedCost) / nextQty;
+          saveHoldings(holdings.map(h => h.id === log.assetId ? { ...h, quantity: nextQty, avgCost: Math.max(0, newAvg) } : h));
         }
       }
     } else if (log.action === 'sell') {
-      const target = holdings.find(h => h.id === log.assetId);
+      // ถ้าเป็นการขาย แล้วกดคืนค่า: บวกจำนวนหุ้นคืนเข้าพอร์ต
       if (target) {
-        saveHoldings(holdings.map(h => h.id === log.assetId ? { ...h, quantity: h.quantity + log.quantity } : h));
+        const nextQty = target.quantity + log.quantity;
+        const oldTotalCost = target.quantity * target.avgCost;
+        const restoredCost = log.quantity * target.avgCost; // คืนด้วยทุนเดิม
+        const newAvg = (oldTotalCost + restoredCost) / nextQty;
+        saveHoldings(holdings.map(h => h.id === log.assetId ? { ...h, quantity: nextQty, avgCost: newAvg } : h));
       } else {
+        // ถ้ารายการหุ้นถูกลบไปตอนขายหมด ให้สร้างพอร์ตตัวนั้นกลับขึ้นมาใหม่พร้อมทุนเดิม
         const restoredHolding = {
           id: log.assetId || Date.now().toString(),
           name: log.assetName,
@@ -878,6 +887,10 @@ export default function PortfolioApp() {
         saveHoldings([...holdings, restoredHolding]);
       }
     }
+
+    // ลบ Log นี้ออกจากประวัติ
+    const nextLogs = tradeLogs.filter(l => l.id !== log.id);
+    saveTradeLogs(nextLogs);
 
     setConfirmRevertTarget(null);
     showToast(`คืนค่ารายการ ${log.assetName} สำเร็จ`);
@@ -1224,7 +1237,8 @@ export default function PortfolioApp() {
     return { name: assetName, pnl: totalPnlThb, count: matchingLogs.length };
   }, [tradeLogs, fxRate, tradeSearchQuery]);
 
-  const getAssetLots = (assetId, currentQty, currentPrice) => {
+  // ข้อ 4: คำนวณไม้ที่ถืออยู่ แสดงผลใน 1 บรรทัดกระชับเหมือนรูปตัวอย่าง
+  const getAssetLots = (assetId, currentQty, currentPrice, assetCurrency, assetType) => {
     const logs = tradeLogs.filter(l => l.assetId === assetId).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
     let lots = [];
     logs.forEach(l => {
@@ -1243,7 +1257,6 @@ export default function PortfolioApp() {
         }
       }
     });
-    // ถ้าไม่มี log การซื้อ ให้สร้างไม้จำลองจากข้อมูลปัจจุบันของสินทรัพย์
     if (lots.length === 0) {
       const targetHolding = holdings.find(h => h.id === assetId);
       if (targetHolding) {
@@ -1256,15 +1269,14 @@ export default function PortfolioApp() {
         });
       }
     }
+    const isUsd = assetCurrency === 'USD' || assetType === 'foreign_stock';
     return lots.map(lot => {
       const days = calcDaysAgo(lot.date);
-      const isUsd = lot.currency === 'USD';
-      const lotFx = lot.tradeFx ? lot.tradeFx : fxRate;
-      const lotValThb = lot.qty * currentPrice * (isUsd ? getEffectiveRate('foreign_stock', fxRate) : 1);
-      const lotCostThb = lot.qty * lot.price * (isUsd ? lotFx : 1);
-      const lotGainThb = lotValThb - lotCostThb;
-      const lotGainPct = lotCostThb > 0 ? (lotGainThb / lotCostThb) * 100 : 0;
-      return { ...lot, days, gain: lotGainThb, gainPct: lotGainPct };
+      const lotVal = lot.qty * currentPrice;
+      const lotCost = lot.qty * lot.price;
+      const lotGain = lotVal - lotCost;
+      const lotGainPct = lotCost > 0 ? (lotGain / lotCost) * 100 : 0;
+      return { ...lot, days, gain: lotGain, gainPct: lotGainPct, isUsd };
     });
   };
 
@@ -1310,7 +1322,7 @@ export default function PortfolioApp() {
         .pf-updated { color: var(--muted); font-size: 12px; }
         .pf-capital-row { display: flex; align-items: center; justify-content: space-between; font-size: 13px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
         .pf-capital-row:last-child { border-bottom: none; }
-        .pf-cash-manage-btn { display: inline-flex; align-items: center; gap: 8px; background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 20px; padding: 6px 14px 6px 6px; font-size: 12.5px; font-weight: 600; cursor: pointer; margin-top: 16px; position: relative; z-index: 20; }
+        .pf-cash-manage-btn { display: inline-flex; align-items: center; gap: 8px; background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 20px; padding: 6px 14px 6px 6px; font-size: 12.5px; font-weight: 600; cursor: pointer; margin-top: 16px; position: relative; z-index: 50; }
         .pf-cash-manage-icon { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: var(--gold); color: #1A1400; flex-shrink: 0; }
         .pf-year-picker { display: flex; gap: 8px; margin-bottom: 12px; overflow-x: auto; }
         .pf-year-pill, .pf-year-pill-active { flex-shrink: 0; border-radius: 20px; padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid var(--divider); background: var(--surface-alt); color: var(--muted); }
@@ -1327,8 +1339,8 @@ export default function PortfolioApp() {
         .pf-year-row { display: flex; align-items: center; gap: 9px; font-size: 13px; }
         .pf-year-row-icon { color: var(--gold); flex-shrink: 0; }
 
-        .pf-cash-actions-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
-        .pf-cash-action-btn-styled { background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 12px; padding: 10px 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; transition: all 0.2s ease; position: relative; z-index: 20; }
+        .pf-cash-actions-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; position: relative; z-index: 50; }
+        .pf-cash-action-btn-styled { background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 12px; padding: 10px 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; transition: all 0.2s ease; position: relative; z-index: 50; }
         .pf-cash-action-btn-styled:hover { background: rgba(56, 189, 248, 0.15); border-color: var(--neon-blue); }
 
         .pf-section-label { color: var(--muted); font-size: 12px; letter-spacing: 0.6px; text-transform: uppercase; margin: 20px 2px 10px; }
@@ -1350,7 +1362,7 @@ export default function PortfolioApp() {
         .pf-sort-btn { background: var(--surface-alt); border: 1px solid var(--divider); border-radius: 8px; padding: 4px 10px; font-size: 12px; color: var(--gold); cursor: pointer; display: flex; align-items: center; gap: 6px; font-family: 'Inter', sans-serif; font-weight: 500; }
         .pf-sort-btn:hover { background: rgba(56, 189, 248, 0.1); }
         .pf-type-section-holdings { border-top: 1px solid var(--divider); margin-top: 16px; padding-top: 6px; }
-        .pf-subrow { padding: 14px 0; border-bottom: 1px solid var(--divider); cursor: pointer; position: relative; z-index: 5; }
+        .pf-subrow { padding: 14px 0; border-bottom: 1px solid var(--divider); cursor: pointer; position: relative; z-index: 10; }
         .pf-subrow:last-child { border-bottom: none; padding-bottom: 0; }
         .pf-legend { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-top: 12px; }
         .pf-legend-item { display: flex; align-items: center; gap: 7px; font-size: 12.5px; }
@@ -1365,12 +1377,12 @@ export default function PortfolioApp() {
         .pf-row-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
         .pf-row-name-text { font-family: 'Fraunces', serif; font-weight: 600; font-size: 15.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .pf-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
-        .pf-row-actions button { background: transparent; border: none; color: var(--muted); cursor: pointer; padding: 4px; border-radius: 6px; position: relative; z-index: 10; }
+        .pf-row-actions button { background: transparent; border: none; color: var(--muted); cursor: pointer; padding: 4px; border-radius: 6px; position: relative; z-index: 15; }
         .pf-row-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px; font-size: 12.5px; color: var(--muted); }
         .pf-row-meta b { color: var(--text); font-weight: 500; }
         .pf-ledger-amount { font-weight: 700; }
         .pf-fab { position: fixed; right: 20px; bottom: 100px; display: flex; gap: 10px; z-index: 900; }
-        .pf-btn { border-radius: 12px; padding: 11px 16px; font-size: 14px; font-weight: 600; cursor: pointer; border: 1px solid var(--divider); display: flex; align-items: center; gap: 6px; position: relative; z-index: 20; }
+        .pf-btn { border-radius: 12px; padding: 11px 16px; font-size: 14px; font-weight: 600; cursor: pointer; border: 1px solid var(--divider); display: flex; align-items: center; gap: 6px; position: relative; z-index: 50; }
         .pf-btn-primary { background: var(--gold); color: #1A1400; border: none; }
         .pf-btn-ghost { background: var(--surface); color: var(--text); }
         .pf-overlay { position: fixed; inset: 0; background: rgba(3,7,18,0.7); backdrop-filter: blur(5px); display: flex; justify-content: flex-end; z-index: 1200; }
@@ -1382,11 +1394,11 @@ export default function PortfolioApp() {
         .pf-panel-title { font-family: 'Fraunces', serif; font-size: 19px; font-weight: 600; }
         .pf-field { margin-bottom: 14px; }
         .pf-label { font-size: 12.5px; color: var(--muted); display: block; margin-bottom: 6px; }
-        .pf-input, .pf-select { width: 100%; background: var(--surface); border: 1px solid var(--divider); color: var(--text); border-radius: 10px; padding: 10px 12px; font-size: 14.5px; font-family: 'Inter', sans-serif; position: relative; z-index: 20; }
+        .pf-input, .pf-select { width: 100%; background: var(--surface); border: 1px solid var(--divider); color: var(--text); border-radius: 10px; padding: 10px 12px; font-size: 14.5px; font-family: 'Inter', sans-serif; position: relative; z-index: 50; }
         .pf-row2 { display: flex; gap: 10px; }
         .pf-row2 > div { flex: 1; }
         .pf-currency-toggle { display: flex; gap: 8px; }
-        .pf-currency-toggle button { flex: 1; background: var(--surface); border: 1px solid var(--divider); color: var(--muted); border-radius: 10px; padding: 9px 8px; font-size: 13.5px; cursor: pointer; position: relative; z-index: 20; }
+        .pf-currency-toggle button { flex: 1; background: var(--surface); border: 1px solid var(--divider); color: var(--muted); border-radius: 10px; padding: 9px 8px; font-size: 13.5px; cursor: pointer; position: relative; z-index: 50; }
         .pf-currency-toggle button.pf-currency-active { background: var(--gold); color: #1A1400; border-color: var(--gold); font-weight: 600; }
         .pf-currency-hint { color: var(--muted); font-size: 11.5px; margin-top: 6px; line-height: 1.5; }
         .pf-error { color: var(--neg); font-size: 12.5px; margin-bottom: 10px; }
@@ -1394,7 +1406,7 @@ export default function PortfolioApp() {
         .pf-panel-actions .pf-btn { flex: 1; justify-content: center; }
         .pf-update-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--divider); }
         .pf-update-name { font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .pf-update-input { width: 110px; position: relative; z-index: 20; }
+        .pf-update-input { width: 110px; position: relative; z-index: 50; }
         .pf-toast { position: fixed; left: 50%; bottom: 100px; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--divider); color: var(--text); padding: 10px 18px; border-radius: 30px; font-size: 13.5px; z-index: 1400; box-shadow: 0 5px 20px rgba(0,0,0,0.5); }
         .pf-confirm { background: var(--surface); border: 1px solid var(--divider); border-radius: 14px; padding: 16px; margin-bottom: 16px; }
         .pf-issue-banner { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; background: rgba(252,165,165,0.12); border: 1px solid var(--neg); color: var(--text); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; font-size: 12.5px; line-height: 1.5; }
@@ -1434,7 +1446,7 @@ export default function PortfolioApp() {
           position: fixed; top: 16px; right: 20px;
           width: 90px; height: 90px;
           display: flex; align-items: center; justify-content: center;
-          cursor: grab; z-index: 50;
+          cursor: grab; z-index: 40;
           animation: moonFloat 2.5s ease-in-out infinite;
           user-select: none; touch-action: none;
           pointer-events: auto;
@@ -1647,7 +1659,7 @@ export default function PortfolioApp() {
                         {typeHoldings.map((h) => {
                           const isCrypto = h.type === 'crypto';
                           const isExpanded = expandedLotsId === h.id;
-                          const lots = getAssetLots(h.id, h.qty, h.price);
+                          const lots = getAssetLots(h.id, h.qty, h.price, h.currency, h.type);
 
                           return (
                             <div key={h.id}>
@@ -1682,27 +1694,24 @@ export default function PortfolioApp() {
                                 </div>
                               </div>
 
+                              {/* ข้อ 4: แสดงไม้ที่ถืออยู่ใน 1 บรรทัดกระชับเหมือนในรูป */}
                               {isExpanded && lots.length > 0 && (
-                                <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px 12px', borderRadius: '10px', margin: '6px 0 12px', border: '1px solid var(--divider)' }}>
+                                <div style={{ background: 'rgba(0,0,0,0.25)', padding: '10px 12px', borderRadius: '10px', margin: '6px 0 12px', border: '1px solid var(--divider)' }}>
                                   <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '6px', fontWeight: '600' }}>ไม้ที่ถืออยู่ ({lots.length})</div>
-                                  <div style={{ overflowX: 'auto', whiteSpace: 'nowrap', paddingBottom: '4px' }}>
-                                    <div style={{ display: 'inline-flex', gap: '12px' }}>
-                                      {lots.map((lot, idx) => (
-                                        <div key={idx} style={{ background: 'var(--surface-alt)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '8px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '12px' }} className="pf-mono">
-                                          <span>{thaiDateAD(lot.date)}</span>
-                                          <span style={{ color: 'var(--muted)' }}>·</span>
-                                          <span>{lot.days} วัน</span>
-                                          <span style={{ color: 'var(--muted)' }}>·</span>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                    {lots.map((lot, idx) => (
+                                      <div key={idx} style={{ background: 'var(--surface-alt)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '6px 10px', fontSize: '11.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="pf-mono">
+                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                          <span style={{ color: 'var(--gold)' }}>{thaiDateAD(lot.date)}</span>
+                                          <span style={{ color: 'var(--muted)' }}>({lot.days} วัน)</span>
                                           <span>จำนวน <b>{fmt(lot.qty, 2, isCrypto)}</b></span>
-                                          <span style={{ color: 'var(--muted)' }}>·</span>
-                                          <span>ต้นทุน <b>฿{fmt(lot.price * (lot.currency === 'USD' ? (lot.tradeFx || fxRate) : 1), 2)}</b></span>
-                                          <span style={{ color: 'var(--muted)' }}>·</span>
-                                          <span className={lot.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
-                                            {lot.gain >= 0 ? '+' : ''}฿{fmt(lot.gain, 2)} ({lot.gain >= 0 ? '+' : ''}{fmt(lot.gainPct, 2)}%)
-                                          </span>
+                                          <span>ต้นทุน/หุ้น <b>{lot.isUsd ? '$' : '฿'}{fmt(lot.price, 2)}</b></span>
                                         </div>
-                                      ))}
-                                    </div>
+                                        <span className={lot.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'} style={{ fontWeight: '600' }}>
+                                          {lot.gain >= 0 ? '+' : ''}฿{fmt(lot.gain, 2)} ({lot.gain >= 0 ? '+' : ''}{fmt(lot.gainPct, 2)}%)
+                                        </span>
+                                      </div>
+                                    ))}
                                   </div>
                                 </div>
                               )}
@@ -1844,7 +1853,7 @@ export default function PortfolioApp() {
                         {typeHoldings.map((h) => {
                           const isCrypto = h.type === 'crypto';
                           const isExpanded = expandedLotsId === h.id;
-                          const lots = getAssetLots(h.id, h.qty, h.price);
+                          const lots = getAssetLots(h.id, h.qty, h.price, h.currency, h.type);
 
                           return (
                             <div key={h.id}>
@@ -1880,26 +1889,22 @@ export default function PortfolioApp() {
                               </div>
 
                               {isExpanded && lots.length > 0 && (
-                                <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px 12px', borderRadius: '10px', margin: '6px 0 12px', border: '1px solid var(--divider)' }}>
+                                <div style={{ background: 'rgba(0,0,0,0.25)', padding: '10px 12px', borderRadius: '10px', margin: '6px 0 12px', border: '1px solid var(--divider)' }}>
                                   <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '6px', fontWeight: '600' }}>ไม้ที่ถืออยู่ ({lots.length})</div>
-                                  <div style={{ overflowX: 'auto', whiteSpace: 'nowrap', paddingBottom: '4px' }}>
-                                    <div style={{ display: 'inline-flex', gap: '12px' }}>
-                                      {lots.map((lot, idx) => (
-                                        <div key={idx} style={{ background: 'var(--surface-alt)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '8px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '12px' }} className="pf-mono">
-                                          <span>{thaiDateAD(lot.date)}</span>
-                                          <span style={{ color: 'var(--muted)' }}>·</span>
-                                          <span>{lot.days} วัน</span>
-                                          <span style={{ color: 'var(--muted)' }}>·</span>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                    {lots.map((lot, idx) => (
+                                      <div key={idx} style={{ background: 'var(--surface-alt)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '6px 10px', fontSize: '11.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="pf-mono">
+                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                          <span style={{ color: 'var(--gold)' }}>{thaiDateAD(lot.date)}</span>
+                                          <span style={{ color: 'var(--muted)' }}>({lot.days} วัน)</span>
                                           <span>จำนวน <b>{fmt(lot.qty, 2, isCrypto)}</b></span>
-                                          <span style={{ color: 'var(--muted)' }}>·</span>
-                                          <span>ต้นทุน <b>฿{fmt(lot.price * (lot.currency === 'USD' ? (lot.tradeFx || fxRate) : 1), 2)}</b></span>
-                                          <span style={{ color: 'var(--muted)' }}>·</span>
-                                          <span className={lot.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
-                                            {lot.gain >= 0 ? '+' : ''}฿{fmt(lot.gain, 2)} ({lot.gain >= 0 ? '+' : ''}{fmt(lot.gainPct, 2)}%)
-                                          </span>
+                                          <span>ต้นทุน/หุ้น <b>${fmt(lot.price, 2)}</b></span>
                                         </div>
-                                      ))}
-                                    </div>
+                                        <span className={lot.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'} style={{ fontWeight: '600' }}>
+                                          {lot.gain >= 0 ? '+' : ''}฿{fmt(lot.gain, 2)} ({lot.gain >= 0 ? '+' : ''}{fmt(lot.gainPct, 2)}%)
+                                        </span>
+                                      </div>
+                                    ))}
                                   </div>
                                 </div>
                               )}
@@ -2253,7 +2258,7 @@ export default function PortfolioApp() {
                           {typeHoldings.map((h) => {
                             const isCrypto = h.type === 'crypto';
                             const isExpanded = expandedLotsId === h.id;
-                            const lots = getAssetLots(h.id, h.qty, h.price);
+                            const lots = getAssetLots(h.id, h.qty, h.price, h.currency, h.type);
 
                             return (
                               <div key={h.id}>
@@ -2285,26 +2290,22 @@ export default function PortfolioApp() {
                                 </div>
 
                                 {isExpanded && lots.length > 0 && (
-                                  <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px 12px', borderRadius: '10px', margin: '6px 0 12px', border: '1px solid var(--divider)' }}>
+                                  <div style={{ background: 'rgba(0,0,0,0.25)', padding: '10px 12px', borderRadius: '10px', margin: '6px 0 12px', border: '1px solid var(--divider)' }}>
                                     <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '6px', fontWeight: '600' }}>ไม้ที่ถืออยู่ ({lots.length})</div>
-                                    <div style={{ overflowX: 'auto', whiteSpace: 'nowrap', paddingBottom: '4px' }}>
-                                      <div style={{ display: 'inline-flex', gap: '12px' }}>
-                                        {lots.map((lot, idx) => (
-                                          <div key={idx} style={{ background: 'var(--surface-alt)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '8px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '12px' }} className="pf-mono">
-                                            <span>{thaiDateAD(lot.date)}</span>
-                                            <span style={{ color: 'var(--muted)' }}>·</span>
-                                            <span>{lot.days} วัน</span>
-                                            <span style={{ color: 'var(--muted)' }}>·</span>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                      {lots.map((lot, idx) => (
+                                        <div key={idx} style={{ background: 'var(--surface-alt)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '6px 10px', fontSize: '11.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="pf-mono">
+                                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                            <span style={{ color: 'var(--gold)' }}>{thaiDateAD(lot.date)}</span>
+                                            <span style={{ color: 'var(--muted)' }}>({lot.days} วัน)</span>
                                             <span>จำนวน <b>{fmt(lot.qty, 2, isCrypto)}</b></span>
-                                            <span style={{ color: 'var(--muted)' }}>·</span>
-                                            <span>ต้นทุน <b>{fmt(lot.price, 2)}</b></span>
-                                            <span style={{ color: 'var(--muted)' }}>·</span>
-                                            <span className={lot.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
-                                              {lot.gain >= 0 ? '+' : ''}{fmt(lot.gain, 2)} ({lot.gain >= 0 ? '+' : ''}{fmt(lot.gainPct, 2)}%)
-                                            </span>
+                                            <span>ต้นทุน/หุ้น <b>{fmt(lot.price, 2)}</b></span>
                                           </div>
-                                        ))}
-                                      </div>
+                                          <span className={lot.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'} style={{ fontWeight: '600' }}>
+                                            {lot.gain >= 0 ? '+' : ''}฿{fmt(lot.gain, 2)} ({lot.gain >= 0 ? '+' : ''}{fmt(lot.gainPct, 2)}%)
+                                          </span>
+                                        </div>
+                                      ))}
                                     </div>
                                   </div>
                                 )}
@@ -2333,20 +2334,20 @@ export default function PortfolioApp() {
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   {holdings.length > 0 && (
-                    <button className="pf-btn pf-btn-primary" style={{ justifyContent: 'flex-start', padding: '14px', position: 'relative', zIndex: 20 }} onClick={openUpdatePrices}>
+                    <button className="pf-btn pf-btn-primary" style={{ justifyContent: 'flex-start', padding: '14px', position: 'relative', zIndex: 50 }} onClick={openUpdatePrices}>
                       <RefreshCw size={16} /> อัปเดตราคาวันนี้ (ราคาตลาด)
                     </button>
                   )}
-                  <button className="pf-btn pf-btn-ghost" style={{ justifyContent: 'flex-start', padding: '14px', position: 'relative', zIndex: 20 }} onClick={() => { setBackendDraft(backendUrl); setFxDraft(String(fxRate)); setPanel('settings'); }}>
+                  <button className="pf-btn pf-btn-ghost" style={{ justifyContent: 'flex-start', padding: '14px', position: 'relative', zIndex: 50 }} onClick={() => { setBackendDraft(backendUrl); setFxDraft(String(fxRate)); setPanel('settings'); }}>
                     ⚙️ ตั้งค่า API Endpoint และอัตราแลกเปลี่ยน
                   </button>
-                  <button className="pf-btn pf-btn-ghost" style={{ justifyContent: 'flex-start', padding: '14px', position: 'relative', zIndex: 20 }} onClick={exportData}>
+                  <button className="pf-btn pf-btn-ghost" style={{ justifyContent: 'flex-start', padding: '14px', position: 'relative', zIndex: 50 }} onClick={exportData}>
                     📥 ส่งออกข้อมูล (สำรอง Backup JSON)
                   </button>
-                  <button className="pf-btn pf-btn-ghost" style={{ justifyContent: 'flex-start', padding: '14px', position: 'relative', zIndex: 20 }} onClick={triggerImport}>
+                  <button className="pf-btn pf-btn-ghost" style={{ justifyContent: 'flex-start', padding: '14px', position: 'relative', zIndex: 50 }} onClick={triggerImport}>
                     📤 นำเข้าข้อมูล (กู้คืน Restore JSON)
                   </button>
-                  <button className="pf-btn" style={{ justifyContent: 'flex-start', padding: '14px', background: 'rgba(252,165,165,0.1)', color: 'var(--neg)', border: '1px solid var(--neg)', position: 'relative', zIndex: 20 }} onClick={() => setConfirmClear(true)}>
+                  <button className="pf-btn" style={{ justifyContent: 'flex-start', padding: '14px', background: 'rgba(252,165,165,0.1)', color: 'var(--neg)', border: '1px solid var(--neg)', position: 'relative', zIndex: 50 }} onClick={() => setConfirmClear(true)}>
                     🗑️ ล้างข้อมูลทั้งหมดในพอร์ต
                   </button>
                 </div>
