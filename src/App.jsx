@@ -888,7 +888,6 @@ export default function PortfolioApp() {
     showToast('ลบรายการแล้ว');
   };
 
-  // ปรับปรุงตรรกะ Revert รายการขาย (ตามที่คุณเสนอ: ถ้ายังขายไม่หมดให้บวกจำนวนกลับโดยคงทุนเดิม, ถ้าขายหมดแล้วให้ดึงต้นทุนเดิมจากข้อมูลการขายมาสร้างคืนตรงๆ โดยไม่ต้องคำนวณซับซ้อน)
   const executeRevertTrade = (log) => {
     const target = holdings.find(h => h.id === log.assetId);
 
@@ -906,11 +905,9 @@ export default function PortfolioApp() {
       }
     } else if (log.action === 'sell') {
       if (target) {
-        // มีสินทรัพย์นั้นที่ยังขายไม่หมด -> บวกจำนวนกลับ ทุนเฉลี่ยคงเดิมเท่ากับปัจจุบันเพราะตอนขายทุนไม่ได้เปลี่ยน
         const nextQty = target.quantity + log.quantity;
         saveHoldings(holdings.map(h => h.id === log.assetId ? { ...h, quantity: nextQty } : h));
       } else {
-        // ขายหมดเกลี้ยงพอร์ตหายไป -> ดึงต้นทุนเดิมและจำนวนมาสร้างคืนตรงๆ โดยไม่ต้องคำนวณใหม่
         const sellQty = parseFloat(log.quantity) || 0;
         const sellPrice = parseFloat(log.price) || 0;
         const sellPnl = parseFloat(log.pnl) || 0;
@@ -1283,7 +1280,6 @@ export default function PortfolioApp() {
     return { name: assetName, pnl: totalPnlThb, count: matchingLogs.length };
   }, [tradeLogs, fxRate, tradeSearchQuery]);
 
-  // ข้อ 2: ปรับรูปแบบวันที่เป็น DD-MM-YY และกำไร/ขาดทุนแสดงเฉพาะเปอร์เซ็นต์
   const getAssetLots = (assetId, currentQty, currentPrice, assetCurrency, assetType) => {
     const logs = tradeLogs.filter(l => l.assetId === assetId).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
     let lots = [];
@@ -1739,7 +1735,6 @@ export default function PortfolioApp() {
                                 </div>
                               </div>
 
-                              {/* วันที่ซื้อรูปแบบ DD-MM-YY, ต้นทุน/หุ้นตรงคอลัมน์, กำไร/ขาดทุนแสดงเฉพาะเปอร์เซ็นต์ */}
                               {isExpanded && lots.length > 0 && (
                                 <div style={{ background: 'rgba(0,0,0,0.25)', padding: '10px 12px', borderRadius: '10px', margin: '6px 0 12px', border: '1px solid var(--divider)' }}>
                                   <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '8px', fontWeight: '600' }}>ไม้ที่ถืออยู่ ({lots.length})</div>
@@ -1754,7 +1749,7 @@ export default function PortfolioApp() {
                                       <div key={idx} style={{ background: 'var(--surface-alt)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '6px 8px', fontSize: '11.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="pf-mono">
                                         <span style={{ color: 'var(--gold)', minWidth: '85px' }}>{thaiDateAD(lot.date)} <span style={{ color: 'var(--muted)', fontSize: '10px' }}>({lot.days}ว)</span></span>
                                         <span style={{ textAlign: 'center', flex: 1 }}><b>{fmt(lot.qty, 2, isCrypto)}</b></span>
-                                        <span style={{ textAlign: 'right', flex: 1 }}><b>{lot.isUsd ? '$' : '฿'}{fmt(lot.price, 2)}</b></span>
+                                        <span style={{ textAlign: 'right', flex: 1 }}><b>{fmt(lot.price, 2)}</b></span>
                                         <span className={lot.gainPct >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'} style={{ fontWeight: '600', textAlign: 'right', minWidth: '70px' }}>
                                           {lot.gainPct >= 0 ? '+' : ''}{fmt(lot.gainPct, 2)}%
                                         </span>
@@ -2763,12 +2758,10 @@ export default function PortfolioApp() {
                         <span className={`pf-mono pf-ledger-amount ${['capital_add', 'profit', 'dividend'].includes(e.type) || (e.type === 'rebalance' && e.amount >= 0) ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
                           {['capital_add', 'profit', 'dividend'].includes(e.type) || (e.type === 'rebalance' && e.amount >= 0) ? '+' : '-'}฿{fmt(Math.abs(e.amount), 2)}
                         </span>
-                        {!e.id.toString().startsWith('log_pnl_') ? (
-                          <button style={{ background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: '2px' }} onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type] || e.type)}>
+                        {!e.id.toString().startsWith('log_pnl_') && (
+                          <button style={{ background: 'transparent', border: '1px solid var(--muted)', cursor: 'pointer', padding: '2px' }} onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type] || e.type)}>
                             <Trash2 size={13} />
                           </button>
-                        ) : (
-                          <span style={{ fontSize: '11px', color: 'var(--muted)' }}>จากประวัติขาย</span>
                         )}
                       </div>
                     </div>
