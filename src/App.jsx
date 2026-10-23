@@ -444,21 +444,42 @@ export default function PortfolioApp() {
   const capitalReduceTotal = useMemo(() => ledger.filter((e) => e.type === 'capital_reduce').reduce((s, e) => s + e.amount, 0), [ledger]);
   const capitalAdjTotal = useMemo(() => capitalAddTotal - capitalReduceTotal, [capitalAddTotal, capitalReduceTotal]);
 
+  // รวมรายการขาย (กำไร/ขาดทุนจาก tradeLogs) เข้ากับ ledger อัตโนมัติ เพื่อให้ดึงกำไรซื้อขายมาแสดงในหน้าจัดการเงินสดและคำนวณถูกต้องตามเดิม
+  const combinedLedger = useMemo(() => {
+    let list = [...ledger];
+    tradeLogs.forEach((log) => {
+      if (log.action === 'sell' && log.pnl !== undefined) {
+        const logFx = log.tradeFx ? parseFloat(log.tradeFx) : fxRate;
+        const pnlThb = (log.currency === 'USD' || log.assetType === 'foreign_stock') ? (log.pnl * logFx) : log.pnl;
+        if (Math.abs(pnlThb) > 0.001) {
+          list.push({
+            id: 'log_pnl_' + log.id,
+            type: pnlThb >= 0 ? 'profit' : 'loss',
+            amount: Math.abs(pnlThb),
+            date: log.date || todayStr(),
+            note: `ขาย ${log.assetName}` + (log.note ? ` (${log.note})` : '')
+          });
+        }
+      }
+    });
+    return list;
+  }, [ledger, tradeLogs, fxRate]);
+
   const performanceTotal = useMemo(() => (
-    ledger.filter((e) => e.type === 'profit').reduce((s, e) => s + e.amount, 0)
-    - ledger.filter((e) => e.type === 'loss').reduce((s, e) => s + e.amount, 0)
-  ), [ledger]);
+    combinedLedger.filter((e) => e.type === 'profit').reduce((s, e) => s + e.amount, 0)
+    - combinedLedger.filter((e) => e.type === 'loss').reduce((s, e) => s + e.amount, 0)
+  ), [combinedLedger]);
 
   const rebalanceTotal = useMemo(() => (
-    ledger.filter((e) => e.type === 'rebalance').reduce((s, e) => s + e.amount, 0)
-  ), [ledger]);
+    combinedLedger.filter((e) => e.type === 'rebalance').reduce((s, e) => s + e.amount, 0)
+  ), [combinedLedger]);
 
   const cashAdjTotal = useMemo(() => (
-    performanceTotal + ledger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0) + rebalanceTotal
-  ), [ledger, performanceTotal, rebalanceTotal]);
+    performanceTotal + combinedLedger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0) + rebalanceTotal
+  ), [combinedLedger, performanceTotal, rebalanceTotal]);
 
   const totalCapital = initialCapital + capitalAdjTotal;
-  const cashActive = initialCapital > 0 || ledger.length > 0;
+  const cashActive = initialCapital > 0 || combinedLedger.length > 0;
   const computedCash = cashActive ? (totalCapital - totalInvestedCost + cashAdjTotal) : 0;
 
   const cashRatio = useMemo(() => {
@@ -483,7 +504,7 @@ export default function PortfolioApp() {
   }, [tradeLogs, fxRate]);
 
   const recentLedger = useMemo(() => {
-    let list = ledger.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || String(b.id).localeCompare(String(b.id)));
+    let list = combinedLedger.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || String(b.id).localeCompare(String(b.id)));
     const q = ledgerSearchQuery.trim().toLowerCase();
     if (q) {
       list = list.filter((e) => {
@@ -494,14 +515,14 @@ export default function PortfolioApp() {
       });
     }
     return list;
-  }, [ledger, ledgerSearchQuery]);
+  }, [combinedLedger, ledgerSearchQuery]);
 
   const currentYearKey = String(new Date().getFullYear());
   const [selectedYear, setSelectedYear] = useState(currentYearKey);
   const yearOptions = useMemo(() => {
-    const set = new Set([currentYearKey, ...ledger.map((e) => (e.date || '').slice(0, 4)).filter(Boolean), ...history.map((h) => (h.date || '').slice(0, 4)).filter(Boolean)]);
+    const set = new Set([currentYearKey, ...combinedLedger.map((e) => (e.date || '').slice(0, 4)).filter(Boolean), ...history.map((h) => (h.date || '').slice(0, 4)).filter(Boolean)]);
     return Array.from(set).sort((a, b) => b.localeCompare(a)).slice(0, 5);
-  }, [ledger, history, currentYearKey]);
+  }, [combinedLedger, history, currentYearKey]);
 
   useEffect(() => {
     if (!yearOptions.includes(selectedYear)) setSelectedYear(yearOptions[0] || currentYearKey);
@@ -510,7 +531,7 @@ export default function PortfolioApp() {
 
   const yearSummary = useMemo(() => {
     const d = { capital_add: 0, capital_reduce: 0, profit: 0, loss: 0, dividend: 0, rebalance: 0 };
-    ledger.forEach((e) => {
+    combinedLedger.forEach((e) => {
       if ((e.date || '').slice(0, 4) === selectedYear) {
         if (e.type === 'rebalance') {
           d.rebalance = (d.rebalance || 0) + e.amount;
@@ -525,7 +546,7 @@ export default function PortfolioApp() {
     const totalFlow = totalIn + totalOut;
     const inPct = totalFlow > 0 ? (totalIn / totalFlow) * 100 : 0;
     return { ...d, net, totalIn, totalOut, inPct };
-  }, [ledger, selectedYear]);
+  }, [combinedLedger, selectedYear]);
 
   const totalGain = totalInvestedValue - totalInvestedCost;
   const totalGainPct = totalInvestedCost > 0 ? (totalGain / totalInvestedCost) * 100 : 0;
@@ -573,7 +594,7 @@ export default function PortfolioApp() {
 
   const dividendByYear = useMemo(() => {
     return dividendYears.map((y) => {
-      const entries = ledger.filter((e) => e.type === 'dividend' && (e.date || '').slice(0, 4) === y);
+      const entries = combinedLedger.filter((e) => e.type === 'dividend' && (e.date || '').slice(0, 4) === y);
       const divSum = entries.reduce((s, e) => s + e.amount, 0);
       const snaps = entries.map((e) => e.invested).filter((v) => typeof v === 'number' && v > 0);
       const investedSnap = snaps.length ? snaps[snaps.length - 1] : totalInvestedCost;
@@ -584,11 +605,11 @@ export default function PortfolioApp() {
         yieldPct: divSum > 0 && investedSnap > 0 ? (divSum / investedSnap) * 100 : 0,
       };
     });
-  }, [dividendYears, ledger, totalInvestedCost]);
+  }, [dividendYears, combinedLedger, totalInvestedCost]);
 
   const dividendChartData = useMemo(() => {
     if (dividendGraphMode === 'all') {
-      const totalDiv = ledger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0);
+      const totalDiv = combinedLedger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0);
       const yearsWithDiv = dividendByYear.filter((d) => d.dividend > 0);
       const avgInvested = yearsWithDiv.length
         ? yearsWithDiv.reduce((s, d) => s + d.invested, 0) / yearsWithDiv.length
@@ -601,11 +622,11 @@ export default function PortfolioApp() {
       }];
     }
     return dividendByYear;
-  }, [dividendGraphMode, dividendByYear, ledger, totalInvestedCost]);
+  }, [dividendGraphMode, dividendByYear, combinedLedger, totalInvestedCost]);
 
   const totalDividendAmount = useMemo(() => {
-    return ledger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0);
-  }, [ledger]);
+    return combinedLedger.filter((e) => e.type === 'dividend').reduce((s, e) => s + e.amount, 0);
+  }, [combinedLedger]);
 
   const dividendMaxVal = useMemo(() => {
     const rawMax = Math.max(...dividendChartData.map((d) => Math.max(d.dividend, d.invested)), 1000);
@@ -2557,7 +2578,7 @@ export default function PortfolioApp() {
         </div>
       )}
 
-      {/* Panel: ตั้งค่า API & อัตราแลกเปลี่ยน (เพิ่มกลับเข้ามาเพื่อไม่ให้จอขาว) */}
+      {/* Panel: ตั้งค่า API & อัตราแลกเปลี่ยน */}
       {panel === 'settings' && (
         <div className="pf-overlay" onClick={closePanel}>
           <div className="pf-panel" onClick={(e) => e.stopPropagation()}>
@@ -2586,7 +2607,7 @@ export default function PortfolioApp() {
         </div>
       )}
 
-      {/* Panel: อัปเดตราคาวันนี้ (เพิ่มกลับเข้ามาเพื่อไม่ให้จอขาว) */}
+      {/* Panel: อัปเดตราคาวันนี้ */}
       {panel === 'update' && (
         <div className="pf-overlay" onClick={closePanel}>
           <div className="pf-panel" onClick={(e) => e.stopPropagation()}>
@@ -2624,7 +2645,7 @@ export default function PortfolioApp() {
         </div>
       )}
 
-      {/* Panel: จัดการเงินสด & สรุปรายปี (เพิ่มกลับเข้ามาเพื่อไม่ให้จอขาว) */}
+      {/* Panel: จัดการเงินสด & สรุปรายปี (รูปแบบเดิมครบถ้วน) */}
       {panel === 'cashManage' && (
         <div className="pf-overlay" onClick={closePanel}>
           <div className="pf-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px' }}>
@@ -2710,9 +2731,11 @@ export default function PortfolioApp() {
                         <span className={`pf-mono pf-ledger-amount ${['capital_add', 'profit', 'dividend'].includes(e.type) || (e.type === 'rebalance' && e.amount >= 0) ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
                           {['capital_add', 'profit', 'dividend'].includes(e.type) || (e.type === 'rebalance' && e.amount >= 0) ? '+' : '-'}฿{fmt(Math.abs(e.amount), 2)}
                         </span>
-                        <button style={{ background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: '2px' }} onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type] || e.type)}>
-                          <Trash2 size={13} />
-                        </button>
+                        {!e.id.toString().startsWith('log_pnl_') && (
+                          <button style={{ background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: '2px' }} onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type] || e.type)}>
+                            <Trash2 size={13} />
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))
@@ -2723,7 +2746,7 @@ export default function PortfolioApp() {
         </div>
       )}
 
-      {/* Panel: ฟอร์มกรอกรายการเงินสดแยกประเภท (เพิ่มกลับเข้ามาเพื่อไม่ให้จอขาว) */}
+      {/* Panel: ฟอร์มกรอกรายการเงินสดแยกประเภท */}
       {panel === 'ledger' && (
         <div className="pf-overlay" onClick={() => setPanel('cashManage')}>
           <div className="pf-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '380px' }}>
