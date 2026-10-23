@@ -444,7 +444,6 @@ export default function PortfolioApp() {
   const capitalReduceTotal = useMemo(() => ledger.filter((e) => e.type === 'capital_reduce').reduce((s, e) => s + e.amount, 0), [ledger]);
   const capitalAdjTotal = useMemo(() => capitalAddTotal - capitalReduceTotal, [capitalAddTotal, capitalReduceTotal]);
 
-  // รวมรายการขาย (กำไร/ขาดทุนจาก tradeLogs) เข้ากับ ledger อัตโนมัติ เพื่อให้ดึงกำไรซื้อขายมาแสดงในหน้าจัดการเงินสดและคำนวณถูกต้องตามเดิม
   const combinedLedger = useMemo(() => {
     let list = [...ledger];
     tradeLogs.forEach((log) => {
@@ -1363,7 +1362,6 @@ export default function PortfolioApp() {
         .pf-year-flow-legend { display: flex; justify-content: space-between; gap: 10px; margin-top: 8px; font-size: 11.5px; color: var(--muted); }
         .pf-year-rows { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--divider); display: flex; flex-direction: column; gap: 10px; }
         .pf-year-row { display: flex; align-items: center; gap: 9px; font-size: 13px; }
-        .pf-year-row-icon { color: var(--gold); flex-shrink: 0; }
 
         .pf-cash-actions-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; position: relative; z-index: 50; }
         .pf-cash-action-btn-styled { background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 12px; padding: 10px 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; transition: all 0.2s ease; position: relative; z-index: 50; }
@@ -2645,7 +2643,7 @@ export default function PortfolioApp() {
         </div>
       )}
 
-      {/* Panel: จัดการเงินสด & สรุปรายปี (รูปแบบเดิมครบถ้วน) */}
+      {/* Panel: จัดการเงินสด & สรุปรายปี (ลบสัญลักษณ์หน้าข้อความ และซ่อนค่า 0 ออกแล้ว) */}
       {panel === 'cashManage' && (
         <div className="pf-overlay" onClick={closePanel}>
           <div className="pf-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px' }}>
@@ -2693,12 +2691,24 @@ export default function PortfolioApp() {
                 <span>ออก: ฿{fmt(yearSummary.totalOut, 2)}</span>
               </div>
               <div className="pf-year-rows">
-                <div className="pf-year-row"><span className="pf-year-row-icon">➕</span> เพิ่มทุน: <b className="pf-mono">฿{fmt(yearSummary.capital_add, 2)}</b></div>
-                <div className="pf-year-row"><span className="pf-year-row-icon">➖</span> ลดทุน: <b className="pf-mono">฿{fmt(yearSummary.capital_reduce, 2)}</b></div>
-                <div className="pf-year-row"><span className="pf-year-row-icon">📈</span> กำไรขาย: <b className="pf-mono pf-chip-pos">฿{fmt(yearSummary.profit, 2)}</b></div>
-                <div className="pf-year-row"><span className="pf-year-row-icon">📉</span> ขาดทุนขาย: <b className="pf-mono pf-chip-neg">฿{fmt(yearSummary.loss, 2)}</b></div>
-                <div className="pf-year-row"><span className="pf-year-row-icon">🎁</span> ปันผล: <b className="pf-mono pf-chip-pos">฿{fmt(yearSummary.dividend, 2)}</b></div>
-                <div className="pf-year-row"><span className="pf-year-row-icon">⚖️</span> รีบาลานซ์: <b className="pf-mono">฿{fmt(yearSummary.rebalance, 2)}</b></div>
+                {yearSummary.capital_add !== 0 && (
+                  <div className="pf-year-row">เพิ่มทุน: <b className="pf-mono">฿{fmt(yearSummary.capital_add, 2)}</b></div>
+                )}
+                {yearSummary.capital_reduce !== 0 && (
+                  <div className="pf-year-row">ลดทุน: <b className="pf-mono">฿{fmt(yearSummary.capital_reduce, 2)}</b></div>
+                )}
+                {yearSummary.profit !== 0 && (
+                  <div className="pf-year-row">กำไรขาย: <b className="pf-mono pf-chip-pos">฿{fmt(yearSummary.profit, 2)}</b></div>
+                )}
+                {yearSummary.loss !== 0 && (
+                  <div className="pf-year-row">ขาดทุนขาย: <b className="pf-mono pf-chip-neg">฿{fmt(yearSummary.loss, 2)}</b></div>
+                )}
+                {yearSummary.dividend !== 0 && (
+                  <div className="pf-year-row">ปันผล: <b className="pf-mono pf-chip-pos">฿{fmt(yearSummary.dividend, 2)}</b></div>
+                )}
+                {yearSummary.rebalance !== 0 && (
+                  <div className="pf-year-row">รีบาลานซ์: <b className="pf-mono">฿{fmt(yearSummary.rebalance, 2)}</b></div>
+                )}
               </div>
             </div>
 
@@ -2732,7 +2742,7 @@ export default function PortfolioApp() {
                           {['capital_add', 'profit', 'dividend'].includes(e.type) || (e.type === 'rebalance' && e.amount >= 0) ? '+' : '-'}฿{fmt(Math.abs(e.amount), 2)}
                         </span>
                         {!e.id.toString().startsWith('log_pnl_') && (
-                          <button style={{ background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: '2px' }} onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type] || e.type)}>
+                          <button style={{ background: 'transparent', border: '1px solid var(--muted)', cursor: 'pointer', padding: '2px' }} onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type] || e.type)}>
                             <Trash2 size={13} />
                           </button>
                         )}
