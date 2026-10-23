@@ -869,7 +869,7 @@ export default function PortfolioApp() {
     showToast('ลบรายการแล้ว');
   };
 
-  // ข้อ 1: แก้ไขตรรกะ Revert รายการขาย ให้จำลองสถานะพอร์ตก่อนทำรายการขายนั้นๆ อย่างแม่นยำ 100%
+  // ข้อ 1: แก้ไขตรรกะ Revert (ขาย) ให้อ้างอิงข้อมูลจาก Log การซื้อดั้งเดิมทั้งหมดมาคำนวณคืนค่าได้อย่างแม่นยำ ป้องกันจอขาวจากค่า NaN
   const executeRevertTrade = (log) => {
     const target = holdings.find(h => h.id === log.assetId);
 
@@ -886,37 +886,25 @@ export default function PortfolioApp() {
         }
       }
     } else if (log.action === 'sell') {
-      // คำนวณย้อนกลับสภาพก่อนขาย: หาจำนวนหุ้นเดิมและทุนเฉลี่ยก่อนขายจริง
+      const assetBuyLogs = tradeLogs.filter(l => l.assetId === log.assetId && l.action === 'buy');
+      const totalBuyQty = assetBuyLogs.reduce((sum, l) => sum + (parseFloat(l.quantity) || 0), 0);
+      const totalBuyCost = assetBuyLogs.reduce((sum, l) => sum + ((parseFloat(l.quantity) || 0) * (parseFloat(l.price) || 0)) + (parseFloat(l.fee) || 0), 0);
+      
+      const otherSellLogs = tradeLogs.filter(l => l.assetId === log.assetId && l.action === 'sell' && l.id !== log.id);
+      const totalSoldQty = otherSellLogs.reduce((sum, l) => sum + (parseFloat(l.quantity) || 0), 0);
+      
+      const restoredQty = totalBuyQty - totalSoldQty;
+      const restoredAvg = totalBuyQty > 0 ? totalBuyCost / totalBuyQty : (target ? target.avgCost : log.price);
+
       if (target) {
-        const prevQty = target.quantity;
-        const prevTotalCost = prevQty * target.avgCost;
-        const restoredQty = log.quantity;
-        
-        // ค้นหาต้นทุนรวมของหุ้นที่เหลืออยู่ก่อนหน้านี้จาก log การซื้อทั้งหมดที่ยังไม่ถูกลบ
-        const activeBuyLogs = tradeLogs.filter(l => l.assetId === log.assetId && l.action === 'buy');
-        const totalActiveBuyCost = activeBuyLogs.reduce((s, l) => s + (l.quantity * l.price) + (l.fee || 0), 0);
-        
-        // หุ้นที่ถูกขายไปแล้วถูกดึงกลับมารวมกับพอร์ตปัจจุบัน
-        const nextQty = prevQty + restoredQty;
-        // หาต้นทุนเฉลี่ยดั้งเดิมก่อนขาย โดยคำนวณจากยอดต้นทุนรวมของการซื้อทั้งหมด หารด้วยจำนวนหุ้นรวมทั้งหมดก่อนขาย
-        const totalOriginalQty = nextQty;
-        const priorSellLogs = tradeLogs.filter(l => l.assetId === log.assetId && l.action === 'sell' && l.id !== log.id);
-        const totalSoldQty = priorSellLogs.reduce((s, l) => s + l.quantity, 0);
-        const originalAvg = totalActiveBuyCost / (totalActiveBuyCost > 0 ? (totalActiveBuyCost / (target.avgCost || 1)) : totalOriginalQty);
-        
-        // วิธีคำนวณที่แม่นยำที่สุด: ทุนรวมเดิม + (จำนวนที่ขายไป * ทุนเฉลี่ยก่อนขาย) หารด้วยจำนวนใหม่
-        // ทุนเฉลี่ยก่อนขายสามารถเทียบจากยอดคงเหลือและราคาขายได้
-        const approxAvg = (prevTotalCost + (restoredQty * target.avgCost)) / nextQty;
-        
-        saveHoldings(holdings.map(h => h.id === log.assetId ? { ...h, quantity: nextQty, avgCost: target.avgCost } : h));
+        saveHoldings(holdings.map(h => h.id === log.assetId ? { ...h, quantity: restoredQty, avgCost: restoredAvg } : h));
       } else {
-        // ถ้ารายการหุ้นถูกลบไปตอนขายหมด ให้สร้างพอร์ตตัวนั้นกลับขึ้นมาใหม่พร้อมราคาและทุนเท่ากับตอนก่อนขาย
         const restoredHolding = {
           id: log.assetId || Date.now().toString(),
           name: log.assetName,
           type: log.assetType,
-          quantity: log.quantity,
-          avgCost: log.price, // ใช้ราคาอ้างอิงตอนขายหรือทุนเดิม
+          quantity: restoredQty,
+          avgCost: restoredAvg,
           currentPrice: log.price,
           currency: log.currency || 'THB',
           instrumentType: 'stock',
@@ -2710,9 +2698,13 @@ export default function PortfolioApp() {
                         <span className={`pf-mono pf-ledger-amount ${['capital_add', 'profit', 'dividend'].includes(e.type) || (e.type === 'rebalance' && e.amount >= 0) ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
                           {['capital_add', 'profit', 'dividend'].includes(e.type) || (e.type === 'rebalance' && e.amount >= 0) ? '+' : '-'}฿{fmt(Math.abs(e.amount), 2)}
                         </span>
-                        <button style={{ background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: '2px' }} onClick={() => requestDelete('ledger', e.id.toString().startsWith('log_pnl_') ? e.id.replace('log_pnl_', '') : e.id, LEDGER_LABELS[e.type] || e.type)}>
-                          <Trash2 size={13} />
-                        </button>
+                        {!e.id.toString().startsWith('log_pnl_') ? (
+                          <button style={{ background: 'transparent', border: '1px solid var(--muted)', cursor: 'pointer', padding: '2px' }} onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type] || e.type)}>
+                            <Trash2 size={13} />
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: '11px', color: 'var(--muted)' }}>จากประวัติขาย</span>
+                        )}
                       </div>
                     </div>
                   ))
