@@ -749,12 +749,10 @@ export default function PortfolioApp() {
 
         let feeAmount = 0;
         if (isDirectFee) {
-          if (form.feeCurrency === 'USD' && currency !== 'USD') {
-            feeAmount = feeInputVal * customFx;
-          } else if (form.feeCurrency === 'THB' && currency === 'USD') {
-            feeAmount = customFx > 0 ? feeInputVal / customFx : feeInputVal;
+          if (currency === 'USD') {
+            feeAmount = form.feeCurrency === 'THB' ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : feeInputVal;
           } else {
-            feeAmount = feeInputVal;
+            feeAmount = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
           }
         } else {
           feeAmount = (subtotal * feeInputVal) / 100;
@@ -794,12 +792,10 @@ export default function PortfolioApp() {
 
         let feeAmount = 0;
         if (isDirectFee) {
-          if (form.feeCurrency === 'USD' && currency !== 'USD') {
-            feeAmount = feeInputVal * customFx;
-          } else if (form.feeCurrency === 'THB' && currency === 'USD') {
-            feeAmount = customFx > 0 ? feeInputVal / customFx : feeInputVal;
+          if (currency === 'USD') {
+            feeAmount = form.feeCurrency === 'THB' ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : feeInputVal;
           } else {
-            feeAmount = feeInputVal;
+            feeAmount = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
           }
         } else {
           feeAmount = (subtotal * feeInputVal) / 100;
@@ -863,12 +859,10 @@ export default function PortfolioApp() {
       let feeAmount = 0;
       if (!isCash) {
         if (isDirectFee) {
-          if (form.feeCurrency === 'USD' && currency !== 'USD') {
-            feeAmount = feeInputVal * customFx;
-          } else if (form.feeCurrency === 'THB' && currency === 'USD') {
-            feeAmount = customFx > 0 ? feeInputVal / customFx : feeInputVal;
+          if (currency === 'USD') {
+            feeAmount = form.feeCurrency === 'THB' ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : feeInputVal;
           } else {
-            feeAmount = feeInputVal;
+            feeAmount = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
           }
         } else {
           feeAmount = (subtotal * feeInputVal) / 100;
@@ -2745,7 +2739,7 @@ export default function PortfolioApp() {
               <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('dividend')}><Gift size={14} /> รับปันผล</button>
               <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('profit')}><TrendingUp size={14} /> บันทึกกำไร</button>
               <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('loss')}><TrendingDown size={14} /> บันทึกขาดทุน</button>
-              <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('rebalance')}><Sliders size={14} /> ± รีบาลานซ์</button>
+              <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('rebalance')}><Sliders size={14} /> + / - รีบาลานซ์</button>
             </div>
 
             <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', marginBottom: '14px', paddingBottom: '4px' }}>
@@ -2821,8 +2815,8 @@ export default function PortfolioApp() {
                           {['capital_add', 'profit', 'dividend'].includes(e.type) || (e.type === 'rebalance' && e.amount >= 0) ? '+' : '-'}฿{fmt(Math.abs(e.amount), 2)}
                         </span>
                         {!e.id.toString().startsWith('log_pnl_') && (
-                          <button style={{ background: 'transparent', border: '1px solid var(--divider)', borderRadius: '4px', padding: '3px 6px', color: 'var(--gold)', cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => deleteLedgerEntry(e.id)} title="ลบรายการ">
-                            <RotateCcw size={13} />
+                          <button style={{ background: 'transparent', border: '1px solid var(--muted)', cursor: 'pointer', padding: '2px' }} onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type] || e.type)} title="ลบรายการ">
+                            <Trash2 size={13} />
                           </button>
                         )}
                       </div>
