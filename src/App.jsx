@@ -749,23 +749,21 @@ export default function PortfolioApp() {
         const subtotal = addQty * addPrice;
         const customFx = form.tradeFx && parseFloat(form.tradeFx) > 0 ? parseFloat(form.tradeFx) : fxRate;
 
-        let feeInAssetCurrency = 0;
-        let feeDisplayValue = feeInputVal;
+        let feeAmount = 0;
         if (isDirectFee) {
           if (currency === 'USD') {
-            feeInAssetCurrency = form.feeCurrency === 'THB' ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : feeInputVal;
-            feeDisplayValue = feeInAssetCurrency;
+            feeAmount = form.feeCurrency === 'THB' ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : feeInputVal;
           } else {
-            feeInAssetCurrency = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
-            feeDisplayValue = feeInAssetCurrency;
+            feeAmount = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
           }
         } else {
-          feeInAssetCurrency = (subtotal * feeInputVal) / 100;
-          feeDisplayValue = feeInAssetCurrency;
+          feeAmount = (subtotal * feeInputVal) / 100;
         }
 
         const totalCostBefore = currentQty * currentAvg;
         const newQty = currentQty + addQty;
+        // ปรับแก้: นำค่าธรรมเนียมมาบวกเข้ากับต้นทุนรวมของการซื้อเพิ่ม (โดยถ้าเป็น USD จะแปลงค่าธรรมเนียมเป็น USD ก่อนบวกเข้ากับ subtotal ในสกุล USD)
+        const feeInAssetCurrency = (currency === 'USD' && form.feeCurrency === 'THB') ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : (currency === 'THB' && form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal);
         const totalNewCost = totalCostBefore + subtotal + feeInAssetCurrency;
         currentAvg = newQty > 0 ? totalNewCost / newQty : 0;
         currentQty = newQty;
@@ -779,7 +777,7 @@ export default function PortfolioApp() {
           action: 'buy',
           quantity: addQty,
           price: addPrice,
-          fee: feeDisplayValue,
+          fee: feeAmount,
           currency: currency,
           tradeFx: customFx,
           date: form.tradeDate || todayStr(),
@@ -794,34 +792,25 @@ export default function PortfolioApp() {
           return;
         }
 
+        const subtotal = sellQty * sellPrice;
         const customFx = form.tradeFx && parseFloat(form.tradeFx) > 0 ? parseFloat(form.tradeFx) : fxRate;
 
-        // 1. แปลงค่าธรรมเนียมให้เป็นหน่วย "บาท (THB)" เสมอเพื่อให้ลบตรงกันทุกสกุลเงิน
-        let feeThb = 0;
-        let feeDisplayValue = feeInputVal;
+        let feeAmount = 0;
         if (isDirectFee) {
-          if (currency === 'USD' && instrumentType !== 'dr') {
-            feeThb = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
-            feeDisplayValue = form.feeCurrency === 'USD' ? feeInputVal : (customFx > 0 ? feeInputVal / customFx : feeInputVal);
+          if (currency === 'USD') {
+            feeAmount = form.feeCurrency === 'THB' ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : feeInputVal;
           } else {
-            feeThb = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
-            feeDisplayValue = feeThb;
+            feeAmount = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
           }
         } else {
-          const subtotalThb = sellQty * sellPrice * (currency === 'USD' ? customFx : 1);
-          feeThb = (subtotalThb * feeInputVal) / 100;
-          feeDisplayValue = feeThb;
+          feeAmount = (subtotal * feeInputVal) / 100;
         }
 
-        // 2. คำนวณกำไร/ขาดทุนดิบเป็น "บาท (THB)" โดยตรง: (ราคาขาย - ทุนเฉลี่ย) * จำนวนที่ขาย * เรต
-        const assetRate = (currency === 'USD' && instrumentType !== 'dr') ? customFx : 1;
-        const rawGainThb = (sellPrice - currentAvg) * sellQty * assetRate;
-
-        // 3. นำกำไร/ขาดทุนดิบที่เป็นบาท มาหักลบด้วย "ค่าธรรมเนียมที่เป็นบาท" โดยตรงทันที!
-        const netPnlThb = rawGainThb - feeThb;
-
-        // แปลงกลับเป็นสกุลเงินของสินทรัพย์ (ถ้าเป็น USD ก็หารด้วยเรต) เพื่อเก็บลง log
-        const pnlAssetCurrency = assetRate > 0 ? netPnlThb / assetRate : netPnlThb;
+        // ปรับแก้: นำค่าธรรมเนียม (ในสกุลเดียวกับสินทรัพย์) ไปหักออกจากยอดขาย (Net Proceeds) ก่อนคำนวณกำไร/ขาดทุน
+        const feeInAssetCurrency = (currency === 'USD' && form.feeCurrency === 'THB') ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : (currency === 'THB' && form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal);
+        const netProceeds = subtotal - feeInAssetCurrency;
+        const soldCost = sellQty * currentAvg;
+        const pnl = netProceeds - soldCost;
 
         currentQty = currentQty - sellQty;
 
@@ -834,8 +823,8 @@ export default function PortfolioApp() {
           action: 'sell',
           quantity: sellQty,
           price: sellPrice,
-          fee: feeDisplayValue,
-          pnl: pnlAssetCurrency,
+          fee: feeAmount,
+          pnl: pnl,
           currency: currency,
           tradeFx: customFx,
           date: form.tradeDate || todayStr(),
@@ -875,23 +864,21 @@ export default function PortfolioApp() {
       const subtotal = qty * avg;
       const customFx = form.tradeFx && parseFloat(form.tradeFx) > 0 ? parseFloat(form.tradeFx) : fxRate;
 
-      let feeInAssetCurrency = 0;
-      let feeDisplayValue = feeInputVal;
+      let feeAmount = 0;
       if (!isCash) {
         if (isDirectFee) {
           if (currency === 'USD') {
-            feeInAssetCurrency = form.feeCurrency === 'THB' ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : feeInputVal;
-            feeDisplayValue = feeInAssetCurrency;
+            feeAmount = form.feeCurrency === 'THB' ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : feeInputVal;
           } else {
-            feeInAssetCurrency = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
-            feeDisplayValue = feeInAssetCurrency;
+            feeAmount = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
           }
         } else {
-          feeInAssetCurrency = (subtotal * feeInputVal) / 100;
-          feeDisplayValue = feeInAssetCurrency;
+          feeAmount = (subtotal * feeInputVal) / 100;
         }
       }
 
+      // ปรับแก้: นำค่าธรรมเนียม (แปลงเป็นสกุลเงินสินทรัพย์) มารวมเข้ากับต้นทุนเริ่มต้น
+      const feeInAssetCurrency = (currency === 'USD' && form.feeCurrency === 'THB') ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : (currency === 'THB' && form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal);
       const totalInitialCost = subtotal + feeInAssetCurrency;
       const calculatedAvg = qty > 0 ? totalInitialCost / qty : avg;
 
@@ -919,7 +906,7 @@ export default function PortfolioApp() {
         action: 'buy',
         quantity: qty,
         price: avg,
-        fee: feeDisplayValue,
+        fee: feeInputVal, // เก็บค่าตามที่ผู้ใช้กรอกเพื่อแสดงผลในประวัติ
         currency: currency,
         tradeFx: customFx,
         date: form.tradeDate || todayStr(),
@@ -927,11 +914,11 @@ export default function PortfolioApp() {
       }, ...tradeLogs];
 
       let newLedger = [...ledger];
-      if (currency !== 'USD' && feeInAssetCurrency > 0 && form.type !== 'crypto') {
+      if (currency !== 'USD' && feeAmount > 0 && form.type !== 'crypto') {
         newLedger.push({
           id: Date.now().toString() + '_fee',
           type: 'loss',
-          amount: feeInAssetCurrency,
+          amount: feeAmount,
           date: form.tradeDate || todayStr(),
           note: `ค่าธรรมเนียมซื้อ ${name}`
         });
@@ -975,15 +962,9 @@ export default function PortfolioApp() {
         const sellPnl = parseFloat(log.pnl) || 0;
         const sellFee = parseFloat(log.fee) || 0;
         
-        const isUsd = log.currency === 'USD' && log.instrumentType !== 'dr';
-        const logFx = isUsd ? (parseFloat(log.tradeFx) || fxRate) : 1;
-        const netPnlThb = isUsd ? sellPnl * logFx : sellPnl;
-        const sellFeeThb = isUsd ? sellFee * logFx : sellFee;
-        const grossGainThb = netPnlThb + sellFeeThb;
-        
-        const totalSellValueThb = sellQty * sellPrice * logFx;
-        const originalTotalCostThb = totalSellValueThb - grossGainThb;
-        const restoredAvg = sellQty > 0 ? Math.max(0, (originalTotalCostThb / (isUsd ? logFx : 1)) / sellQty) : sellPrice;
+        const netProceeds = (sellQty * sellPrice) - sellFee;
+        const originalTotalCost = netProceeds - sellPnl;
+        const restoredAvg = sellQty > 0 ? Math.max(0, originalTotalCost / sellQty) : sellPrice;
 
         const restoredHolding = {
           id: log.assetId || Date.now().toString(),
@@ -2457,20 +2438,20 @@ export default function PortfolioApp() {
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   {holdings.length > 0 && (
-                    <button className="pf-btn pf-btn-primary" style={{ justifyContent: 'flex-start', padding: '14px', position: 'relative', zIndex: '50' }} onClick={openUpdatePrices}>
+                    <button className="pf-btn pf-btn-primary" style={{ justifyContent: 'flex-start', padding: '14px', position: 'relative', zIndex: 50 }} onClick={openUpdatePrices}>
                       <RefreshCw size={16} /> อัปเดตราคาวันนี้ (ราคาตลาด)
                     </button>
                   )}
-                  <button className="pf-btn pf-btn-ghost" style={{ justifyContent: 'flex-start', padding: '14px', position: 'relative', zIndex: '50' }} onClick={() => { setBackendDraft(backendUrl); setFxDraft(String(fxRate)); setPanel('settings'); }}>
+                  <button className="pf-btn pf-btn-ghost" style={{ justifyContent: 'flex-start', padding: '14px', position: 'relative', zIndex: 50 }} onClick={() => { setBackendDraft(backendUrl); setFxDraft(String(fxRate)); setPanel('settings'); }}>
                     ⚙️ ตั้งค่า API Endpoint และอัตราแลกเปลี่ยน
                   </button>
-                  <button className="pf-btn pf-btn-ghost" style={{ justifyContent: 'flex-start', padding: '14px', position: 'relative', zIndex: '50' }} onClick={exportData}>
+                  <button className="pf-btn pf-btn-ghost" style={{ justifyContent: 'flex-start', padding: '14px', position: 'relative', zIndex: 50 }} onClick={exportData}>
                     📥 ส่งออกข้อมูล (สำรอง Backup JSON)
                   </button>
-                  <button className="pf-btn pf-btn-ghost" style={{ justifyContent: 'flex-start', padding: '14px', position: 'relative', zIndex: '50' }} onClick={triggerImport}>
+                  <button className="pf-btn pf-btn-ghost" style={{ justifyContent: 'flex-start', padding: '14px', position: 'relative', zIndex: 50 }} onClick={triggerImport}>
                     📤 นำเข้าข้อมูล (กู้คืน Restore JSON)
                   </button>
-                  <button className="pf-btn" style={{ justifyContent: 'flex-start', padding: '14px', background: 'rgba(252,165,165,0.1)', color: 'var(--neg)', border: '1px solid var(--neg)', position: 'relative', zIndex: '50' }} onClick={() => setConfirmClear(true)}>
+                  <button className="pf-btn" style={{ justifyContent: 'flex-start', padding: '14px', background: 'rgba(252,165,165,0.1)', color: 'var(--neg)', border: '1px solid var(--neg)', position: 'relative', zIndex: 50 }} onClick={() => setConfirmClear(true)}>
                     🗑️ ล้างข้อมูลทั้งหมดในพอร์ต
                   </button>
                 </div>
@@ -2849,8 +2830,8 @@ export default function PortfolioApp() {
                           {['capital_add', 'profit', 'dividend'].includes(e.type) || (e.type === 'rebalance' && e.amount >= 0) ? '+' : '-'}฿{fmt(Math.abs(e.amount), 2)}
                         </span>
                         {!e.id.toString().startsWith('log_pnl_') && (
-                          <button style={{ background: 'transparent', border: '1px solid var(--muted)', cursor: 'pointer', padding: '2px' }} onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type] || e.type)}>
-                            <Trash2 size={13} />
+                          <button style={{ background: 'transparent', border: '1px solid var(--divider)', borderRadius: '4px', padding: '3px 6px', color: 'var(--gold)', cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type] || e.type)} title="ลบรายการ">
+                            <RotateCcw size={13} />
                           </button>
                         )}
                       </div>
