@@ -21,12 +21,13 @@ const TICKER_HINT = {
 
 const LEDGER_LABELS = { capital_add: 'เพิ่มทุน', capital_reduce: 'ลดทุน', profit: 'กำไรจากการขาย', loss: 'ขาดทุนจากการขาย', dividend: 'ปันผล', rebalance: 'รีบาลานซ์' };
 
-// A. ฟังก์ชันระดับโมดูลสำหรับคำนวณเรทต้นทุน
 function getCostFx(assetId, tradeLogs, fxRate) {
-  const assetBuys = (tradeLogs || []).filter(l => l.assetId === assetId && l.action === 'buy');
-  if (assetBuys.length > 0 && assetBuys[0].tradeFx) {
-    return parseFloat(assetBuys[0].tradeFx) || fxRate;
-  }
+  try {
+    const assetBuys = (tradeLogs || []).filter(l => l && l.assetId === assetId && l.action === 'buy');
+    if (assetBuys.length > 0 && assetBuys[0].tradeFx) {
+      return parseFloat(assetBuys[0].tradeFx) || fxRate;
+    }
+  } catch (e) { /* ignore */ }
   return fxRate;
 }
 
@@ -84,7 +85,7 @@ function darken(hex, amt) {
 }
 
 function ExplodedPie3D({ data, rx = 88, depth = 20, explode = 7 }) {
-  const total = (data || []).reduce((s, d) => s + (d.value || 0), 0);
+  const total = (data || []).reduce((s, d) => s + (d?.value || 0), 0);
   const ry = rx * 0.55;
   const pad = explode + 12;
   const width = rx * 2 + pad * 2;
@@ -101,7 +102,7 @@ function ExplodedPie3D({ data, rx = 88, depth = 20, explode = 7 }) {
 
   let cursor = 0;
   const slices = data.map((d) => {
-    const val = Number(d.value) || 0;
+    const val = Number(d?.value) || 0;
     const frac = total > 0 ? val / total : 0;
     const a0 = cursor;
     const a1 = cursor + frac * Math.PI * 2;
@@ -417,52 +418,64 @@ export default function PortfolioApp() {
     try { await window.storage.set('cash-ledger', JSON.stringify(next), false); } catch (e) { /* ignore */ }
   };
 
-  const enriched = useMemo(() => (holdings || []).map((h) => {
-    const qty = parseFloat(h.quantity) || 0;
-    const avg = parseFloat(h.avgCost) || 0;
-    let price = parseFloat(h.currentPrice) || 0;
-    if (h.type === 'gold') { price = Math.max(0, price - 25); }
-    const currency = h.currency === 'USD' ? 'USD' : 'THB';
-    
-    const historicalRate = getCostFx(h.id, tradeLogs, fxRate);
+  const getEffectiveRate = (type, rate) => {
+    const r = parseFloat(rate) || 36.5;
+    if (type === 'foreign_stock' || type === 'gold') return Math.max(0, r - 0.05);
+    if (type === 'crypto') return Math.max(0, r - 0.1);
+    return r;
+  };
 
-    const isDr = h.instrumentType === 'dr';
-    const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h.type, fxRate) : 1;
-    const marketValue = qty * price * effRate;
-    const costValue = qty * avg * ((currency === 'USD' && !isDr) ? historicalRate : 1);
-    const gain = marketValue - costValue;
-    const gainPct = costValue > 0 ? (gain / costValue) * 100 : 0;
+  const enriched = useMemo(() => {
+    try {
+      return (holdings || []).map((h) => {
+        const qty = parseFloat(h?.quantity) || 0;
+        const avg = parseFloat(h?.avgCost) || 0;
+        let price = parseFloat(h?.currentPrice) || 0;
+        if (h?.type === 'gold') { price = Math.max(0, price - 25); }
+        const currency = h?.currency === 'USD' ? 'USD' : 'THB';
+        
+        const historicalRate = getCostFx(h?.id, tradeLogs, fxRate);
 
-    let effectiveType = h.type;
-    if (effectiveType === 'th_stock' && h.instrumentType === 'dr') {
-      effectiveType = 'foreign_stock';
+        const isDr = h?.instrumentType === 'dr';
+        const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h?.type, fxRate) : 1;
+        const marketValue = qty * price * effRate;
+        const costValue = qty * avg * ((currency === 'USD' && !isDr) ? historicalRate : 1);
+        const gain = marketValue - costValue;
+        const gainPct = costValue > 0 ? (gain / costValue) * 100 : 0;
+
+        let effectiveType = h?.type;
+        if (effectiveType === 'th_stock' && h?.instrumentType === 'dr') {
+          effectiveType = 'foreign_stock';
+        }
+        return { 
+          ...h, 
+          type: effectiveType, 
+          qty: isNaN(qty) ? 0 : qty, 
+          avg: isNaN(avg) ? 0 : avg, 
+          price: isNaN(price) ? 0 : price, 
+          currency, 
+          marketValue: isNaN(marketValue) ? 0 : marketValue, 
+          costValue: isNaN(costValue) ? 0 : costValue, 
+          gain: isNaN(gain) ? 0 : gain, 
+          gainPct: isNaN(gainPct) ? 0 : gainPct 
+        };
+      });
+    } catch (e) {
+      return [];
     }
-    return { 
-      ...h, 
-      type: effectiveType, 
-      qty: isNaN(qty) ? 0 : qty, 
-      avg: isNaN(avg) ? 0 : avg, 
-      price: isNaN(price) ? 0 : price, 
-      currency, 
-      marketValue: isNaN(marketValue) ? 0 : marketValue, 
-      costValue: isNaN(costValue) ? 0 : costValue, 
-      gain: isNaN(gain) ? 0 : gain, 
-      gainPct: isNaN(gainPct) ? 0 : gainPct 
-    };
-  }), [holdings, fxRate, tradeLogs]);
+  }, [holdings, fxRate, tradeLogs]);
 
   const totalInvestedValue = useMemo(() => enriched.filter((h) => h.type !== 'cash').reduce((s, h) => s + (h.marketValue || 0), 0), [enriched]);
   const totalInvestedCost = useMemo(() => enriched.filter((h) => h.type !== 'cash').reduce((s, h) => s + (h.costValue || 0), 0), [enriched]);
 
-  const capitalAddTotal = useMemo(() => (ledger || []).filter((e) => e.type === 'capital_add').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0), [ledger]);
-  const capitalReduceTotal = useMemo(() => (ledger || []).filter((e) => e.type === 'capital_reduce').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0), [ledger]);
+  const capitalAddTotal = useMemo(() => (ledger || []).filter((e) => e && e.type === 'capital_add').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0), [ledger]);
+  const capitalReduceTotal = useMemo(() => (ledger || []).filter((e) => e && e.type === 'capital_reduce').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0), [ledger]);
   const capitalAdjTotal = useMemo(() => capitalAddTotal - capitalReduceTotal, [capitalAddTotal, capitalReduceTotal]);
 
   const combinedLedger = useMemo(() => {
     let list = Array.isArray(ledger) ? [...ledger] : [];
     (tradeLogs || []).forEach((log) => {
-      if (log.action === 'sell' && (log.pnlThb !== undefined || log.pnl !== undefined)) {
-        // C. ใช้ log.pnlThb ถ้ามี ถ้าไม่มีใช้สูตรเดิมรองรับ log เก่า
+      if (log && log.action === 'sell' && (log.pnlThb !== undefined || log.pnl !== undefined)) {
         let pnlThb = 0;
         if (log.pnlThb !== undefined) {
           pnlThb = parseFloat(log.pnlThb) || 0;
@@ -512,7 +525,7 @@ export default function PortfolioApp() {
   const realizedPnLByType = useMemo(() => {
     const pnlMap = { th_stock: 0, foreign_stock: 0, fund: 0, gold: 0, crypto: 0, other: 0 };
     (tradeLogs || []).forEach((log) => {
-      if (log.action === 'sell' && (log.pnlThb !== undefined || log.pnl !== undefined)) {
+      if (log && log.action === 'sell' && (log.pnlThb !== undefined || log.pnl !== undefined)) {
         const t = log.assetType || 'th_stock';
         let pnlThb = 0;
         if (log.pnlThb !== undefined) {
@@ -808,7 +821,6 @@ export default function PortfolioApp() {
         const isUsd = currency === 'USD' && instrumentType !== 'dr';
         const saleFx = form.tradeFx && parseFloat(form.tradeFx) > 0 ? parseFloat(form.tradeFx) : (isUsd ? getEffectiveRate(form.type, fxRate) : 1);
 
-        // ค่าธรรมเนียมบาท
         let feeThb = 0;
         let feeDisplayValue = feeInputVal;
         if (isDirectFee) {
@@ -825,7 +837,6 @@ export default function PortfolioApp() {
           feeDisplayValue = feeThb;
         }
 
-        // รายรับบาท และ ต้นทุนบาท
         const saleValueThb = sellQty * sellPrice * (isUsd ? saleFx : 1);
         const costValueThb = sellQty * currentAvg * (isUsd ? getCostFx(target.id, tradeLogs, fxRate) : 1);
         
@@ -845,7 +856,7 @@ export default function PortfolioApp() {
           price: sellPrice,
           fee: feeDisplayValue,
           pnl: pnlAssetCurrency,
-          pnlThb: netPnlThb, // บันทึกฟิลด์ pnlThb ตามข้อ B
+          pnlThb: netPnlThb,
           currency: currency,
           tradeFx: customFx,
           date: form.tradeDate || todayStr(),
@@ -988,7 +999,7 @@ export default function PortfolioApp() {
         
         const isUsd = log.currency === 'USD' && log.instrumentType !== 'dr';
         const logFx = isUsd ? (parseFloat(log.tradeFx) || fxRate) : 1;
-        const netPnlThb = isUsd ? sellPnl * logFx : sellPnl;
+        const netPnlThb = log.pnlThb !== undefined ? log.pnlThb : (isUsd ? sellPnl * logFx : sellPnl);
         const sellFeeThb = isUsd ? sellFee * logFx : sellFee;
         const grossGainThb = netPnlThb + sellFeeThb;
         
@@ -1337,39 +1348,6 @@ export default function PortfolioApp() {
     }
     return list;
   }, [tradeLogs, tradeFilterType, tradeStartDate, tradeEndDate, tradeSearchQuery]);
-
-  const totalFilteredFee = useMemo(() => {
-    return filteredTradeLogs.reduce((sum, log) => {
-      const logFx = (log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (log.tradeFx ? parseFloat(log.tradeFx) : fxRate) : 1;
-      const feeThb = (log.currency === 'USD' || log.assetType === 'foreign_stock') ? ((parseFloat(log.fee) || 0) * logFx) : (parseFloat(log.fee) || 0);
-      return sum + feeThb;
-    }, 0);
-  }, [filteredTradeLogs, fxRate]);
-
-  const searchFilteredAssetPnL = useMemo(() => {
-    const q = tradeSearchQuery.trim().toLowerCase();
-    if (!q) return null;
-    const matchingLogs = tradeLogs.filter((log) => (log.assetName || '').toLowerCase().includes(q));
-    if (matchingLogs.length === 0) return null;
-    let totalPnlThb = 0;
-    matchingLogs.forEach(l => {
-      // C. รองรับ pnlThb
-      let pnlThb = 0;
-      if (l.pnlThb !== undefined) {
-        pnlThb = parseFloat(l.pnlThb) || 0;
-      } else {
-        const logFx = (l.currency === 'USD' && l.assetType !== 'th_stock' && l.instrumentType !== 'dr') ? (l.tradeFx ? parseFloat(l.tradeFx) : fxRate) : 1;
-        const pnlVal = l.pnl || 0;
-        const isUsd = l.currency === 'USD' || l.assetType === 'foreign_stock';
-        pnlThb = isUsd ? (pnlVal * logFx) : pnlVal;
-      }
-      totalPnlThb += pnlThb;
-    });
-    const assetName = matchingLogs[0].assetName;
-    return { name: assetName, pnl: totalPnlThb, count: matchingLogs.length };
-  }, [tradeLogs, fxRate, tradeSearchQuery]);
-
-  const isDirectFeeType = ['foreign_stock', 'gold', 'crypto'].includes(form.type) || ['dr', 'etf'].includes(form.instrumentType);
 
   return (
     <div className="pf-root">
@@ -2965,7 +2943,6 @@ export default function PortfolioApp() {
                   const displayPrice = isUsdAsset ? (log.price * logFx) : log.price;
                   const displayFee = isUsdAsset ? ((log.fee || 0) * logFx) : (log.fee || 0);
                   
-                  // C. ใช้ log.pnlThb ถ้ามีเพื่อแสดงผลหน้าประวัติให้ตรงเป๊ะ
                   let displayPnl = undefined;
                   if (!isBuy) {
                     if (log.pnlThb !== undefined) {
