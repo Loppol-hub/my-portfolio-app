@@ -722,6 +722,7 @@ export default function PortfolioApp() {
     const currency = form.currency === 'USD' ? 'USD' : 'THB';
     const industry = form.industry.trim();
     const instrumentType = (form.type === 'th_stock' || form.type === 'foreign_stock') ? (form.instrumentType || 'stock') : 'stock';
+    const isDirectFee = ['foreign_stock', 'gold', 'crypto'].includes(form.type) || ['dr', 'etf'].includes(instrumentType);
 
     if (editingId) {
       const target = holdings.find((h) => h.id === editingId);
@@ -736,13 +737,13 @@ export default function PortfolioApp() {
       if (form.tradeAction === 'buy') {
         const addQty = parseFloat(form.tradeQty);
         const addPrice = parseFloat(form.tradePrice);
-        const feePct = parseFloat(form.feePct) || 0;
+        const feeInputVal = parseFloat(form.feePct) || 0;
         if (isNaN(addQty) || addQty <= 0 || isNaN(addPrice) || addPrice < 0) {
           setFormError('กรอกจำนวนและราคาซื้อเพิ่มให้ถูกต้อง');
           return;
         }
         const subtotal = addQty * addPrice;
-        const feeAmount = (subtotal * feePct) / 100;
+        const feeAmount = isDirectFee ? feeInputVal : (subtotal * feeInputVal) / 100;
         const totalCostBefore = currentQty * currentAvg;
         const newQty = currentQty + addQty;
         const totalNewCost = totalCostBefore + subtotal + feeAmount;
@@ -768,14 +769,14 @@ export default function PortfolioApp() {
       } else if (form.tradeAction === 'sell') {
         const sellQty = parseFloat(form.tradeQty);
         const sellPrice = parseFloat(form.tradePrice);
-        const feePct = parseFloat(form.feePct) || 0;
+        const feeInputVal = parseFloat(form.feePct) || 0;
         if (isNaN(sellQty) || sellQty <= 0 || sellQty > currentQty || isNaN(sellPrice) || sellPrice < 0) {
           setFormError('จำนวนหรือราคาขายไม่ถูกต้อง (ห้ามขายเกินจำนวนที่มี)');
           return;
         }
 
         const subtotal = sellQty * sellPrice;
-        const feeAmount = (subtotal * feePct) / 100;
+        const feeAmount = isDirectFee ? feeInputVal : (subtotal * feeInputVal) / 100;
         const netProceeds = subtotal - feeAmount;
         const soldCost = sellQty * currentAvg;
         const pnl = netProceeds - soldCost;
@@ -825,13 +826,13 @@ export default function PortfolioApp() {
       const qty = parseFloat(form.quantity);
       const avg = isCash ? 1 : parseFloat(form.avgCost);
       const price = isCash ? 1 : parseFloat(form.currentPrice);
-      const feePct = parseFloat(form.feePct) || 0;
+      const feeInputVal = parseFloat(form.feePct) || 0;
       if (isNaN(qty) || qty <= 0) { setFormError(isCash ? 'จำนวนเงินต้องมากกว่า 0' : 'จำนวนต้องเป็นตัวเลขมากกว่า 0'); return; }
       if (!isCash && (isNaN(avg) || avg < 0)) { setFormError('ราคาต้นทุนไม่ถูกต้อง'); return; }
       if (!isCash && (isNaN(price) || price < 0)) { setFormError('ราคาปัจจุบันไม่ถูกต้อง'); return; }
 
       const subtotal = qty * avg;
-      const feeAmount = !isCash ? (subtotal * feePct) / 100 : 0;
+      const feeAmount = !isCash ? (isDirectFee ? feeInputVal : (subtotal * feeInputVal) / 100) : 0;
       const customFx = form.tradeFx && parseFloat(form.tradeFx) > 0 ? parseFloat(form.tradeFx) : fxRate;
 
       const newId = Date.now().toString();
@@ -1659,7 +1660,7 @@ export default function PortfolioApp() {
                       <div className="pf-type-section-head">
                         <div onClick={() => toggleChartMode(t.key)} className="pf-pie-tap" role="button" tabIndex={0}>
                           <ExplodedPie3D data={chartData} rx={62} depth={14} explode={5} />
-                          <div className="pf-pie-tap-hint">{viewMode === 'industry' ? 'แตะดูรายตัว' : 'แตะดูอุตสาหกรรม'}</div>
+                          <div className="pf-pie-tap-hint">จำนวน {typeHoldings.length} รายการ</div>
                         </div>
                         <div className="pf-type-section-info">
                           <div className="pf-type-section-title"><span className="pf-dot" style={{ background: t.color }} />{t.label}</div>
@@ -1855,7 +1856,7 @@ export default function PortfolioApp() {
                       <div className="pf-type-section-head">
                         <div onClick={() => toggleChartMode(t.key)} className="pf-pie-tap" role="button" tabIndex={0}>
                           <ExplodedPie3D data={chartData} rx={62} depth={14} explode={5} />
-                          <div className="pf-pie-tap-hint">{viewMode === 'industry' ? 'แตะดูรายตัว' : 'แตะดูอุตสาหกรรม'}</div>
+                          <div className="pf-pie-tap-hint">จำนวน {typeHoldings.length} รายการ</div>
                         </div>
                         <div className="pf-type-section-info">
                           <div className="pf-type-section-title"><span className="pf-dot pf-foreign-glow" style={{ background: t.color }} />{t.label}</div>
@@ -2480,8 +2481,8 @@ export default function PortfolioApp() {
 
                     <div className="pf-row2" style={{ marginBottom: '10px' }}>
                       <div>
-                        <label className="pf-label">ค่าธรรมเนียม (%)</label>
-                        <input className="pf-input pf-mono" inputMode="decimal" value={form.feePct} onChange={(e) => setForm({ ...form, feePct: e.target.value })} placeholder="0.15" />
+                        <label className="pf-label">ค่าธรรมเนียม {(['foreign_stock', 'gold', 'crypto'].includes(form.type) || ['dr', 'etf'].includes(form.instrumentType)) ? `(${form.currency === 'USD' ? 'USD' : 'บาท'})` : '(%)'}</label>
+                        <input className="pf-input pf-mono" inputMode="decimal" value={form.feePct} onChange={(e) => setForm({ ...form, feePct: e.target.value })} placeholder={(['foreign_stock', 'gold', 'crypto'].includes(form.type) || ['dr', 'etf'].includes(form.instrumentType)) ? '0.00' : '0.15'} />
                       </div>
                       <div>
                         <label className="pf-label">วันที่ทำรายการ</label>
@@ -2568,8 +2569,8 @@ export default function PortfolioApp() {
                   <>
                     <div className="pf-row2">
                       <div className="pf-field">
-                        <label className="pf-label">ค่าธรรมเนียม (%)</label>
-                        <input className="pf-input pf-mono" inputMode="decimal" value={form.feePct} onChange={(e) => setForm({ ...form, feePct: e.target.value })} placeholder="0.15" />
+                        <label className="pf-label">ค่าธรรมเนียม {(['foreign_stock', 'gold', 'crypto'].includes(form.type) || ['dr', 'etf'].includes(form.instrumentType)) ? `(${form.currency === 'USD' ? 'USD' : 'บาท'})` : '(%)'}</label>
+                        <input className="pf-input pf-mono" inputMode="decimal" value={form.feePct} onChange={(e) => setForm({ ...form, feePct: e.target.value })} placeholder={(['foreign_stock', 'gold', 'crypto'].includes(form.type) || ['dr', 'etf'].includes(form.instrumentType)) ? '0.00' : '0.15'} />
                       </div>
                       <div className="pf-field">
                         <label className="pf-label">วันที่ทำรายการ</label>
@@ -2907,6 +2908,7 @@ export default function PortfolioApp() {
                       <div className="pf-row-meta pf-mono" style={{ margin: 0, fontSize: '12px' }}>
                         <span>จำนวน <b>{fmt(log.quantity, 2, log.assetType === 'crypto')}</b></span>
                         <span>ราคา <b>฿{fmt(displayPrice, 2, log.assetType === 'crypto')}</b> {isUsdAsset && <span style={{ fontSize: '10px', opacity: 0.6 }}>(${fmt(log.price, 2, log.assetType === 'crypto')})</span>}</span>
+                        {log.note && <span style={{ color: 'var(--muted)' }}>({log.note})</span>}
                         {displayFee > 0 && <span>ค่าธรรมเนียม <b>฿{fmt(displayFee, 2)}</b></span>}
                       </div>
                       {!isBuy && displayPnl !== undefined && (
