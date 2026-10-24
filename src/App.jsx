@@ -751,7 +751,7 @@ export default function PortfolioApp() {
 
         let feeAmount = 0;
         if (isDirectFee) {
-          if (currency === 'USD' && instrumentType !== 'dr') {
+          if (currency === 'USD') {
             feeAmount = form.feeCurrency === 'THB' ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : feeInputVal;
           } else {
             feeAmount = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
@@ -762,7 +762,9 @@ export default function PortfolioApp() {
 
         const totalCostBefore = currentQty * currentAvg;
         const newQty = currentQty + addQty;
-        const totalNewCost = totalCostBefore + subtotal + feeAmount;
+        // ปรับแก้: นำค่าธรรมเนียมมาบวกเข้ากับต้นทุนรวมของการซื้อเพิ่ม (โดยถ้าเป็น USD จะแปลงค่าธรรมเนียมเป็น USD ก่อนบวกเข้ากับ subtotal ในสกุล USD)
+        const feeInAssetCurrency = (currency === 'USD' && form.feeCurrency === 'THB') ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : (currency === 'THB' && form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal);
+        const totalNewCost = totalCostBefore + subtotal + feeInAssetCurrency;
         currentAvg = newQty > 0 ? totalNewCost / newQty : 0;
         currentQty = newQty;
 
@@ -795,7 +797,7 @@ export default function PortfolioApp() {
 
         let feeAmount = 0;
         if (isDirectFee) {
-          if (currency === 'USD' && instrumentType !== 'dr') {
+          if (currency === 'USD') {
             feeAmount = form.feeCurrency === 'THB' ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : feeInputVal;
           } else {
             feeAmount = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
@@ -804,7 +806,9 @@ export default function PortfolioApp() {
           feeAmount = (subtotal * feeInputVal) / 100;
         }
 
-        const netProceeds = subtotal - feeAmount;
+        // ปรับแก้: นำค่าธรรมเนียม (ในสกุลเดียวกับสินทรัพย์) ไปหักออกจากยอดขาย (Net Proceeds) ก่อนคำนวณกำไร/ขาดทุน
+        const feeInAssetCurrency = (currency === 'USD' && form.feeCurrency === 'THB') ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : (currency === 'THB' && form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal);
+        const netProceeds = subtotal - feeInAssetCurrency;
         const soldCost = sellQty * currentAvg;
         const pnl = netProceeds - soldCost;
 
@@ -863,7 +867,7 @@ export default function PortfolioApp() {
       let feeAmount = 0;
       if (!isCash) {
         if (isDirectFee) {
-          if (currency === 'USD' && instrumentType !== 'dr') {
+          if (currency === 'USD') {
             feeAmount = form.feeCurrency === 'THB' ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : feeInputVal;
           } else {
             feeAmount = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
@@ -873,7 +877,9 @@ export default function PortfolioApp() {
         }
       }
 
-      const totalInitialCost = subtotal + feeAmount;
+      // ปรับแก้: นำค่าธรรมเนียม (แปลงเป็นสกุลเงินสินทรัพย์) มารวมเข้ากับต้นทุนเริ่มต้น
+      const feeInAssetCurrency = (currency === 'USD' && form.feeCurrency === 'THB') ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : (currency === 'THB' && form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal);
+      const totalInitialCost = subtotal + feeInAssetCurrency;
       const calculatedAvg = qty > 0 ? totalInitialCost / qty : avg;
 
       const newId = Date.now().toString();
@@ -900,7 +906,7 @@ export default function PortfolioApp() {
         action: 'buy',
         quantity: qty,
         price: avg,
-        fee: feeAmount,
+        fee: feeInputVal, // เก็บค่าตามที่ผู้ใช้กรอกเพื่อแสดงผลในประวัติ
         currency: currency,
         tradeFx: customFx,
         date: form.tradeDate || todayStr(),
@@ -908,7 +914,6 @@ export default function PortfolioApp() {
       }, ...tradeLogs];
 
       let newLedger = [...ledger];
-      // คริปโต (crypto) ไม่สร้างรายการแยกค่าธรรมเนียมซื้อ เพราะรวมเข้ากับต้นทุนไปแล้ว
       if (currency !== 'USD' && feeAmount > 0 && form.type !== 'crypto') {
         newLedger.push({
           id: Date.now().toString() + '_fee',
@@ -1967,14 +1972,14 @@ export default function PortfolioApp() {
                                 </div>
                                 <div className="pf-row-meta pf-mono">
                                   <span>จำนวน <b>{fmt(h.qty, 2, isCrypto)}</b></span>
-                                  <span>ทุนเฉลี่ย <b>{h.currency === 'USD' && h.instrumentType !== 'dr' ? '$' : '฿'}{fmt(h.avg, 2, isCrypto)}</b></span>
+                                  <span>ทุนเฉลี่ย <b>${fmt(h.avg, 2, isCrypto)}</b></span>
                                 </div>
                                 <div className="pf-row-meta pf-mono">
-                                  <span>ราคาล่าสุด <b style={{ color: 'var(--gold)' }}>{h.currency === 'USD' && h.instrumentType !== 'dr' ? '$' : '฿'}{fmt(h.price, 2, isCrypto)}</b></span>
+                                  <span>ราคาล่าสุด <b style={{ color: 'var(--gold)' }}>${fmt(h.price, 2, isCrypto)}</b></span>
                                   <span>ต้นทุนรวม <b>฿{fmt(h.costValue, 2)}</b></span>
                                 </div>
                                 <div className="pf-row-meta pf-mono">
-                                  <span>มูลค่า <b className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>฿{fmt(h.marketValue, 2)}</b> {h.currency === 'USD' && h.instrumentType !== 'dr' && <span style={{ fontSize: '11px', opacity: 0.7 }}>(${fmt(h.qty * h.price, 2)})</span>}</span>
+                                  <span>มูลค่า <b className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>฿{fmt(h.marketValue, 2)}</b> <span style={{ fontSize: '11px', opacity: 0.7 }}>(${fmt(h.qty * h.price, 2)})</span></span>
                                   <span className={h.gain >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}>
                                     {h.gain >= 0 ? '+' : ''}{fmt(h.gain, 2)} ({h.gain >= 0 ? '+' : ''}{fmt(h.gainPct, 2)}%)
                                   </span>
@@ -1995,7 +2000,7 @@ export default function PortfolioApp() {
                                       <div key={idx} style={{ background: 'var(--surface-alt)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '6px 8px', fontSize: '11.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="pf-mono">
                                         <span style={{ color: 'var(--gold)', minWidth: '85px' }}>{thaiDateAD(lot.date)} <span style={{ color: 'var(--muted)', fontSize: '10px' }}>({lot.days}ว)</span></span>
                                         <span style={{ textAlign: 'center', flex: 1 }}><b>{fmt(lot.qty, 2, isCrypto)}</b></span>
-                                        <span style={{ textAlign: 'right', flex: 1 }}><b>{lot.currency === 'USD' && h.instrumentType !== 'dr' ? '$' : '฿'}{fmt(lot.price, 2)}</b></span>
+                                        <span style={{ textAlign: 'right', flex: 1 }}><b>${fmt(lot.price, 2)}</b></span>
                                         <span className={lot.gainPct >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'} style={{ fontWeight: '600', textAlign: 'right', minWidth: '70px' }}>
                                           {lot.gainPct >= 0 ? '+' : ''}{fmt(lot.gainPct, 2)}%
                                         </span>
@@ -2371,10 +2376,10 @@ export default function PortfolioApp() {
                                   </div>
                                   <div className="pf-row-meta pf-mono">
                                     <span>จำนวน <b>{fmt(h.qty, 2, isCrypto)}</b></span>
-                                    <span>ทุนเฉลี่ย <b>{h.currency === 'USD' && h.instrumentType !== 'dr' ? '$' : '฿'}{fmt(h.avg, 2, isCrypto)}</b></span>
+                                    <span>ทุนเฉลี่ย <b>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.avg, 2, isCrypto)}</b></span>
                                   </div>
                                   <div className="pf-row-meta pf-mono">
-                                    <span>ราคาล่าสุด <b style={{ color: 'var(--gold)' }}>{h.currency === 'USD' && h.instrumentType !== 'dr' ? '$' : '฿'}{fmt(h.price, 2, isCrypto)}</b></span>
+                                    <span>ราคาล่าสุด <b style={{ color: 'var(--gold)' }}>{h.currency === 'USD' ? '$' : '฿'}{fmt(h.price, 2, isCrypto)}</b></span>
                                     <span>ต้นทุนรวม <b>฿{fmt(h.costValue, 2)}</b></span>
                                   </div>
                                   <div className="pf-row-meta pf-mono">
@@ -2399,7 +2404,7 @@ export default function PortfolioApp() {
                                         <div key={idx} style={{ background: 'var(--surface-alt)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '6px 8px', fontSize: '11.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="pf-mono">
                                           <span style={{ color: 'var(--gold)', minWidth: '85px' }}>{thaiDateAD(lot.date)} <span style={{ color: 'var(--muted)', fontSize: '10px' }}>({lot.days}ว)</span></span>
                                           <span style={{ textAlign: 'center', flex: 1 }}><b>{fmt(lot.qty, 2, isCrypto)}</b></span>
-                                          <span style={{ textAlign: 'right', flex: 1 }}><b>{lot.currency === 'USD' && h.instrumentType !== 'dr' ? '$' : '฿'}{fmt(lot.price, 2)}</b></span>
+                                          <span style={{ textAlign: 'right', flex: 1 }}><b>{fmt(lot.price, 2)}</b></span>
                                           <span className={lot.gainPct >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'} style={{ fontWeight: '600', textAlign: 'right', minWidth: '70px' }}>
                                             {lot.gainPct >= 0 ? '+' : ''}{fmt(lot.gainPct, 2)}%
                                           </span>
@@ -2825,8 +2830,8 @@ export default function PortfolioApp() {
                           {['capital_add', 'profit', 'dividend'].includes(e.type) || (e.type === 'rebalance' && e.amount >= 0) ? '+' : '-'}฿{fmt(Math.abs(e.amount), 2)}
                         </span>
                         {!e.id.toString().startsWith('log_pnl_') && (
-                          <button style={{ background: 'transparent', border: '1px solid var(--muted)', cursor: 'pointer', padding: '2px' }} onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type] || e.type)}>
-                            <Trash2 size={13} />
+                          <button style={{ background: 'transparent', border: '1px solid var(--divider)', borderRadius: '4px', padding: '3px 6px', color: 'var(--gold)', cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type] || e.type)} title="ลบรายการ">
+                            <RotateCcw size={13} />
                           </button>
                         )}
                       </div>
@@ -2985,7 +2990,7 @@ export default function PortfolioApp() {
                         <span>จำนวน <b>{fmt(log.quantity, 2, log.assetType === 'crypto')}</b></span>
                         <span>ราคา <b>{isUsdAsset ? '$' : '฿'}{fmt(log.price, 2, log.assetType === 'crypto')}</b> {isUsdAsset && <span style={{ fontSize: '10px', opacity: 0.6 }}>(฿{fmt(displayPrice, 2)})</span>}</span>
                         {log.note && <span style={{ color: 'var(--muted)' }}>({log.note})</span>}
-                        {displayFee > 0 && <span>ค่าธรรมเนียม <b>{isUsdAsset ? '$' : '฿'}{fmt(log.fee, 2)}</b></span>}
+                        {displayFee > 0 && <span>ค่าธรรมเนียม <b>฿{fmt(displayFee, 2)}</b> {isUsdAsset && <span style={{ fontSize: '10px', opacity: 0.6 }}>(${fmt(log.fee, 2)})</span>}</span>}
                       </div>
                       {!isBuy && displayPnl !== undefined && (
                         <div style={{ marginTop: '4px', paddingTop: '4px', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', fontSize: '12px' }} className="pf-mono">
