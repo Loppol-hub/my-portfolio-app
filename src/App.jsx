@@ -749,7 +749,6 @@ export default function PortfolioApp() {
         const subtotal = addQty * addPrice;
         const customFx = form.tradeFx && parseFloat(form.tradeFx) > 0 ? parseFloat(form.tradeFx) : fxRate;
 
-        // แปลงค่าธรรมเนียมให้เป็นหน่วยเดียวกับสกุลเงินของสินทรัพย์
         let feeInAssetCurrency = 0;
         let feeDisplayValue = feeInputVal;
         if (isDirectFee) {
@@ -813,11 +812,10 @@ export default function PortfolioApp() {
           feeDisplayValue = feeInAssetCurrency;
         }
 
-        // สูตรที่ถูกต้อง: ขายได้เงิน (subtotal) - ค่าธรรมเนียม (feeInAssetCurrency) = เงินสุทธิที่ได้รับ
-        // กำไร/ขาดทุนสุทธิ (pnl) = เงินสุทธิที่ได้รับ - ต้นทุนของส่วนที่ขายไป (soldCost)
-        const soldCost = sellQty * currentAvg;
-        const grossPnl = subtotal - soldCost;
-        const netPnl = grossPnl - feeInAssetCurrency;
+        // คำนวณกำไรดิบก่อนหักค่าธรรมเนียม
+        const rawGrossGain = (sellPrice - currentAvg) * sellQty;
+        // นำกำไรดิบมาหักลบด้วยค่าธรรมเนียมโดยตรงตามที่คุณแนะนำ
+        const netPnl = rawGrossGain - feeInAssetCurrency;
 
         currentQty = currentQty - sellQty;
 
@@ -2447,20 +2445,20 @@ export default function PortfolioApp() {
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   {holdings.length > 0 && (
-                    <button className="pf-btn pf-btn-primary" style={{ justifyContent: 'flex-start', padding: '14px', position: 'relative', zIndex: 50 }} onClick={openUpdatePrices}>
+                    <button className="pf-btn pf-btn-primary" style={{ justifyContent: 'flex-start', padding: '14px', position: 'relative', zIndex: '50' }} onClick={openUpdatePrices}>
                       <RefreshCw size={16} /> อัปเดตราคาวันนี้ (ราคาตลาด)
                     </button>
                   )}
-                  <button className="pf-btn pf-btn-ghost" style={{ justifyContent: 'flex-start', padding: '14px', position: 'relative', zIndex: 50 }} onClick={() => { setBackendDraft(backendUrl); setFxDraft(String(fxRate)); setPanel('settings'); }}>
+                  <button className="pf-btn pf-btn-ghost" style={{ justifyContent: 'flex-start', padding: '14px', position: 'relative', zIndex: '50' }} onClick={() => { setBackendDraft(backendUrl); setFxDraft(String(fxRate)); setPanel('settings'); }}>
                     ⚙️ ตั้งค่า API Endpoint และอัตราแลกเปลี่ยน
                   </button>
-                  <button className="pf-btn pf-btn-ghost" style={{ justifyContent: 'flex-start', padding: '14px', position: 'relative', zIndex: 50 }} onClick={exportData}>
+                  <button className="pf-btn pf-btn-ghost" style={{ justifyContent: 'flex-start', padding: '14px', position: 'relative', zIndex: '50' }} onClick={exportData}>
                     📥 ส่งออกข้อมูล (สำรอง Backup JSON)
                   </button>
-                  <button className="pf-btn pf-btn-ghost" style={{ justifyContent: 'flex-start', padding: '14px', position: 'relative', zIndex: 50 }} onClick={triggerImport}>
+                  <button className="pf-btn pf-btn-ghost" style={{ justifyContent: 'flex-start', padding: '14px', position: 'relative', zIndex: '50' }} onClick={triggerImport}>
                     📤 นำเข้าข้อมูล (กู้คืน Restore JSON)
                   </button>
-                  <button className="pf-btn" style={{ justifyContent: 'flex-start', padding: '14px', background: 'rgba(252,165,165,0.1)', color: 'var(--neg)', border: '1px solid var(--neg)', position: 'relative', zIndex: 50 }} onClick={() => setConfirmClear(true)}>
+                  <button className="pf-btn" style={{ justifyContent: 'flex-start', padding: '14px', background: 'rgba(252,165,165,0.1)', color: 'var(--neg)', border: '1px solid var(--neg)', position: 'relative', zIndex: '50' }} onClick={() => setConfirmClear(true)}>
                     🗑️ ล้างข้อมูลทั้งหมดในพอร์ต
                   </button>
                 </div>
