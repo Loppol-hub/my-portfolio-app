@@ -185,7 +185,7 @@ const calcDaysAgo = (dateStr) => {
 
 const emptyForm = { 
   name: '', ticker: '', type: 'th_stock', quantity: '', avgCost: '', currentPrice: '', currency: 'THB', industry: '', instrumentType: 'stock',
-  feePct: '0.15', tradeDate: todayStr(), note: '',
+  feePct: '0', tradeDate: todayStr(), note: '',
   tradeAction: 'none', tradeQty: '', tradePrice: '', tradeFx: ''
 };
 
@@ -675,7 +675,7 @@ export default function PortfolioApp() {
   const openAdd = () => { 
     setForm({ 
       ...emptyForm, 
-      feePct: '0.15', 
+      feePct: '0', 
       tradeDate: todayStr(),
       note: '',
       tradeFx: ''
@@ -696,7 +696,7 @@ export default function PortfolioApp() {
       currency: h.currency === 'USD' ? 'USD' : 'THB', 
       industry: h.industry || '', 
       instrumentType: h.instrumentType || 'stock',
-      feePct: '0.15',
+      feePct: '0',
       tradeDate: todayStr(),
       note: '',
       tradeAction: 'none',
@@ -1742,7 +1742,7 @@ export default function PortfolioApp() {
                                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: 'var(--muted)', paddingBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: '6px' }} className="pf-mono">
                                     <span style={{ minWidth: '85px' }}>วันที่ซื้อ</span>
                                     <span style={{ textAlign: 'center', flex: 1 }}>จำนวน</span>
-                                    <span style={{ textAlign: 'right', flex: 1 }}>ต้นทุน/หุ้น</span>
+                                    <span style={{ textAlign: 'right', flex: 1 }}>ราคา/หน่วย</span>
                                     <span style={{ textAlign: 'right', minWidth: '70px' }}>กำไร/ขาดทุน</span>
                                   </div>
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1938,7 +1938,7 @@ export default function PortfolioApp() {
                                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: 'var(--muted)', paddingBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: '6px' }} className="pf-mono">
                                     <span style={{ minWidth: '85px' }}>วันที่ซื้อ</span>
                                     <span style={{ textAlign: 'center', flex: 1 }}>จำนวน</span>
-                                    <span style={{ textAlign: 'right', flex: 1 }}>ต้นทุน/หุ้น</span>
+                                    <span style={{ textAlign: 'right', flex: 1 }}>ราคา/หน่วย</span>
                                     <span style={{ textAlign: 'right', minWidth: '70px' }}>กำไร/ขาดทุน</span>
                                   </div>
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -2342,7 +2342,7 @@ export default function PortfolioApp() {
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: 'var(--muted)', paddingBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: '6px' }} className="pf-mono">
                                       <span style={{ minWidth: '85px' }}>วันที่ซื้อ</span>
                                       <span style={{ textAlign: 'center', flex: 1 }}>จำนวน</span>
-                                      <span style={{ textAlign: 'right', flex: 1 }}>ต้นทุน/หุ้น</span>
+                                      <span style={{ textAlign: 'right', flex: 1 }}>ราคา/หน่วย</span>
                                       <span style={{ textAlign: 'right', minWidth: '70px' }}>กำไร/ขาดทุน</span>
                                     </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -2481,8 +2481,8 @@ export default function PortfolioApp() {
 
                     <div className="pf-row2" style={{ marginBottom: '10px' }}>
                       <div>
-                        <label className="pf-label">ค่าธรรมเนียม {(['foreign_stock', 'gold', 'crypto'].includes(form.type) || ['dr', 'etf'].includes(form.instrumentType)) ? `(${form.currency === 'USD' ? 'USD' : 'บาท'})` : '(%)'}</label>
-                        <input className="pf-input pf-mono" inputMode="decimal" value={form.feePct} onChange={(e) => setForm({ ...form, feePct: e.target.value })} placeholder={(['foreign_stock', 'gold', 'crypto'].includes(form.type) || ['dr', 'etf'].includes(form.instrumentType)) ? '0.00' : '0.15'} />
+                        <label className="pf-label">ค่าธรรมเนียม ({form.currency === 'USD' ? 'USD' : 'บาท'})</label>
+                        <input className="pf-input pf-mono" inputMode="decimal" value={form.feePct} onChange={(e) => setForm({ ...form, feePct: e.target.value })} placeholder="0" />
                       </div>
                       <div>
                         <label className="pf-label">วันที่ทำรายการ</label>
@@ -2556,7 +2556,7 @@ export default function PortfolioApp() {
                     <input className="pf-input pf-mono" inputMode="decimal" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} placeholder="0" />
                   </div>
                   <div className="pf-field">
-                    <label className="pf-label">ราคาต้นทุนเฉลี่ย</label>
+                    <label className="pf-label">ราคาต่อหน่วย</label>
                     <input className="pf-input pf-mono" inputMode="decimal" value={form.avgCost} onChange={(e) => setForm({ ...form, avgCost: e.target.value })} placeholder="0.00" />
                   </div>
                 </div>
@@ -2569,8 +2569,8 @@ export default function PortfolioApp() {
                   <>
                     <div className="pf-row2">
                       <div className="pf-field">
-                        <label className="pf-label">ค่าธรรมเนียม {(['foreign_stock', 'gold', 'crypto'].includes(form.type) || ['dr', 'etf'].includes(form.instrumentType)) ? `(${form.currency === 'USD' ? 'USD' : 'บาท'})` : '(%)'}</label>
-                        <input className="pf-input pf-mono" inputMode="decimal" value={form.feePct} onChange={(e) => setForm({ ...form, feePct: e.target.value })} placeholder={(['foreign_stock', 'gold', 'crypto'].includes(form.type) || ['dr', 'etf'].includes(form.instrumentType)) ? '0.00' : '0.15'} />
+                        <label className="pf-label">ค่าธรรมเนียม ({form.currency === 'USD' ? 'USD' : 'บาท'})</label>
+                        <input className="pf-input pf-mono" inputMode="decimal" value={form.feePct} onChange={(e) => setForm({ ...form, feePct: e.target.value })} placeholder="0" />
                       </div>
                       <div className="pf-field">
                         <label className="pf-label">วันที่ทำรายการ</label>
