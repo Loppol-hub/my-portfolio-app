@@ -21,6 +21,7 @@ const TICKER_HINT = {
 
 const LEDGER_LABELS = { capital_add: 'เพิ่มทุน', capital_reduce: 'ลดทุน', profit: 'กำไรจากการขาย', loss: 'ขาดทุนจากการขาย', dividend: 'ปันผล', rebalance: 'รีบาลานซ์' };
 
+// A. ฟังก์ชันระดับโมดูลดึงเรทต้นทุน
 function getCostFx(assetId, tradeLogs, fxRate) {
   try {
     const assetBuys = (tradeLogs || []).filter(l => l && l.assetId === assetId && l.action === 'buy');
@@ -1373,6 +1374,56 @@ export default function PortfolioApp() {
     setConfirmClear(false);
     showToast('ล้างข้อมูลทั้งหมดแล้ว');
   };
+
+  const filteredTradeLogs = useMemo(() => {
+    let list = [...tradeLogs];
+    if (tradeFilterType !== 'all') {
+      list = list.filter((log) => log.assetType === tradeFilterType);
+    }
+    if (tradeStartDate) {
+      list = list.filter((log) => (log.date || '') >= tradeStartDate);
+    }
+    if (tradeEndDate) {
+      list = list.filter((log) => (log.date || '') <= tradeEndDate);
+    }
+    const q = tradeSearchQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter((log) => {
+        return (log.assetName || '').toLowerCase().includes(q) || (log.note || '').toLowerCase().includes(q);
+      });
+    }
+    return list;
+  }, [tradeLogs, tradeFilterType, tradeStartDate, tradeEndDate, tradeSearchQuery]);
+
+  const totalFilteredFee = useMemo(() => {
+    return filteredTradeLogs.reduce((sum, log) => {
+      const logFx = (log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (log.tradeFx ? parseFloat(log.tradeFx) : fxRate) : 1;
+      const feeThb = (log.currency === 'USD' || log.assetType === 'foreign_stock') ? ((parseFloat(log.fee) || 0) * logFx) : (parseFloat(log.fee) || 0);
+      return sum + feeThb;
+    }, 0);
+  }, [filteredTradeLogs, fxRate]);
+
+  const searchFilteredAssetPnL = useMemo(() => {
+    const q = tradeSearchQuery.trim().toLowerCase();
+    if (!q) return null;
+    const matchingLogs = tradeLogs.filter((log) => (log.assetName || '').toLowerCase().includes(q));
+    if (matchingLogs.length === 0) return null;
+    let totalPnlThb = 0;
+    matchingLogs.forEach(l => {
+      let pnlThb = 0;
+      if (l.pnlThb !== undefined) {
+        pnlThb = parseFloat(l.pnlThb) || 0;
+      } else {
+        const logFx = (l.currency === 'USD' && l.assetType !== 'th_stock' && l.instrumentType !== 'dr') ? (l.tradeFx ? parseFloat(l.tradeFx) : fxRate) : 1;
+        const pnlVal = l.pnl || 0;
+        const isUsd = l.currency === 'USD' || l.assetType === 'foreign_stock';
+        pnlThb = isUsd ? (pnlVal * logFx) : pnlVal;
+      }
+      totalPnlThb += pnlThb;
+    });
+    const assetName = matchingLogs[0].assetName;
+    return { name: assetName, pnl: totalPnlThb, count: matchingLogs.length };
+  }, [tradeLogs, fxRate, tradeSearchQuery]);
 
   return (
     <div className="pf-root">
