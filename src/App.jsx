@@ -794,28 +794,34 @@ export default function PortfolioApp() {
           return;
         }
 
-        const subtotal = sellQty * sellPrice;
         const customFx = form.tradeFx && parseFloat(form.tradeFx) > 0 ? parseFloat(form.tradeFx) : fxRate;
 
-        let feeInAssetCurrency = 0;
+        // 1. แปลงค่าธรรมเนียมให้เป็นหน่วย "บาท (THB)" เสมอเพื่อให้ลบตรงกันทุกสกุลเงิน
+        let feeThb = 0;
         let feeDisplayValue = feeInputVal;
         if (isDirectFee) {
-          if (currency === 'USD') {
-            feeInAssetCurrency = form.feeCurrency === 'THB' ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : feeInputVal;
-            feeDisplayValue = feeInAssetCurrency;
+          if (currency === 'USD' && instrumentType !== 'dr') {
+            feeThb = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
+            feeDisplayValue = form.feeCurrency === 'USD' ? feeInputVal : (customFx > 0 ? feeInputVal / customFx : feeInputVal);
           } else {
-            feeInAssetCurrency = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
-            feeDisplayValue = feeInAssetCurrency;
+            feeThb = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
+            feeDisplayValue = feeThb;
           }
         } else {
-          feeInAssetCurrency = (subtotal * feeInputVal) / 100;
-          feeDisplayValue = feeInAssetCurrency;
+          const subtotalThb = sellQty * sellPrice * (currency === 'USD' ? customFx : 1);
+          feeThb = (subtotalThb * feeInputVal) / 100;
+          feeDisplayValue = feeThb;
         }
 
-        // คำนวณกำไรดิบก่อนหักค่าธรรมเนียม
-        const rawGrossGain = (sellPrice - currentAvg) * sellQty;
-        // นำกำไรดิบมาหักลบด้วยค่าธรรมเนียมโดยตรงตามที่คุณแนะนำ
-        const netPnl = rawGrossGain - feeInAssetCurrency;
+        // 2. คำนวณกำไร/ขาดทุนดิบเป็น "บาท (THB)" โดยตรง: (ราคาขาย - ทุนเฉลี่ย) * จำนวนที่ขาย * เรต
+        const assetRate = (currency === 'USD' && instrumentType !== 'dr') ? customFx : 1;
+        const rawGainThb = (sellPrice - currentAvg) * sellQty * assetRate;
+
+        // 3. นำกำไร/ขาดทุนดิบที่เป็นบาท มาหักลบด้วย "ค่าธรรมเนียมที่เป็นบาท" โดยตรงทันที!
+        const netPnlThb = rawGainThb - feeThb;
+
+        // แปลงกลับเป็นสกุลเงินของสินทรัพย์ (ถ้าเป็น USD ก็หารด้วยเรต) เพื่อเก็บลง log
+        const pnlAssetCurrency = assetRate > 0 ? netPnlThb / assetRate : netPnlThb;
 
         currentQty = currentQty - sellQty;
 
@@ -829,7 +835,7 @@ export default function PortfolioApp() {
           quantity: sellQty,
           price: sellPrice,
           fee: feeDisplayValue,
-          pnl: netPnl,
+          pnl: pnlAssetCurrency,
           currency: currency,
           tradeFx: customFx,
           date: form.tradeDate || todayStr(),
@@ -969,9 +975,15 @@ export default function PortfolioApp() {
         const sellPnl = parseFloat(log.pnl) || 0;
         const sellFee = parseFloat(log.fee) || 0;
         
-        const netProceeds = (sellQty * sellPrice) - sellFee;
-        const originalTotalCost = netProceeds - sellPnl;
-        const restoredAvg = sellQty > 0 ? Math.max(0, originalTotalCost / sellQty) : sellPrice;
+        const isUsd = log.currency === 'USD' && log.instrumentType !== 'dr';
+        const logFx = isUsd ? (parseFloat(log.tradeFx) || fxRate) : 1;
+        const netPnlThb = isUsd ? sellPnl * logFx : sellPnl;
+        const sellFeeThb = isUsd ? sellFee * logFx : sellFee;
+        const grossGainThb = netPnlThb + sellFeeThb;
+        
+        const totalSellValueThb = sellQty * sellPrice * logFx;
+        const originalTotalCostThb = totalSellValueThb - grossGainThb;
+        const restoredAvg = sellQty > 0 ? Math.max(0, (originalTotalCostThb / (isUsd ? logFx : 1)) / sellQty) : sellPrice;
 
         const restoredHolding = {
           id: log.assetId || Date.now().toString(),
