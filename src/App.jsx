@@ -749,13 +749,13 @@ export default function PortfolioApp() {
         const subtotal = addQty * addPrice;
         const customFx = form.tradeFx && parseFloat(form.tradeFx) > 0 ? parseFloat(form.tradeFx) : fxRate;
 
-        // แปลงค่าธรรมเนียมให้เป็นหน่วยเดียวกับสกุลเงินของสินทรัพย์ (เช่น หุ้นนอกกรอกเป็นบาท แปลงเป็น USD เพื่อบวกเข้าต้นทุนสกุล USD)
+        // แปลงค่าธรรมเนียมให้เป็นหน่วยเดียวกับสกุลเงินของสินทรัพย์
         let feeInAssetCurrency = 0;
         let feeDisplayValue = feeInputVal;
         if (isDirectFee) {
           if (currency === 'USD') {
             feeInAssetCurrency = form.feeCurrency === 'THB' ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : feeInputVal;
-            feeDisplayValue = feeInAssetCurrency; // แสดงผลในประวัติเป็นสกุลของสินทรัพย์
+            feeDisplayValue = feeInAssetCurrency;
           } else {
             feeInAssetCurrency = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
             feeDisplayValue = feeInAssetCurrency;
@@ -813,9 +813,11 @@ export default function PortfolioApp() {
           feeDisplayValue = feeInAssetCurrency;
         }
 
-        const netProceeds = subtotal - feeInAssetCurrency;
+        // สูตรที่ถูกต้อง: ขายได้เงิน (subtotal) - ค่าธรรมเนียม (feeInAssetCurrency) = เงินสุทธิที่ได้รับ
+        // กำไร/ขาดทุนสุทธิ (pnl) = เงินสุทธิที่ได้รับ - ต้นทุนของส่วนที่ขายไป (soldCost)
         const soldCost = sellQty * currentAvg;
-        const pnl = netProceeds - soldCost;
+        const grossPnl = subtotal - soldCost;
+        const netPnl = grossPnl - feeInAssetCurrency;
 
         currentQty = currentQty - sellQty;
 
@@ -829,7 +831,7 @@ export default function PortfolioApp() {
           quantity: sellQty,
           price: sellPrice,
           fee: feeDisplayValue,
-          pnl: pnl,
+          pnl: netPnl,
           currency: currency,
           tradeFx: customFx,
           date: form.tradeDate || todayStr(),
