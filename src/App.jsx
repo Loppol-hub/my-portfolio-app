@@ -707,7 +707,6 @@ export default function PortfolioApp() {
   };
 
   const openEdit = (h) => {
-    // D. ทองคำ: ตอนกดปุ่มขาย ให้ช่องราคาเติม currentPrice - 25 ตรงกับราคาบนการ์ด
     const defaultSellPrice = h.type === 'gold' ? Math.max(0, (parseFloat(h.currentPrice) || 0) - 25) : (h.currentPrice || '');
 
     setForm({ 
@@ -737,6 +736,52 @@ export default function PortfolioApp() {
   const closePanel = () => { setPanel(null); setEditingId(null); setUpdateDraft({}); setLedgerSearchQuery(''); };
   const onFormTypeChange = (type) => {
     setForm((f) => ({ ...f, type, currency: editingId ? f.currency : typeInfo(type).defaultCurrency }));
+  };
+
+  const getAssetLots = (assetId, currentQty, currentPrice, assetCurrency, assetType, instrumentType) => {
+    try {
+      const logs = (tradeLogs || []).filter(l => l && l.assetId === assetId).sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
+      let lots = [];
+      logs.forEach(l => {
+        if (l && l.action === 'buy') {
+          lots.push({ date: l.date, qty: l.quantity, price: l.price, currency: l.currency, tradeFx: l.tradeFx });
+        } else if (l && l.action === 'sell') {
+          let remSell = l.quantity;
+          while (remSell > 0 && lots.length > 0) {
+            if (lots[0].qty <= remSell) {
+              remSell -= lots[0].qty;
+              lots.shift();
+            } else {
+              lots[0].qty -= remSell;
+              remSell = 0;
+            }
+          }
+        }
+      });
+      if (lots.length === 0) {
+        const targetHolding = holdings.find(h => h && h.id === assetId);
+        if (targetHolding) {
+          lots.push({
+            date: targetHolding.lastUpdated || todayStr(),
+            qty: targetHolding.quantity,
+            price: targetHolding.avgCost,
+            currency: targetHolding.currency,
+            tradeFx: fxRate
+          });
+        }
+      }
+      const isDr = instrumentType === 'dr';
+      return lots.map(lot => {
+        const days = calcDaysAgo(lot?.date);
+        const lotVal = (lot?.qty || 0) * currentPrice;
+        const lotCost = (lot?.qty || 0) * (lot?.price || 0) * (lot?.currency === 'USD' && !isDr ? (lot?.tradeFx || fxRate) : 1);
+        const lotGain = lotVal - lotCost;
+        const lotGainPct = lotCost > 0 ? (lotGain / lotCost) * 100 : 0;
+        return { ...lot, days, gainPct: lotGainPct, isUsd: assetCurrency === 'USD' && !isDr };
+      });
+    } catch (e) {
+      return [];
+    }
   };
 
   const submitForm = () => {
@@ -1328,26 +1373,6 @@ export default function PortfolioApp() {
     setConfirmClear(false);
     showToast('ล้างข้อมูลทั้งหมดแล้ว');
   };
-
-  const filteredTradeLogs = useMemo(() => {
-    let list = [...tradeLogs];
-    if (tradeFilterType !== 'all') {
-      list = list.filter((log) => log.assetType === tradeFilterType);
-    }
-    if (tradeStartDate) {
-      list = list.filter((log) => (log.date || '') >= tradeStartDate);
-    }
-    if (tradeEndDate) {
-      list = list.filter((log) => (log.date || '') <= tradeEndDate);
-    }
-    const q = tradeSearchQuery.trim().toLowerCase();
-    if (q) {
-      list = list.filter((log) => {
-        return (log.assetName || '').toLowerCase().includes(q) || (log.note || '').toLowerCase().includes(q);
-      });
-    }
-    return list;
-  }, [tradeLogs, tradeFilterType, tradeStartDate, tradeEndDate, tradeSearchQuery]);
 
   return (
     <div className="pf-root">
