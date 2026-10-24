@@ -280,6 +280,7 @@ export default function PortfolioApp() {
   const [ledger, setLedger] = useState([]);
   const [ledgerType, setLedgerType] = useState(null);
   const [ledgerAmount, setLedgerAmount] = useState('');
+  const [ledgerSign, setLedgerSign] = useState('+');
   const [ledgerError, setLedgerError] = useState('');
   const [ledgerNote, setLedgerNote] = useState('');
   const [ledgerDate, setLedgerDate] = useState('');
@@ -1230,7 +1231,7 @@ export default function PortfolioApp() {
   };
 
   const openLedgerForm = (type) => {
-    setLedgerType(type); setLedgerAmount(''); setLedgerNote(''); setLedgerDate(todayStr()); setLedgerError(''); setPanel('ledger');
+    setLedgerType(type); setLedgerAmount(''); setLedgerSign('+'); setLedgerNote(''); setLedgerDate(todayStr()); setLedgerError(''); setPanel('ledger');
   };
 
   const submitLedger = () => {
@@ -1239,7 +1240,8 @@ export default function PortfolioApp() {
 
     if (ledgerType === 'rebalance') {
       if (isNaN(amt)) { setLedgerError('กรอกจำนวนเงินให้ถูกต้อง'); return; }
-      const entry = { id: Date.now().toString(), type: 'rebalance', amount: amt, date: ledgerDate || todayStr(), note: ledgerNote.trim() || 'รีบาลานซ์เงินสด' };
+      const finalAmt = ledgerSign === '-' ? -Math.abs(amt) : Math.abs(amt);
+      const entry = { id: Date.now().toString(), type: 'rebalance', amount: finalAmt, date: ledgerDate || todayStr(), note: ledgerNote.trim() || 'รีบาลานซ์เงินสด' };
       saveLedger([...ledger, entry]);
       showToast('บันทึกรีบาลานซ์สำเร็จ');
       setPanel('cashManage');
@@ -2739,7 +2741,7 @@ export default function PortfolioApp() {
               <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('dividend')}><Gift size={14} /> รับปันผล</button>
               <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('profit')}><TrendingUp size={14} /> บันทึกกำไร</button>
               <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('loss')}><TrendingDown size={14} /> บันทึกขาดทุน</button>
-              <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('rebalance')}><Sliders size={14} /> + / - รีบาลานซ์</button>
+              <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('rebalance')}><Sliders size={14} /> รีบาลานซ์</button>
             </div>
 
             <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', marginBottom: '14px', paddingBottom: '4px' }}>
@@ -2815,8 +2817,8 @@ export default function PortfolioApp() {
                           {['capital_add', 'profit', 'dividend'].includes(e.type) || (e.type === 'rebalance' && e.amount >= 0) ? '+' : '-'}฿{fmt(Math.abs(e.amount), 2)}
                         </span>
                         {!e.id.toString().startsWith('log_pnl_') && (
-                          <button style={{ background: 'transparent', border: '1px solid var(--muted)', cursor: 'pointer', padding: '2px' }} onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type] || e.type)} title="ลบรายการ">
-                            <Trash2 size={13} />
+                          <button style={{ background: 'transparent', border: '1px solid var(--divider)', borderRadius: '4px', padding: '3px 6px', color: 'var(--gold)', cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type] || e.type)} title="ลบรายการ">
+                            <RotateCcw size={13} />
                           </button>
                         )}
                       </div>
@@ -2838,6 +2840,17 @@ export default function PortfolioApp() {
               <button className="pf-icon-btn" onClick={() => setPanel('cashManage')} aria-label="ปิด"><X size={16} /></button>
             </div>
             {ledgerError && <div className="pf-error">{ledgerError}</div>}
+            
+            {ledgerType === 'rebalance' && (
+              <div className="pf-field">
+                <label className="pf-label">เลือกประเภท (บวก / ลบ)</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button type="button" className={`pf-btn ${ledgerSign === '+' ? 'pf-btn-primary' : 'pf-btn-ghost'}`} style={{ flex: 1, padding: '8px', justifyContent: 'center' }} onClick={() => setLedgerSign('+')}>+ (เพิ่มเงินสด)</button>
+                  <button type="button" className={`pf-btn ${ledgerSign === '-' ? 'pf-btn-primary' : 'pf-btn-ghost'}`} style={{ flex: 1, padding: '8px', justifyContent: 'center' }} onClick={() => setLedgerSign('-')}>- (ลดเงินสด)</button>
+                </div>
+              </div>
+            )}
+
             <div className="pf-field">
               <label className="pf-label">จำนวนเงิน (บาท)</label>
               <input className="pf-input pf-mono" inputMode="decimal" value={ledgerAmount} onChange={(e) => setLedgerAmount(e.target.value)} placeholder="0.00" />
