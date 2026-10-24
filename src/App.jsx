@@ -875,7 +875,6 @@ export default function PortfolioApp() {
         }
       }
 
-      // [จุดที่แก้ไข] นำค่าธรรมเนียมมารวมคำนวณเข้ากับต้นทุนเฉลี่ยตอนเพิ่มครั้งแรก
       const totalInitialCost = subtotal + feeAmount;
       const calculatedAvg = qty > 0 ? totalInitialCost / qty : avg;
 
@@ -2746,7 +2745,7 @@ export default function PortfolioApp() {
               <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('dividend')}><Gift size={14} /> รับปันผล</button>
               <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('profit')}><TrendingUp size={14} /> บันทึกกำไร</button>
               <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('loss')}><TrendingDown size={14} /> บันทึกขาดทุน</button>
-              <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('rebalance')}><Sliders size={14} /> รีบาลานซ์</button>
+              <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('rebalance')}><Sliders size={14} /> ± รีบาลานซ์</button>
             </div>
 
             <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', marginBottom: '14px', paddingBottom: '4px' }}>
@@ -2822,8 +2821,8 @@ export default function PortfolioApp() {
                           {['capital_add', 'profit', 'dividend'].includes(e.type) || (e.type === 'rebalance' && e.amount >= 0) ? '+' : '-'}฿{fmt(Math.abs(e.amount), 2)}
                         </span>
                         {!e.id.toString().startsWith('log_pnl_') && (
-                          <button style={{ background: 'transparent', border: '1px solid var(--muted)', cursor: 'pointer', padding: '2px' }} onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type] || e.type)}>
-                            <Trash2 size={13} />
+                          <button style={{ background: 'transparent', border: '1px solid var(--divider)', borderRadius: '4px', padding: '3px 6px', color: 'var(--gold)', cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => deleteLedgerEntry(e.id)} title="ลบรายการ">
+                            <RotateCcw size={13} />
                           </button>
                         )}
                       </div>
@@ -2971,7 +2970,7 @@ export default function PortfolioApp() {
                         <span>จำนวน <b>{fmt(log.quantity, 2, log.assetType === 'crypto')}</b></span>
                         <span>ราคา <b>฿{fmt(displayPrice, 2, log.assetType === 'crypto')}</b> {isUsdAsset && <span style={{ fontSize: '10px', opacity: 0.6 }}>(${fmt(log.price, 2, log.assetType === 'crypto')})</span>}</span>
                         {log.note && <span style={{ color: 'var(--muted)' }}>({log.note})</span>}
-                        {displayFee > 0 && <span>ค่าธรรมเนียม <b>฿{fmt(displayFee, 2)}</b></span>}
+                        {displayFee > 0 && <span>ค่าธรรมเนียม <b>฿{fmt(displayFee, 2)}</b> {isUsdAsset && <span style={{ fontSize: '10px', opacity: 0.6 }}>(${fmt(log.fee, 2)})</span>}</span>}
                       </div>
                       {!isBuy && displayPnl !== undefined && (
                         <div style={{ marginTop: '4px', paddingTop: '4px', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', fontSize: '12px' }} className="pf-mono">
