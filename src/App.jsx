@@ -708,6 +708,7 @@ export default function PortfolioApp() {
   };
 
   const openEdit = (h) => {
+    // D. ทองคำ: ตอนกดปุ่มขาย ให้ช่องราคาเติม currentPrice - 25 ตรงกับราคาบนการ์ด
     const defaultSellPrice = h.type === 'gold' ? Math.max(0, (parseFloat(h.currentPrice) || 0) - 25) : (h.currentPrice || '');
 
     setForm({ 
@@ -737,52 +738,6 @@ export default function PortfolioApp() {
   const closePanel = () => { setPanel(null); setEditingId(null); setUpdateDraft({}); setLedgerSearchQuery(''); };
   const onFormTypeChange = (type) => {
     setForm((f) => ({ ...f, type, currency: editingId ? f.currency : typeInfo(type).defaultCurrency }));
-  };
-
-  const getAssetLots = (assetId, currentQty, currentPrice, assetCurrency, assetType, instrumentType) => {
-    try {
-      const logs = (tradeLogs || []).filter(l => l && l.assetId === assetId).sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
-      let lots = [];
-      logs.forEach(l => {
-        if (l && l.action === 'buy') {
-          lots.push({ date: l.date, qty: l.quantity, price: l.price, currency: l.currency, tradeFx: l.tradeFx });
-        } else if (l && l.action === 'sell') {
-          let remSell = l.quantity;
-          while (remSell > 0 && lots.length > 0) {
-            if (lots[0].qty <= remSell) {
-              remSell -= lots[0].qty;
-              lots.shift();
-            } else {
-              lots[0].qty -= remSell;
-              remSell = 0;
-            }
-          }
-        }
-      });
-      if (lots.length === 0) {
-        const targetHolding = holdings.find(h => h && h.id === assetId);
-        if (targetHolding) {
-          lots.push({
-            date: targetHolding.lastUpdated || todayStr(),
-            qty: targetHolding.quantity,
-            price: targetHolding.avgCost,
-            currency: targetHolding.currency,
-            tradeFx: fxRate
-          });
-        }
-      }
-      const isDr = instrumentType === 'dr';
-      return lots.map(lot => {
-        const days = calcDaysAgo(lot?.date);
-        const lotVal = (lot?.qty || 0) * currentPrice;
-        const lotCost = (lot?.qty || 0) * (lot?.price || 0) * (lot?.currency === 'USD' && !isDr ? (lot?.tradeFx || fxRate) : 1);
-        const lotGain = lotVal - lotCost;
-        const lotGainPct = lotCost > 0 ? (lotGain / lotCost) * 100 : 0;
-        return { ...lot, days, gainPct: lotGainPct, isUsd: assetCurrency === 'USD' && !isDr };
-      });
-    } catch (e) {
-      return [];
-    }
   };
 
   const submitForm = () => {
@@ -1410,16 +1365,10 @@ export default function PortfolioApp() {
     if (matchingLogs.length === 0) return null;
     let totalPnlThb = 0;
     matchingLogs.forEach(l => {
-      let pnlThb = 0;
-      if (l.pnlThb !== undefined) {
-        pnlThb = parseFloat(l.pnlThb) || 0;
-      } else {
-        const logFx = (l.currency === 'USD' && l.assetType !== 'th_stock' && l.instrumentType !== 'dr') ? (l.tradeFx ? parseFloat(l.tradeFx) : fxRate) : 1;
-        const pnlVal = l.pnl || 0;
-        const isUsd = l.currency === 'USD' || l.assetType === 'foreign_stock';
-        pnlThb = isUsd ? (pnlVal * logFx) : pnlVal;
-      }
-      totalPnlThb += pnlThb;
+      const logFx = (l.currency === 'USD' && l.assetType !== 'th_stock' && l.instrumentType !== 'dr') ? (l.tradeFx ? parseFloat(l.tradeFx) : fxRate) : 1;
+      const pnlVal = l.pnl || 0;
+      const isUsd = l.currency === 'USD' || l.assetType === 'foreign_stock';
+      totalPnlThb += isUsd ? (pnlVal * logFx) : pnlVal;
     });
     const assetName = matchingLogs[0].assetName;
     return { name: assetName, pnl: totalPnlThb, count: matchingLogs.length };
@@ -3018,15 +2967,7 @@ export default function PortfolioApp() {
                   
                   const displayPrice = isUsdAsset ? (log.price * logFx) : log.price;
                   const displayFee = isUsdAsset ? ((log.fee || 0) * logFx) : (log.fee || 0);
-                  
-                  let displayPnl = undefined;
-                  if (!isBuy) {
-                    if (log.pnlThb !== undefined) {
-                      displayPnl = log.pnlThb;
-                    } else {
-                      displayPnl = isUsdAsset ? ((log.pnl || 0) * logFx) : (log.pnl || 0);
-                    }
-                  }
+                  const displayPnl = (log.pnl !== undefined) ? (isUsdAsset ? (log.pnl * logFx) : log.pnl) : undefined;
 
                   return (
                     <div key={log.id} style={{ background: 'var(--surface-alt)', border: '1px solid var(--divider)', borderRadius: '10px', padding: '10px 12px', fontSize: '13px' }}>
