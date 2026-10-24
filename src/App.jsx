@@ -875,6 +875,10 @@ export default function PortfolioApp() {
         }
       }
 
+      // [จุดที่แก้ไข] นำค่าธรรมเนียมมารวมคำนวณเข้ากับต้นทุนเฉลี่ยตอนเพิ่มครั้งแรก
+      const totalInitialCost = subtotal + feeAmount;
+      const calculatedAvg = qty > 0 ? totalInitialCost / qty : avg;
+
       const newId = Date.now().toString();
       const nextHoldings = [...holdings, { 
         id: newId, 
@@ -882,7 +886,7 @@ export default function PortfolioApp() {
         ticker: form.ticker.trim(), 
         type: form.type, 
         quantity: qty, 
-        avgCost: avg, 
+        avgCost: calculatedAvg, 
         currentPrice: price, 
         currency, 
         industry, 
