@@ -408,7 +408,6 @@ export default function PortfolioApp() {
     try { await window.storage.set('cash-ledger', JSON.stringify(next), false); } catch (e) { /* ignore */ }
   };
 
-  // ปรับให้ใช้เรทกลางปกติทั้งหมด (ไม่หัก -0.05 หรือ -0.1) ตามคำขอ
   const getEffectiveRate = (type, rate) => {
     return parseFloat(rate) || 36.5;
   };
@@ -1221,7 +1220,7 @@ export default function PortfolioApp() {
 
   const exportData = () => {
     const payload = { app: 'portfolio-tracker', version: 2, exportedAt: new Date().toISOString(), holdings, tradeLogs, history, fxRate, backendUrl, initialCapital, ledger };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json'zIndex: 1400 });
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = `portfolio-backup-${todayStr()}.json`;
