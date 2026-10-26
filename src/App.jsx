@@ -1378,8 +1378,8 @@ export default function PortfolioApp() {
     });
     const assetName = matchingLogs[0]?.assetName || '';
     return { name: assetName, pnl: totalPnlThb, count: matchingLogs.length };
-  }, [tradeLogs, fxRate, tradeSearchQuery]);
-
+  }, [tradeLogs, fxRate, tradeSearchQuery]); 
+    const isDirectFeeType = ['foreign_stock', 'gold', 'crypto'].includes(form.type) || ['dr', 'etf'].includes(form.instrumentType);
   return (
     <div className="pf-root">
       <style>{`
