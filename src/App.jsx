@@ -826,7 +826,7 @@ export default function PortfolioApp() {
           date: form.tradeDate || todayStr(),
           note: (form.note || '').trim()
         });
-            } else if (form.tradeAction === 'sell') {
+                  } else if (form.tradeAction === 'sell') {
         const sellQty = parseFloat(form.tradeQty);
         const sellPrice = parseFloat(form.tradePrice);
         const feeInputVal = parseFloat(form.feePct) || 0;
@@ -835,36 +835,37 @@ export default function PortfolioApp() {
           return;
         }
 
+        const subtotal = sellQty * sellPrice;
         const customFx = form.tradeFx && parseFloat(form.tradeFx) > 0 ? parseFloat(form.tradeFx) : fxRate;
-
-        // คำนวณเป็นบาทโดยตรงเพื่อให้ค่าธรรมเนียมบาทตรงเป๊ะ
         const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
-        const saleThb = sellQty * sellPrice * (isUsdAsset ? customFx : 1);
-        
-        // หาเรทต้นทุน (ถ้ามีไม้ซื้อเก่าใช้เรทเดิม ถ้าไม่มีใช้เรทปัจจุบัน)
-        const assetBuys = (tradeLogs || []).filter(l => l.assetId === target.id && l.action === 'buy');
-        const costFx = (isUsdAsset && assetBuys.length > 0 && assetBuys[0].tradeFx) ? parseFloat(assetBuys[0].tradeFx) : customFx;
-        const costThb = sellQty * currentAvg * (isUsdAsset ? costFx : 1);
+        const saleThb = subtotal * (isUsdAsset ? customFx : 1);
 
-        // คำนวณค่าธรรมเนียมเป็นบาทตรงๆ
+        let feeAmount = 0;
         let feeThb = 0;
-        if (isDirectFee) {
+        if (form.type === 'th_stock') {
+          feeThb = (saleThb * feeInputVal) / 100;
+          feeAmount = isUsdAsset && customFx > 0 ? feeThb / customFx : feeThb;
+        } else if (isDirectFee) {
           if (isUsdAsset) {
-            feeThb = form.feeCurrency === 'USD' ? (feeInputVal * customFx) : feeInputVal;
+            feeAmount = form.feeCurrency === 'THB' ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : feeInputVal;
+            feeThb = feeAmount * customFx;
           } else {
-            feeThb = form.feeCurrency === 'USD' ? (feeInputVal * customFx) : feeInputVal;
+            feeAmount = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
+            feeThb = feeAmount;
           }
         } else {
-          feeThb = (saleThb * feeInputVal) / 100;
+          feeAmount = (subtotal * feeInputVal) / 100;
+          feeThb = feeAmount * (isUsdAsset ? customFx : 1);
         }
 
-        const netPnlThb = saleThb - costThb - feeThb;
+        const soldCost = sellQty * currentAvg;
+        const soldCostThb = soldCost * (isUsdAsset ? customFx : 1);
+        
+        const netProceedsThb = saleThb - feeThb;
+        const netPnlThb = netProceedsThb - soldCostThb;
         const pnlAssetCurrency = isUsdAsset && customFx > 0 ? netPnlThb / customFx : netPnlThb;
 
         currentQty = currentQty - sellQty;
-
-        // เก็บค่าธรรมเนียมเป็นบาทเพื่อแสดงผลในประวัติให้ถูกต้อง
-        const feeDisplayThb = isUsdAsset && form.feeCurrency === 'USD' ? feeThb : feeInputVal;
 
         newLogs.unshift({
           id: Date.now().toString(),
@@ -875,8 +876,8 @@ export default function PortfolioApp() {
           action: 'sell',
           quantity: sellQty,
           price: sellPrice,
-          fee: feeDisplayThb,
-          isFeeThb: true, // Mark ว่าค่าธรรมเนียมนี้เป็นบาทแล้ว
+          fee: feeInputVal,
+          feeThb: feeThb,
           pnl: pnlAssetCurrency,
           pnlThb: netPnlThb,
           currency: currency,
@@ -884,6 +885,7 @@ export default function PortfolioApp() {
           date: form.tradeDate || todayStr(),
           note: form.note.trim()
         });
+      }
       } else {
         const qty = parseFloat(form.quantity);
         const avg = isCash ? 1 : parseFloat(form.avgCost);
