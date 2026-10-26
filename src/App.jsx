@@ -415,8 +415,7 @@ export default function PortfolioApp() {
   const enriched = useMemo(() => (holdings || []).map((h) => {
     const qty = parseFloat(h?.quantity) || 0;
     const avg = parseFloat(h?.avgCost) || 0;
-    let price = parseFloat(h?.currentPrice) || 0;
-    if (h?.type === 'gold') { price = Math.max(0, price - 25); }
+    const price = parseFloat(h?.currentPrice) || 0;
     const currency = h?.currency === 'USD' ? 'USD' : 'THB';
     
     const assetBuys = (tradeLogs || []).filter(l => l && l.assetId === h?.id && l.action === 'buy');
