@@ -989,35 +989,50 @@ export default function PortfolioApp() {
     showToast('ลบรายการแล้ว');
   };
 
-  const executeRevertTrade = (log) => {
-    if (!log) return;
-    const target = (holdings || []).find(h => h && h.id === log.assetId);
+    const executeRevertTrade = (log) => {
+    const target = holdings.find(h => h.id === log.assetId);
 
     if (log.action === 'buy') {
       if (target) {
         const nextQty = target.quantity - log.quantity;
         if (nextQty <= 0.00000001) {
-          saveHoldings((holdings || []).filter(h => h && h.id !== log.assetId));
+          saveHoldings(holdings.filter(h => h.id !== log.assetId));
         } else {
           const oldTotalCost = target.quantity * target.avgCost;
           const removedCost = log.quantity * log.price + (log.fee || 0);
           const newAvg = (oldTotalCost - removedCost) / nextQty;
-          saveHoldings((holdings || []).map(h => h && h.id === log.assetId ? { ...h, quantity: nextQty, avgCost: Math.max(0, newAvg) } : h));
+          saveHoldings(holdings.map(h => h.id === log.assetId ? { ...h, quantity: nextQty, avgCost: Math.max(0, newAvg) } : h));
         }
       }
     } else if (log.action === 'sell') {
+      const sellQty = parseFloat(log.quantity) || 0;
+      const sellPrice = parseFloat(log.price) || 0;
+      const isUsdAsset = log.currency === 'USD' && log.instrumentType !== 'dr';
+      const customFx = log.tradeFx ? parseFloat(log.tradeFx) : fxRate;
+
       if (target) {
-        const nextQty = target.quantity + log.quantity;
-        saveHoldings((holdings || []).map(h => h && h.id === log.assetId ? { ...h, quantity: nextQty } : h));
-      } else {
-        const sellQty = parseFloat(log.quantity) || 0;
-        const sellPrice = parseFloat(log.price) || 0;
-        const sellPnl = parseFloat(log.pnl) || 0;
-        const sellFee = parseFloat(log.fee) || 0;
+        // กรณีสินทรัพย์ยังอยู่ในพอร์ต: ดึงจำนวนกลับ และคำนวณทุนเฉลี่ย (Avg Cost) รวมไม้ที่ขายไปกลับเข้าไปใหม่แบบถัวเฉลี่ย
+        const oldTotalCost = target.quantity * target.avgCost;
         
-        const netProceeds = (sellQty * sellPrice) - sellFee;
-        const originalTotalCost = netProceeds - sellPnl;
-        const restoredAvg = sellQty > 0 ? Math.max(0, originalTotalCost / sellQty) : sellPrice;
+        // ต้นทุนของส่วนที่ขายไป (คำนวณจากทุนเฉลี่ยปัจจุบันของพอร์ต หรือใช้สูตรย้อนกลับจาก pnlThb)
+        const netPnlThb = log.pnlThb !== undefined ? log.pnlThb : (isUsdAsset ? (log.pnl || 0) * customFx : (log.pnl || 0));
+        const saleThb = sellQty * sellPrice * (isUsdAsset ? customFx : 1);
+        const feeThb = log.isFeeThb ? log.fee : (isUsdAsset ? (log.fee || 0) * customFx : (log.fee || 0));
+        
+        // ทุนบาทของหุ้นที่ขายไป = รายรับ - ค่าธรรมเนียม - กำไรสุทธิ
+        const soldCostThb = saleThb - feeThb - netPnlThb;
+        const restoredAvg = (target.quantity + sellQty) > 0 ? ( (target.quantity * target.avgCost) + soldCostThb ) / (target.quantity + sellQty) : target.avgCost;
+
+        const nextQty = target.quantity + sellQty;
+        saveHoldings(holdings.map(h => h.id === log.assetId ? { ...h, quantity: nextQty, avgCost: Math.max(0, restoredAvg) } : h));
+      } else {
+        // กรณีสินทรัพย์ถูกขายหมดและถูกลบออกจากพอร์ตไปแล้ว: สร้างสินทรัพย์นั้นขึ้นมาใหม่ด้วยทุนที่ถูกต้อง
+        const netPnlThb = log.pnlThb !== undefined ? log.pnlThb : (isUsdAsset ? (log.pnl || 0) * customFx : (log.pnl || 0));
+        const saleThb = sellQty * sellPrice * (isUsdAsset ? customFx : 1);
+        const feeThb = log.isFeeThb ? log.fee : (isUsdAsset ? (log.fee || 0) * customFx : (log.fee || 0));
+        
+        const originalTotalCostThb = saleThb - feeThb - netPnlThb;
+        const restoredAvg = sellQty > 0 ? Math.max(0, originalTotalCostThb / sellQty) : sellPrice;
 
         const restoredHolding = {
           id: log.assetId || Date.now().toString(),
@@ -1030,11 +1045,11 @@ export default function PortfolioApp() {
           instrumentType: log.instrumentType || 'stock',
           lastUpdated: todayStr()
         };
-        saveHoldings([...(holdings || []), restoredHolding]);
+        saveHoldings([...holdings, restoredHolding]);
       }
     }
 
-    const nextLogs = (tradeLogs || []).filter(l => l && l.id !== log.id);
+    const nextLogs = (tradeLogs || []).filter(l => l.id !== log.id);
     saveTradeLogs(nextLogs);
 
     setConfirmRevertTarget(null);
