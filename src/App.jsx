@@ -826,7 +826,7 @@ export default function PortfolioApp() {
           date: form.tradeDate || todayStr(),
           note: (form.note || '').trim()
         });
-      } else if (form.tradeAction === 'sell') {
+            } else if (form.tradeAction === 'sell') {
         const sellQty = parseFloat(form.tradeQty);
         const sellPrice = parseFloat(form.tradePrice);
         const feeInputVal = parseFloat(form.feePct) || 0;
@@ -835,25 +835,36 @@ export default function PortfolioApp() {
           return;
         }
 
-        const subtotal = sellQty * sellPrice;
         const customFx = form.tradeFx && parseFloat(form.tradeFx) > 0 ? parseFloat(form.tradeFx) : fxRate;
 
-        let feeAmount = 0;
+        // คำนวณเป็นบาทโดยตรงเพื่อให้ค่าธรรมเนียมบาทตรงเป๊ะ
+        const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
+        const saleThb = sellQty * sellPrice * (isUsdAsset ? customFx : 1);
+        
+        // หาเรทต้นทุน (ถ้ามีไม้ซื้อเก่าใช้เรทเดิม ถ้าไม่มีใช้เรทปัจจุบัน)
+        const assetBuys = (tradeLogs || []).filter(l => l.assetId === target.id && l.action === 'buy');
+        const costFx = (isUsdAsset && assetBuys.length > 0 && assetBuys[0].tradeFx) ? parseFloat(assetBuys[0].tradeFx) : customFx;
+        const costThb = sellQty * currentAvg * (isUsdAsset ? costFx : 1);
+
+        // คำนวณค่าธรรมเนียมเป็นบาทตรงๆ
+        let feeThb = 0;
         if (isDirectFee) {
-          if (currency === 'USD' && instrumentType !== 'dr') {
-            feeAmount = form.feeCurrency === 'THB' ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : feeInputVal;
+          if (isUsdAsset) {
+            feeThb = form.feeCurrency === 'USD' ? (feeInputVal * customFx) : feeInputVal;
           } else {
-            feeAmount = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
+            feeThb = form.feeCurrency === 'USD' ? (feeInputVal * customFx) : feeInputVal;
           }
         } else {
-          feeAmount = (subtotal * feeInputVal) / 100;
+          feeThb = (saleThb * feeInputVal) / 100;
         }
 
-        const netProceeds = subtotal - feeAmount;
-        const soldCost = sellQty * currentAvg;
-        const pnl = netProceeds - soldCost;
+        const netPnlThb = saleThb - costThb - feeThb;
+        const pnlAssetCurrency = isUsdAsset && customFx > 0 ? netPnlThb / customFx : netPnlThb;
 
         currentQty = currentQty - sellQty;
+
+        // เก็บค่าธรรมเนียมเป็นบาทเพื่อแสดงผลในประวัติให้ถูกต้อง
+        const feeDisplayThb = isUsdAsset && form.feeCurrency === 'USD' ? feeThb : feeInputVal;
 
         newLogs.unshift({
           id: Date.now().toString(),
@@ -864,12 +875,14 @@ export default function PortfolioApp() {
           action: 'sell',
           quantity: sellQty,
           price: sellPrice,
-          fee: feeAmount,
-          pnl: pnl,
+          fee: feeDisplayThb,
+          isFeeThb: true, // Mark ว่าค่าธรรมเนียมนี้เป็นบาทแล้ว
+          pnl: pnlAssetCurrency,
+          pnlThb: netPnlThb,
           currency: currency,
           tradeFx: customFx,
           date: form.tradeDate || todayStr(),
-          note: (form.note || '').trim()
+          note: form.note.trim()
         });
       } else {
         const qty = parseFloat(form.quantity);
@@ -2975,12 +2988,15 @@ export default function PortfolioApp() {
                   if (!log) return null;
                   const isBuy = log.action === 'buy';
                   const showNote = tradeSearchQuery.trim().length > 0 && log.note;
-                  const isUsdAsset = log.currency === 'USD' && log.instrumentType !== 'dr';
-                  const logFx = (log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (log.tradeFx ? parseFloat(log.tradeFx) : fxRate) : 1;
-                  
-                  const displayPrice = isUsdAsset ? (log.price * logFx) : log.price;
-                  const displayFee = isUsdAsset ? ((log.fee || 0) * logFx) : (log.fee || 0);
-                  const displayPnl = (log.pnl !== undefined) ? (isUsdAsset ? (log.pnl * logFx) : log.pnl) : undefined;
+                            const isUsdAsset = log.currency === 'USD' && log.instrumentType !== 'dr';
+          const logFx = (log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (log.tradeFx ? parseFloat(log.tradeFx) : fxRate) : 1;
+          
+          const displayPrice = isUsdAsset ? (log.price * logFx) : log.price;
+          
+          // ถ้าบันทึกว่าเป็นบาทแล้ว (isFeeThb) ให้แสดงผลตรงๆ ไม่ต้องคูณเรทซ้ำ
+          const displayFee = log.isFeeThb ? log.fee : (isUsdAsset ? ((log.fee || 0) * logFx) : (log.fee || 0));
+          
+          const displayPnl = (log.pnlThb !== undefined) ? log.pnlThb : ((log.pnl !== undefined) ? (isUsdAsset ? (log.pnl * logFx) : log.pnl) : undefined);
 
                   return (
                     <div key={log.id} style={{ background: 'var(--surface-alt)', border: '1px solid var(--divider)', borderRadius: '10px', padding: '10px 12px', fontSize: '13px' }}>
