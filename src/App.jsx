@@ -902,7 +902,7 @@ export default function PortfolioApp() {
       } else {
         next = holdings.map((h) => h && h.id === editingId ? { ...h, name, ticker: (form.ticker || '').trim(), type: form.type, quantity: currentQty, avgCost: Number(currentAvg), currentPrice: currentPrice, currency, industry, instrumentType } : h);
         showToast('บันทึกข้อมูลเรียบร้อย');
-         let next;
+             let next;
     if (form.tradeAction === 'sell' && currentQty <= 0) {
       next = holdings.filter((h) => h && h.id !== editingId);
       showToast('ขายหมดและลบสินทรัพย์ออกจากพอร์ตแล้ว');
@@ -931,6 +931,7 @@ export default function PortfolioApp() {
           feeAmount = feeInputVal;
         }
       }
+    }
       const totalInitialCost = subtotal + feeAmount;
       const calculatedAvg = qty > 0 ? totalInitialCost / qty : avg;
 
