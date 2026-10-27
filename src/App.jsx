@@ -989,7 +989,7 @@ export default function PortfolioApp() {
     showToast('ลบรายการแล้ว');
   };
 
-      const executeRevertTrade = (log) => {
+        const executeRevertTrade = (log) => {
     const target = holdings.find(h => h.id === log.assetId);
 
     if (log.action === 'buy') {
@@ -1006,19 +1006,43 @@ export default function PortfolioApp() {
       }
     } else if (log.action === 'sell') {
       const sellQty = parseFloat(log.quantity) || 0;
-      const sellPrice = parseFloat(log.price) || 0;
-
+      
+      // ค้นหาประวัติการซื้อทั้งหมดของสินทรัพย์นี้ เพื่อคำนวณหาต้นทุนเฉลี่ยที่แท้จริงก่อนขาย
+      const assetBuys = (tradeLogs || []).filter(l => l && l.assetId === log.assetId && l.action === 'buy');
+      
       if (target) {
+        // กรณีหุ้นยังอยู่ในพอร์ต: คำนวณต้นทุนรวมเดิมกลับมาถัวเฉลี่ยใหม่
+        const currentTotalCost = target.quantity * target.avgCost;
+        
+        // หาต้นทุนของหุ้นส่วนที่ขายไป (ถ้ามีประวัติซื้อใช้ราคาซื้อเฉลี่ย ถ้าไม่มีใช้ราคาจาก log ขาย)
+        let avgBuyPrice = target.avgCost;
+        if (assetBuys.length > 0) {
+          const totalBuyQty = assetBuys.reduce((s, b) => s + (parseFloat(b.quantity) || 0), 0);
+          const totalBuyCost = assetBuys.reduce((s, b) => s + ((parseFloat(b.quantity) || 0) * (parseFloat(b.price) || 0)), 0);
+          if (totalBuyQty > 0) avgBuyPrice = totalBuyCost / totalBuyQty;
+        }
+        
+        const restoredCost = currentTotalCost + (sellQty * avgBuyPrice);
         const nextQty = target.quantity + sellQty;
-        saveHoldings(holdings.map(h => h.id === log.assetId ? { ...h, quantity: nextQty } : h));
+        const restoredAvg = nextQty > 0 ? restoredCost / nextQty : target.avgCost;
+
+        saveHoldings(holdings.map(h => h.id === log.assetId ? { ...h, quantity: nextQty, avgCost: Math.max(0, restoredAvg) } : h));
       } else {
+        // กรณีหุ้นตัวนี้ถูกขายออกจนหมดพอร์ตและหายไป: คำนวณทุนจากประวัติการซื้อเดิม
+        let restoredAvg = parseFloat(log.price) || 0;
+        if (assetBuys.length > 0) {
+          const totalBuyQty = assetBuys.reduce((s, b) => s + (parseFloat(b.quantity) || 0), 0);
+          const totalBuyCost = assetBuys.reduce((s, b) => s + ((parseFloat(b.quantity) || 0) * (parseFloat(b.price) || 0)), 0);
+          if (totalBuyQty > 0) restoredAvg = totalBuyCost / totalBuyQty;
+        }
+
         const restoredHolding = {
           id: log.assetId || Date.now().toString(),
           name: log.assetName || 'สินทรัพย์',
           type: log.assetType || 'th_stock',
           quantity: sellQty,
-          avgCost: sellPrice,
-          currentPrice: sellPrice,
+          avgCost: restoredAvg,
+          currentPrice: parseFloat(log.price) || restoredAvg,
           currency: log.currency || 'THB',
           instrumentType: log.instrumentType || 'stock',
           lastUpdated: todayStr()
