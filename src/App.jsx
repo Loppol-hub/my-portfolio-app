@@ -902,7 +902,14 @@ export default function PortfolioApp() {
       } else {
         next = holdings.map((h) => h && h.id === editingId ? { ...h, name, ticker: (form.ticker || '').trim(), type: form.type, quantity: currentQty, avgCost: Number(currentAvg), currentPrice: currentPrice, currency, industry, instrumentType } : h);
         showToast('บันทึกข้อมูลเรียบร้อย');
-      }
+         let next;
+    if (form.tradeAction === 'sell' && currentQty <= 0) {
+      next = holdings.filter((h) => h && h.id !== editingId);
+      showToast('ขายหมดและลบสินทรัพย์ออกจากพอร์ตแล้ว');
+      saveHoldings(next);
+    } else if (form.tradeAction === 'sell') {
+      next = holdings.map((h) => h && h.id === editingId ? { ...h, name, ticker: (form.ticker || '').trim(), type: form.type, quantity: qty, avgCost: calculatedAvg, currentPrice: price } : h);
+      showToast('บันทึกข้อมูลเรียบร้อย');
       saveHoldings(next);
     } else {
       const qty = parseFloat(form.quantity);
@@ -923,7 +930,7 @@ export default function PortfolioApp() {
         } else {
           feeAmount = feeInputVal;
         }
-       } 
+      }
       const totalInitialCost = subtotal + feeAmount;
       const calculatedAvg = qty > 0 ? totalInitialCost / qty : avg;
 
