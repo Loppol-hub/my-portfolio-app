@@ -1381,15 +1381,13 @@ export default function PortfolioApp() {
     return list;
   }, [tradeLogs, tradeFilterType, tradeStartDate, tradeEndDate, tradeSearchQuery]);
 
-       const totalFilteredFee = useMemo(() => {
+        const totalFilteredFee = useMemo(() => {
     return filteredTradeLogs.reduce((sum, log) => {
       if (!log) return sum;
       const feeVal = parseFloat(log.fee) || 0;
-      console.log(`รายการ: ${log.assetName}, ค่าธรรมเนียม: ${feeVal}`); // เช็กใน F12 Console
       return sum + feeVal;
     }, 0);
   }, [filteredTradeLogs]);
-
   const searchFilteredAssetPnL = useMemo(() => {
     const q = tradeSearchQuery.trim().toLowerCase();
     if (!q) return null;
@@ -2996,9 +2994,9 @@ export default function PortfolioApp() {
                   const logFx = (log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (log.tradeFx ? parseFloat(log.tradeFx) : fxRate) : 1;
                   
                   const displayPrice = isUsdAsset ? (log.price * logFx) : log.price;
-                  const displayFee = log.isFeeThb ? log.fee : (isUsdAsset ? ((log.fee || 0) * logFx) : (log.fee || 0));
-                  const displayPnl = log.pnlThb !== undefined ? log.pnlThb : ((log.pnl !== undefined) ? (isUsdAsset ? (log.pnl * logFx) : log.pnl) : undefined);
+                  const displayFee = parseFloat(log.fee) || 0;
 
+                  const displayPnl = log.pnlThb !== undefined ? log.pnlThb : ((log.pnl !== undefined) ? (isUsdAsset ? (log.pnl * logFx) : log.pnl) : undefined);
                   return (
                     <div key={log.id} style={{ background: 'var(--surface-alt)', border: '1px solid var(--divider)', borderRadius: '10px', padding: '10px 12px', fontSize: '13px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
