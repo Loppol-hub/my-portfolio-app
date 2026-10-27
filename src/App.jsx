@@ -989,7 +989,7 @@ export default function PortfolioApp() {
     showToast('ลบรายการแล้ว');
   };
 
-    const executeRevertTrade = (log) => {
+      const executeRevertTrade = (log) => {
     const target = holdings.find(h => h.id === log.assetId);
 
     if (log.action === 'buy') {
@@ -1007,45 +1007,33 @@ export default function PortfolioApp() {
     } else if (log.action === 'sell') {
       const sellQty = parseFloat(log.quantity) || 0;
       const sellPrice = parseFloat(log.price) || 0;
-      const isUsdAsset = log.currency === 'USD' && log.instrumentType !== 'dr';
-      const customFx = log.tradeFx ? parseFloat(log.tradeFx) : fxRate;
 
       if (target) {
-        // กรณีสินทรัพย์ยังอยู่ในพอร์ต: ดึงจำนวนกลับ และคำนวณทุนเฉลี่ย (Avg Cost) รวมไม้ที่ขายไปกลับเข้าไปใหม่แบบถัวเฉลี่ย
-        const oldTotalCost = target.quantity * target.avgCost;
-        
-        // ต้นทุนของส่วนที่ขายไป (คำนวณจากทุนเฉลี่ยปัจจุบันของพอร์ต หรือใช้สูตรย้อนกลับจาก pnlThb)
-        const netPnlThb = log.pnlThb !== undefined ? log.pnlThb : (isUsdAsset ? (log.pnl || 0) * customFx : (log.pnl || 0));
-        const saleThb = sellQty * sellPrice * (isUsdAsset ? customFx : 1);
-        const feeThb = log.isFeeThb ? log.fee : (isUsdAsset ? (log.fee || 0) * customFx : (log.fee || 0));
-        
-            if (target) {
-      // กรณีหุ้นยังอยู่ในพอร์ต: เอาจำนวนที่ขายบวกกลับเข้าไป (ทุนเฉลี่ยต่อหน่วยเดิมยังคงเดิม ไม่เปลี่ยนแปลง)
-      const nextQty = target.quantity + sellQty;
-      saveHoldings(holdings.map(h => h.id === log.assetId ? { ...h, quantity: nextQty } : h));
-    } else {
-      // กรณีหุ้นตัวนี้ถูกขายออกจนหมดพอร์ตและหายไป: สร้างตัวหุ้นขึ้นมาใหม่ด้วยจำนวนและราคาขายเดิม
-      const restoredHolding = {
-        id: log.assetId || Date.now().toString(),
-        name: log.assetName || 'สินทรัพย์',
-        type: log.assetType || 'th_stock',
-        quantity: sellQty,
-        avgCost: sellPrice,
-        currentPrice: sellPrice,
-        currency: log.currency || 'THB',
-        instrumentType: log.instrumentType || 'stock',
-        lastUpdated: todayStr()
-      };
-      saveHoldings([...holdings, restoredHolding]);
+        const nextQty = target.quantity + sellQty;
+        saveHoldings(holdings.map(h => h.id === log.assetId ? { ...h, quantity: nextQty } : h));
+      } else {
+        const restoredHolding = {
+          id: log.assetId || Date.now().toString(),
+          name: log.assetName || 'สินทรัพย์',
+          type: log.assetType || 'th_stock',
+          quantity: sellQty,
+          avgCost: sellPrice,
+          currentPrice: sellPrice,
+          currency: log.currency || 'THB',
+          instrumentType: log.instrumentType || 'stock',
+          lastUpdated: todayStr()
+        };
+        saveHoldings([...holdings, restoredHolding]);
+      }
     }
-  }
 
-  const nextLogs = (tradeLogs || []).filter(l => l.id !== log.id);
-  saveTradeLogs(nextLogs);
+    const nextLogs = (tradeLogs || []).filter(l => l.id !== log.id);
+    saveTradeLogs(nextLogs);
 
-  setConfirmRevertTarget(null);
-  showToast('คืนค่ารายการสำเร็จ');
- }     
+    setConfirmRevertTarget(null);
+    showToast('คืนค่ารายการสำเร็จ');
+  };
+    
   const requestDelete = (type, id, label) => setConfirmDeleteTarget({ type, id, label });
 
   const performDelete = () => {
