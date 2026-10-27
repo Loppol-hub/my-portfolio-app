@@ -228,6 +228,7 @@ export default function PortfolioApp() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [formError, setFormError] = useState('');
+  const isDirectFeeType = ['foreign_stock', 'gold', 'crypto'].includes(form.type) || ['dr', 'etf'].includes(form.instrumentType);
   const [updateDraft, setUpdateDraft] = useState({});
   const [toast, setToast] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
