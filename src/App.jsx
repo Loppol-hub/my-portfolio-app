@@ -849,7 +849,9 @@ export default function PortfolioApp() {
         const costThb = sellQty * currentAvg * (isUsdAsset ? costFx : 1);
 
         let feeThb = 0;
-        if (isDirectFee) {
+        if (form.type === 'th_stock' && instrumentType === 'stock') {
+          feeThb = (saleThb * feeInputVal) / 100;
+        } else if (isDirectFee) {
           feeThb = form.feeCurrency === 'USD' ? (feeInputVal * customFx) : feeInputVal;
         } else {
           feeThb = (saleThb * feeInputVal) / 100;
