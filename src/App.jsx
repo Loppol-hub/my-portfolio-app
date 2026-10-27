@@ -793,17 +793,14 @@ export default function PortfolioApp() {
         }
         const subtotal = addQty * addPrice;
         const customFx = form.tradeFx && parseFloat(form.tradeFx) > 0 ? parseFloat(form.tradeFx) : fxRate;
-
+        
         let feeAmount = 0;
-        if (isDirectFee) {
-          if (currency === 'USD' && instrumentType !== 'dr') {
-            feeAmount = form.feeCurrency === 'THB' ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : feeInputVal;
-          } else {
-            feeAmount = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
-          }
-        } else {
+        if (form.type === 'th_stock' && instrumentType === 'stock') {
           feeAmount = (subtotal * feeInputVal) / 100;
+        } else {
+          feeAmount = feeInputVal;
         }
+       }
 
         const prevQty = currentQty;
         const prevAvgCost = currentAvg;
@@ -921,17 +918,12 @@ export default function PortfolioApp() {
 
       let feeAmount = 0;
       if (!isCash) {
-        if (isDirectFee) {
-          if (currency === 'USD' && instrumentType !== 'dr') {
-            feeAmount = form.feeCurrency === 'THB' ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : feeInputVal;
-          } else {
-            feeAmount = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
-          }
-        } else {
+        if (form.type === 'th_stock' && instrumentType === 'stock') {
           feeAmount = (subtotal * feeInputVal) / 100;
+        } else {
+          feeAmount = feeInputVal;
         }
-      }
-
+       } 
       const totalInitialCost = subtotal + feeAmount;
       const calculatedAvg = qty > 0 ? totalInitialCost / qty : avg;
 
