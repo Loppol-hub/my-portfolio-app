@@ -1381,21 +1381,13 @@ export default function PortfolioApp() {
     return list;
   }, [tradeLogs, tradeFilterType, tradeStartDate, tradeEndDate, tradeSearchQuery]);
 
-    const totalFilteredFee = useMemo(() => {
+      const totalFilteredFee = useMemo(() => {
     return filteredTradeLogs.reduce((sum, log) => {
       if (!log) return sum;
-      // ถ้าเป็นค่าธรรมเนียมที่บันทึกแบบเบ็ดเสร็จแล้ว (เช่น ยอดรวมแปลงเป็นบาทแล้ว) หรือหุ้นไทย ให้ดึงค่านั้นมาบวกตรงๆ ได้เลย
       const feeVal = parseFloat(log.fee) || 0;
-      const logFx = (log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (log.tradeFx ? parseFloat(log.tradeFx) : fxRate) : 1;
-      
-      // ถ้า log นั้นเก็บสถานะเป็น isFeeThb หรือเป็นหุ้นไทย ให้ใช้ค่านั้นเลย ถ้าไม่ใช่ให้เช็กสกุลเงิน
-      let feeThb = feeVal;
-      if (!log.isFeeThb && log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') {
-        feeThb = log.feeCurrency === 'USD' ? feeVal * logFx : feeVal;
-      }
-      return sum + feeThb;
+      return sum + feeVal;
     }, 0);
-  }, [filteredTradeLogs, fxRate]);
+  }, [filteredTradeLogs]);
 
   const searchFilteredAssetPnL = useMemo(() => {
     const q = tradeSearchQuery.trim().toLowerCase();
