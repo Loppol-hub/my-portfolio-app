@@ -1401,13 +1401,16 @@ export default function PortfolioApp() {
       const pnlVal = l.pnlThb !== undefined ? l.pnlThb : (l.pnl || 0) * logFx;
       totalPnlThb += pnlVal;
     });
-    const assetName = matchingLogs[0]?.assetName || '';
+        const assetName = matchingLogs[0]?.assetName || '';
     return { name: assetName, pnl: totalPnlThb, count: matchingLogs.length };
   }, [tradeLogs, fxRate, tradeSearchQuery]);
+
+  const isDirectFeeType = ['foreign_stock', 'gold', 'crypto'].includes(form.type) || ['dr', 'etf'].includes(form.instrumentType);
 
   return (
     <div className="pf-root">
       <style>{`
+
         @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap');
 
         .pf-root {
