@@ -864,8 +864,7 @@ export default function PortfolioApp() {
         const prevAvgCost = currentAvg;
 
         currentQty = currentQty - sellQty;
-        const feeDisplayThb = isUsdAsset && form.feeCurrency === 'USD' ? feeThb : feeInputVal;
-
+        const feeDisplayThb = feeThb;
         newLogs.unshift({
           id: Date.now().toString(),
           assetId: target.id,
