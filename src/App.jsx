@@ -1381,10 +1381,11 @@ export default function PortfolioApp() {
     return list;
   }, [tradeLogs, tradeFilterType, tradeStartDate, tradeEndDate, tradeSearchQuery]);
 
-      const totalFilteredFee = useMemo(() => {
+       const totalFilteredFee = useMemo(() => {
     return filteredTradeLogs.reduce((sum, log) => {
       if (!log) return sum;
       const feeVal = parseFloat(log.fee) || 0;
+      console.log(`รายการ: ${log.assetName}, ค่าธรรมเนียม: ${feeVal}`); // เช็กใน F12 Console
       return sum + feeVal;
     }, 0);
   }, [filteredTradeLogs]);
