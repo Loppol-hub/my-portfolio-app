@@ -1045,6 +1045,7 @@ export default function PortfolioApp() {
 
   setConfirmRevertTarget(null);
   showToast('คืนค่ารายการสำเร็จ');
+ }     
   const requestDelete = (type, id, label) => setConfirmDeleteTarget({ type, id, label });
 
   const performDelete = () => {
