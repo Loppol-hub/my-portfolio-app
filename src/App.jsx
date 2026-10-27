@@ -793,14 +793,17 @@ export default function PortfolioApp() {
         }
         const subtotal = addQty * addPrice;
         const customFx = form.tradeFx && parseFloat(form.tradeFx) > 0 ? parseFloat(form.tradeFx) : fxRate;
-        
+
         let feeAmount = 0;
-        if (form.type === 'th_stock' && instrumentType === 'stock') {
-          feeAmount = (subtotal * feeInputVal) / 100;
+        if (isDirectFee) {
+          if (currency === 'USD' && instrumentType !== 'dr') {
+            feeAmount = form.feeCurrency === 'THB' ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : feeInputVal;
+          } else {
+            feeAmount = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
+          }
         } else {
-          feeAmount = feeInputVal;
+          feeAmount = (subtotal * feeInputVal) / 100;
         }
-       }
 
         const prevQty = currentQty;
         const prevAvgCost = currentAvg;
@@ -847,10 +850,8 @@ export default function PortfolioApp() {
 
         let feeThb = 0;
         if (form.type === 'th_stock' && instrumentType === 'stock') {
-          // หุ้นไทย คิดค่าธรรมเนียมจากเปอร์เซ็นต์ (%) ของยอดขาย
           feeThb = (saleThb * feeInputVal) / 100;
         } else if (isDirectFee) {
-          // หุ้นนอก ทอง คริปโต DR ETF ใช้ค่าธรรมเนียมที่กรอกมาตรงๆ (ถ้าเลือกหน่วยเป็น USD ให้แปลงเป็นบาทด้วยเรท FX)
           feeThb = form.feeCurrency === 'USD' ? (feeInputVal * customFx) : feeInputVal;
         } else {
           feeThb = (saleThb * feeInputVal) / 100;
@@ -858,8 +859,10 @@ export default function PortfolioApp() {
 
         const netPnlThb = saleThb - costThb - feeThb;
         const pnlAssetCurrency = isUsdAsset && customFx > 0 ? netPnlThb / customFx : netPnlThb;
+
         const prevQty = currentQty;
         const prevAvgCost = currentAvg;
+
         currentQty = currentQty - sellQty;
         const feeDisplayThb = feeThb;
         newLogs.unshift({
@@ -902,14 +905,7 @@ export default function PortfolioApp() {
       } else {
         next = holdings.map((h) => h && h.id === editingId ? { ...h, name, ticker: (form.ticker || '').trim(), type: form.type, quantity: currentQty, avgCost: Number(currentAvg), currentPrice: currentPrice, currency, industry, instrumentType } : h);
         showToast('บันทึกข้อมูลเรียบร้อย');
-             let next;
-    if (form.tradeAction === 'sell' && currentQty <= 0) {
-      next = holdings.filter((h) => h && h.id !== editingId);
-      showToast('ขายหมดและลบสินทรัพย์ออกจากพอร์ตแล้ว');
-      saveHoldings(next);
-    } else if (form.tradeAction === 'sell') {
-      next = holdings.map((h) => h && h.id === editingId ? { ...h, name, ticker: (form.ticker || '').trim(), type: form.type, quantity: qty, avgCost: calculatedAvg, currentPrice: price } : h);
-      showToast('บันทึกข้อมูลเรียบร้อย');
+      }
       saveHoldings(next);
     } else {
       const qty = parseFloat(form.quantity);
@@ -925,13 +921,17 @@ export default function PortfolioApp() {
 
       let feeAmount = 0;
       if (!isCash) {
-        if (form.type === 'th_stock' && instrumentType === 'stock') {
-          feeAmount = (subtotal * feeInputVal) / 100;
+        if (isDirectFee) {
+          if (currency === 'USD' && instrumentType !== 'dr') {
+            feeAmount = form.feeCurrency === 'THB' ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : feeInputVal;
+          } else {
+            feeAmount = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
+          }
         } else {
-          feeAmount = feeInputVal;
+          feeAmount = (subtotal * feeInputVal) / 100;
         }
       }
-    }
+
       const totalInitialCost = subtotal + feeAmount;
       const calculatedAvg = qty > 0 ? totalInitialCost / qty : avg;
 
@@ -1381,13 +1381,15 @@ export default function PortfolioApp() {
     return list;
   }, [tradeLogs, tradeFilterType, tradeStartDate, tradeEndDate, tradeSearchQuery]);
 
-        const totalFilteredFee = useMemo(() => {
+  const totalFilteredFee = useMemo(() => {
     return filteredTradeLogs.reduce((sum, log) => {
       if (!log) return sum;
-      const feeVal = parseFloat(log.fee) || 0;
-      return sum + feeVal;
+      const logFx = (log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (log.tradeFx ? parseFloat(log.tradeFx) : fxRate) : 1;
+      const feeThb = (log.currency === 'USD' || log.assetType === 'foreign_stock') ? ((parseFloat(log.fee) || 0) * logFx) : (parseFloat(log.fee) || 0);
+      return sum + feeThb;
     }, 0);
-  }, [filteredTradeLogs]);
+  }, [filteredTradeLogs, fxRate]);
+
   const searchFilteredAssetPnL = useMemo(() => {
     const q = tradeSearchQuery.trim().toLowerCase();
     if (!q) return null;
@@ -2573,10 +2575,16 @@ export default function PortfolioApp() {
 
                     <div className="pf-row2" style={{ marginBottom: '10px' }}>
                       <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <label className="pf-label" style={{ margin: 0 }}>ค่าธรรมเนียม (บาท)</label>
-            </div>
-            <input className="pf-input pf-mono" inputMode="decimal" value={form.feePct} onChange={(e) => setForm({ ...form, feePct: e.target.value })} placeholder="0" />
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                          <label className="pf-label" style={{ margin: 0 }}>ค่าธรรมเนียม {isDirectFeeType ? '' : '(%)'}</label>
+                          {isDirectFeeType && (
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              <button type="button" className={form.feeCurrency !== 'USD' ? 'pf-year-pill-active' : 'pf-year-pill'} style={{ padding: '1px 6px', fontSize: '10px' }} onClick={() => setForm({ ...form, feeCurrency: 'THB' })}>บาท</button>
+                              <button type="button" className={form.feeCurrency === 'USD' ? 'pf-year-pill-active' : 'pf-year-pill'} style={{ padding: '1px 6px', fontSize: '10px' }} onClick={() => setForm({ ...form, feeCurrency: 'USD' })}>USD</button>
+                            </div>
+                          )}
+                        </div>
+                        <input className="pf-input pf-mono" inputMode="decimal" value={form.feePct} onChange={(e) => setForm({ ...form, feePct: e.target.value })} placeholder="0" />
                       </div>
                       <div>
                         <label className="pf-label">วันที่ทำรายการ</label>
@@ -2663,10 +2671,16 @@ export default function PortfolioApp() {
                   <>
                     <div className="pf-row2">
                       <div className="pf-field">
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <label className="pf-label" style={{ margin: 0 }}>ค่าธรรมเนียม (บาท)</label>
-            </div>
-            <input className="pf-input pf-mono" inputMode="decimal" value={form.feePct} onChange={(e) => setForm({ ...form, feePct: e.target.value })} placeholder="0" />
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                          <label className="pf-label" style={{ margin: 0 }}>ค่าธรรมเนียม {isDirectFeeType ? '' : '(%)'}</label>
+                          {isDirectFeeType && (
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              <button type="button" className={form.feeCurrency !== 'USD' ? 'pf-year-pill-active' : 'pf-year-pill'} style={{ padding: '1px 6px', fontSize: '10px' }} onClick={() => setForm({ ...form, feeCurrency: 'THB' })}>บาท</button>
+                              <button type="button" className={form.feeCurrency === 'USD' ? 'pf-year-pill-active' : 'pf-year-pill'} style={{ padding: '1px 6px', fontSize: '10px' }} onClick={() => setForm({ ...form, feeCurrency: 'USD' })}>USD</button>
+                            </div>
+                          )}
+                        </div>
+                        <input className="pf-input pf-mono" inputMode="decimal" value={form.feePct} onChange={(e) => setForm({ ...form, feePct: e.target.value })} placeholder="0" />
                       </div>
                       <div className="pf-field">
                         <label className="pf-label">วันที่ทำรายการ</label>
@@ -2994,9 +3008,9 @@ export default function PortfolioApp() {
                   const logFx = (log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (log.tradeFx ? parseFloat(log.tradeFx) : fxRate) : 1;
                   
                   const displayPrice = isUsdAsset ? (log.price * logFx) : log.price;
-                  const displayFee = parseFloat(log.fee) || 0;
-
+                  const displayFee = log.isFeeThb ? log.fee : (isUsdAsset ? ((log.fee || 0) * logFx) : (log.fee || 0));
                   const displayPnl = log.pnlThb !== undefined ? log.pnlThb : ((log.pnl !== undefined) ? (isUsdAsset ? (log.pnl * logFx) : log.pnl) : undefined);
+
                   return (
                     <div key={log.id} style={{ background: 'var(--surface-alt)', border: '1px solid var(--divider)', borderRadius: '10px', padding: '10px 12px', fontSize: '13px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
