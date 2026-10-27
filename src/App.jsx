@@ -850,8 +850,10 @@ export default function PortfolioApp() {
 
         let feeThb = 0;
         if (form.type === 'th_stock' && instrumentType === 'stock') {
+          // หุ้นไทย คิดค่าธรรมเนียมจากเปอร์เซ็นต์ (%) ของยอดขาย
           feeThb = (saleThb * feeInputVal) / 100;
         } else if (isDirectFee) {
+          // หุ้นนอก ทอง คริปโต DR ETF ใช้ค่าธรรมเนียมที่กรอกมาตรงๆ (ถ้าเลือกหน่วยเป็น USD ให้แปลงเป็นบาทด้วยเรท FX)
           feeThb = form.feeCurrency === 'USD' ? (feeInputVal * customFx) : feeInputVal;
         } else {
           feeThb = (saleThb * feeInputVal) / 100;
@@ -859,10 +861,8 @@ export default function PortfolioApp() {
 
         const netPnlThb = saleThb - costThb - feeThb;
         const pnlAssetCurrency = isUsdAsset && customFx > 0 ? netPnlThb / customFx : netPnlThb;
-
         const prevQty = currentQty;
         const prevAvgCost = currentAvg;
-
         currentQty = currentQty - sellQty;
         const feeDisplayThb = feeThb;
         newLogs.unshift({
