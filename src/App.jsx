@@ -3001,8 +3001,7 @@ export default function PortfolioApp() {
               <div className="pf-empty" style={{ padding: '30px 0', fontSize: '13px' }}>ยังไม่มีประวัติการซื้อขาย</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '50vh', overflowY: 'auto', paddingRight: '4px' }}>
-                {filteredTradeLogs.log = filteredTradeLogs.map ? filteredTradeLogs : []; // Safe map wrapper
-                filteredTradeLogs.map((log) => {
+                {filteredTradeLogs.map((log) => {
                   if (!log) return null;
                   const isBuy = log.action === 'buy';
                   const showNote = tradeSearchQuery.trim().length > 0 && log.note;
