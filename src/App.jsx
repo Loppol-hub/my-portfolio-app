@@ -3008,6 +3008,9 @@ export default function PortfolioApp() {
                   const isUsdAsset = log.currency === 'USD' && log.instrumentType !== 'dr';
                   const logFx = (log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (log.tradeFx ? parseFloat(log.tradeFx) : fxRate) : 1;
                   
+                  // ตรวจสอบว่า Log นี้เป็นรายการล่าสุดของสินทรัพย์นั้นๆ หรือไม่ (เพื่อแสดงปุ่มคืนค่าเฉพาะรายการล่าสุด)
+                  const isLatestForAsset = (tradeLogs || []).find(l => l && l.assetId === log.assetId)?.id === log.id;
+
                   const displayPrice = isUsdAsset ? (log.price * logFx) : log.price;
                   const displayFee = log.isFeeThb ? log.fee : (isUsdAsset ? ((log.fee || 0) * logFx) : (log.fee || 0));
                   const displayPnl = log.pnlThb !== undefined ? log.pnlThb : ((log.pnl !== undefined) ? (isUsdAsset ? (log.pnl * logFx) : log.pnl) : undefined);
@@ -3018,13 +3021,15 @@ export default function PortfolioApp() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span style={{ fontWeight: '600', fontFamily: 'Fraunces, serif' }}>{log.assetName}</span>
                           <span style={{ fontSize: '11px', padding: '1px 6px', borderRadius: '4px', background: isBuy ? 'rgba(52,211,153,0.15)' : 'rgba(252,165,165,0.15)', color: isBuy ? '#34d399' : '#fca5a5' }}>{isBuy ? 'ซื้อ' : 'ขาย'}</span>
-                          <button 
-                            onClick={() => setConfirmRevertTarget(log)}
-                            style={{ background: 'transparent', border: '1px solid var(--divider)', borderRadius: '4px', padding: '2px 6px', fontSize: '10px', color: 'var(--gold)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}
-                            title="คืนค่ารายการนี้"
-                          >
-                            <RotateCcw size={10} /> คืนค่า
-                          </button>
+                          {isLatestForAsset && (
+                            <button 
+                              onClick={() => setConfirmRevertTarget(log)}
+                              style={{ background: 'transparent', border: '1px solid var(--divider)', borderRadius: '4px', padding: '2px 6px', fontSize: '10px', color: 'var(--gold)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}
+                              title="คืนค่ารายการล่าสุดนี้"
+                            >
+                              <RotateCcw size={10} /> คืนค่า
+                            </button>
+                          )}
                         </div>
                         <span className="pf-mono" style={{ fontSize: '12px', color: 'var(--muted)' }}>{thaiDateAD(log.date)}</span>
                       </div>
@@ -3057,7 +3062,7 @@ export default function PortfolioApp() {
           <div className="pf-confirm-modal" onClick={(e) => e.stopPropagation()}>
             <div style={{ marginBottom: 12, fontSize: 15, fontWeight: '600' }}>ยืนยันการคืนค่ารายการ?</div>
             <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--muted)' }}>
-              ต้องการคืนค่ารายการ "{confirmRevertTarget.assetName}" ({confirmRevertTarget.action === 'buy' ? 'ซื้อ' : 'ขาย'}) ใช่หรือไม่? ระบบจะปรับจำนวนหุ้นและยอดเงินกลับสู่สถานะเดิม
+              ต้องการคืนค่ารายการล่าสุด "{confirmRevertTarget.assetName}" ({confirmRevertTarget.action === 'buy' ? 'ซื้อ' : 'ขาย'}) ใช่หรือไม่? ระบบจะปรับจำนวนหุ้นและยอดเงินกลับสู่สถานะเดิม
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button className="pf-btn pf-btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setConfirmRevertTarget(null)}>ยกเลิก</button>
