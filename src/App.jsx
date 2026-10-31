@@ -722,7 +722,7 @@ export default function PortfolioApp() {
       let lots = [];
       logs.forEach(l => {
         if (l && l.action === 'buy') {
-          lots.push({ date: l.date, qty: l.quantity, price: l.price, currency: l.currency, tradeFx: l.tradeFx });
+          lots.push({ date: l.date, qty: l.quantity, price: l.price, currency: l.currency, tradeFx: l.tradeFx, instrumentType: l.instrumentType });
         } else if (l && l.action === 'sell') {
           let remSell = l.quantity;
           while (remSell > 0 && lots.length > 0) {
@@ -744,7 +744,8 @@ export default function PortfolioApp() {
             qty: targetHolding.quantity,
             price: targetHolding.avgCost,
             currency: targetHolding.currency,
-            tradeFx: fxRate
+            tradeFx: fxRate,
+            instrumentType: targetHolding.instrumentType
           });
         }
       }
@@ -752,11 +753,20 @@ export default function PortfolioApp() {
       const isUsd = assetCurrency === 'USD' && !isDr;
       return lots.map(lot => {
         const days = calcDaysAgo(lot?.date);
-        const lotVal = (lot?.qty || 0) * currentPrice;
-        const lotCost = (lot?.qty || 0) * (lot?.price || 0) * ((lot?.currency === 'USD' && !isDr) ? (lot?.tradeFx || fxRate) : 1);
-        const lotGain = lotVal - lotCost;
-        const lotGainPct = lotCost > 0 ? (lotGain / lotCost) * 100 : 0;
-        return { ...lot, days, gainPct: lotGainPct, isUsd };
+        const lotCurPrice = currentPrice;
+        const lotBuyPrice = lot?.price || 0;
+        const lotQty = lot?.qty || 0;
+
+        const lotIsUsd = lot?.currency === 'USD' && lot?.instrumentType !== 'dr';
+        const lotFx = lotIsUsd ? (lot?.tradeFx || fxRate) : 1;
+
+        const lotValThb = lotQty * lotCurPrice * (isUsd ? getEffectiveRate(assetType, fxRate) : 1);
+        const lotCostThb = lotQty * lotBuyPrice * lotFx;
+
+        const lotGain = lotValThb - lotCostThb;
+        const lotGainPct = lotCostThb > 0 ? (lotGain / lotCostThb) * 100 : 0;
+
+        return { ...lot, days, gainPct: lotGainPct, isUsd: lotIsUsd };
       });
     } catch (e) {
       return [];
@@ -2991,7 +3001,8 @@ export default function PortfolioApp() {
               <div className="pf-empty" style={{ padding: '30px 0', fontSize: '13px' }}>ยังไม่มีประวัติการซื้อขาย</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '50vh', overflowY: 'auto', paddingRight: '4px' }}>
-                {filteredTradeLogs.map((log) => {
+                {filteredTradeLogs.log = filteredTradeLogs.map ? filteredTradeLogs : []; // Safe map wrapper
+                filteredTradeLogs.map((log) => {
                   if (!log) return null;
                   const isBuy = log.action === 'buy';
                   const showNote = tradeSearchQuery.trim().length > 0 && log.note;
