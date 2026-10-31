@@ -1468,8 +1468,8 @@ export default function PortfolioApp() {
         .pf-year-rows { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--divider); display: flex; flex-direction: column; gap: 10px; }
         .pf-year-row { display: flex; align-items: center; gap: 9px; font-size: 13px; }
 
-        .pf-cash-actions-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; position: relative; z-index: 50; }
-        .pf-cash-action-btn-styled { background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 12px; padding: 10px 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; transition: all 0.2s ease; position: relative; z-index: 50; }
+        .pf-cash-actions-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; position: relative; z-index: 50; }
+        .pf-cash-action-btn-styled { background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 12px; padding: 12px 10px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s ease; position: relative; z-index: 50; }
         .pf-cash-action-btn-styled:hover { background: rgba(56, 189, 248, 0.15); border-color: var(--neon-blue); }
 
         .pf-section-label { color: var(--muted); font-size: 12px; letter-spacing: 0.6px; text-transform: uppercase; margin: 20px 2px 10px; }
@@ -1806,7 +1806,6 @@ export default function PortfolioApp() {
                                   </div>
                                   <div className="pf-row-actions" onClick={(e) => e.stopPropagation()}>
                                     <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
-                                    <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)}><Trash2 size={15} /></button>
                                   </div>
                                 </div>
                                 <div className="pf-row-meta pf-mono">
@@ -2004,7 +2003,6 @@ export default function PortfolioApp() {
                                   </div>
                                   <div className="pf-row-actions" onClick={(e) => e.stopPropagation()}>
                                     <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
-                                    <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)}><Trash2 size={15} /></button>
                                   </div>
                                 </div>
                                 <div className="pf-row-meta pf-mono">
@@ -2412,7 +2410,6 @@ export default function PortfolioApp() {
                                     </div>
                                     <div className="pf-row-actions" onClick={(e) => e.stopPropagation()}>
                                       <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
-                                      <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)}><Trash2 size={15} /></button>
                                     </div>
                                   </div>
                                   <div className="pf-row-meta pf-mono">
@@ -2790,12 +2787,10 @@ export default function PortfolioApp() {
             </div>
 
             <div className="pf-cash-actions-grid">
-              <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('capital_add')}><PlusCircle size={14} /> เพิ่มทุน</button>
-              <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('capital_reduce')}><MinusCircle size={14} /> ลดทุน</button>
-              <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('dividend')}><Gift size={14} /> รับปันผล</button>
-              <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('profit')}><TrendingUp size={14} /> บันทึกกำไร</button>
-              <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('loss')}><TrendingDown size={14} /> บันทึกขาดทุน</button>
-              <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('rebalance')}><Sliders size={14} /> รีบาลานซ์</button>
+              <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('capital_add')}><PlusCircle size={15} /> เพิ่มทุน</button>
+              <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('capital_reduce')}><MinusCircle size={15} /> ลดทุน</button>
+              <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('dividend')}><Gift size={15} /> รับปันผล</button>
+              <button className="pf-cash-action-btn-styled" onClick={() => openLedgerForm('rebalance')}><Sliders size={15} /> รีบาลานซ์</button>
             </div>
 
             <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', marginBottom: '14px', paddingBottom: '4px' }}>
@@ -3008,7 +3003,6 @@ export default function PortfolioApp() {
                   const isUsdAsset = log.currency === 'USD' && log.instrumentType !== 'dr';
                   const logFx = (log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (log.tradeFx ? parseFloat(log.tradeFx) : fxRate) : 1;
                   
-                  // ตรวจสอบว่า Log นี้เป็นรายการล่าสุดของสินทรัพย์นั้นๆ หรือไม่ (เพื่อแสดงปุ่มคืนค่าเฉพาะรายการล่าสุด)
                   const isLatestForAsset = (tradeLogs || []).find(l => l && l.assetId === log.assetId)?.id === log.id;
 
                   const displayPrice = isUsdAsset ? (log.price * logFx) : log.price;
