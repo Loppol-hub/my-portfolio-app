@@ -461,7 +461,6 @@ export default function PortfolioApp() {
   const capitalAdjTotal = useMemo(() => capitalAddTotal - capitalReduceTotal, [capitalAddTotal, capitalReduceTotal]);
 
   const combinedLedger = useMemo(() => {
-    // กรองเอาเฉพาะรายการ ledger ที่ไม่ใช่ค่าธรรมเนียมซื้อออก เพื่อไม่ให้ซ้ำซ้อน
     let list = Array.isArray(ledger) ? ledger.filter(e => e && !e.note?.includes('ค่าธรรมเนียมซื้อ') && !String(e.id).endsWith('_fee')) : [];
     (tradeLogs || []).forEach((log) => {
       if (log && log.action === 'sell' && log.pnl !== undefined) {
@@ -969,7 +968,6 @@ export default function PortfolioApp() {
         prevAvgCost: 0
       }, ...(tradeLogs || [])];
 
-      // ไม่สร้างรายการค่าธรรมเนียมแยกใน ledger แล้ว เพื่อป้องกันความซ้ำซ้อน
       let newLedger = [...ledger];
 
       saveHoldings(nextHoldings);
@@ -3065,7 +3063,7 @@ export default function PortfolioApp() {
             <div style={{ marginBottom: 16, fontSize: 14.5 }}>ยืนยันลบ "{confirmDeleteTarget.label}"?</div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button className="pf-btn pf-btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setConfirmDeleteTarget(null)}>ยกเลิก</button>
-              <button className="pf-btn" style={{ flex: 1, justifyContent: 'center', background: 'var(--neg)', color: '#fff', border: 'none' }} -->performDelete}>ยืนยันลบ</button>
+              <button className="pf-btn" style={{ flex: 1, justifyContent: 'center', background: 'var(--neg)', color: '#fff', border: 'none' }} onClick={performDelete}>ยืนยันลบ</button>
             </div>
           </div>
         </div>
