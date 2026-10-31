@@ -461,7 +461,8 @@ export default function PortfolioApp() {
   const capitalAdjTotal = useMemo(() => capitalAddTotal - capitalReduceTotal, [capitalAddTotal, capitalReduceTotal]);
 
   const combinedLedger = useMemo(() => {
-    let list = Array.isArray(ledger) ? [...ledger] : [];
+    // กรองเอาเฉพาะรายการ ledger ที่ไม่ใช่ค่าธรรมเนียมซื้อออก เพื่อไม่ให้ซ้ำซ้อน
+    let list = Array.isArray(ledger) ? ledger.filter(e => e && !e.note?.includes('ค่าธรรมเนียมซื้อ') && !String(e.id).endsWith('_fee')) : [];
     (tradeLogs || []).forEach((log) => {
       if (log && log.action === 'sell' && log.pnl !== undefined) {
         const logFx = (log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (parseFloat(log.tradeFx) || fxRate) : 1;
@@ -968,16 +969,8 @@ export default function PortfolioApp() {
         prevAvgCost: 0
       }, ...(tradeLogs || [])];
 
+      // ไม่สร้างรายการค่าธรรมเนียมแยกใน ledger แล้ว เพื่อป้องกันความซ้ำซ้อน
       let newLedger = [...ledger];
-      if (currency !== 'USD' && feeAmount > 0 && form.type !== 'crypto') {
-        newLedger.push({
-          id: Date.now().toString() + '_fee',
-          type: 'loss',
-          amount: feeAmount,
-          date: form.tradeDate || todayStr(),
-          note: `ค่าธรรมเนียมซื้อ ${name}`
-        });
-      }
 
       saveHoldings(nextHoldings);
       saveTradeLogs(newLogs);
@@ -1406,6 +1399,8 @@ export default function PortfolioApp() {
     const assetName = matchingLogs[0]?.assetName || '';
     return { name: assetName, pnl: totalPnlThb, count: matchingLogs.length };
   }, [tradeLogs, fxRate, tradeSearchQuery]);
+
+  const isDirectFeeType = ['foreign_stock', 'gold', 'crypto'].includes(form.type) || ['dr', 'etf'].includes(form.instrumentType);
 
   return (
     <div className="pf-root">
@@ -3070,7 +3065,7 @@ export default function PortfolioApp() {
             <div style={{ marginBottom: 16, fontSize: 14.5 }}>ยืนยันลบ "{confirmDeleteTarget.label}"?</div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button className="pf-btn pf-btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setConfirmDeleteTarget(null)}>ยกเลิก</button>
-              <button className="pf-btn" style={{ flex: 1, justifyContent: 'center', background: 'var(--neg)', color: '#fff', border: 'none' }} onClick={performDelete}>ยืนยันลบ</button>
+              <button className="pf-btn" style={{ flex: 1, justifyContent: 'center', background: 'var(--neg)', color: '#fff', border: 'none' }} -->performDelete}>ยืนยันลบ</button>
             </div>
           </div>
         </div>
