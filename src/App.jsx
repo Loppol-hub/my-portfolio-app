@@ -435,7 +435,6 @@ export default function PortfolioApp() {
     const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h?.type, fxRate) : 1;
     const marketValue = qty * price * effRate;
 
-    // Use accumulated totalCostThb if available, otherwise fallback to locked createdFxRate or standard calculation without floating with fxRate
     const fixedRate = (currency === 'USD' && !isDr) ? (h?.createdFxRate || fxRate) : 1;
     const costValue = h?.totalCostThb !== undefined && h.totalCostThb !== null 
       ? h.totalCostThb 
@@ -731,11 +730,11 @@ export default function PortfolioApp() {
       let lots = [];
       logs.forEach(l => {
         if (l && l.action === 'buy') {
-          lots.push({ date: l.date, qty: l.quantity, price: l.price, currency: l.currency, tradeFx: l.tradeFx, instrumentType: l.instrumentType });
+          lots.push({ date: l.date, qty: l.quantity, price: l.price, currency: l.currency, tradeFx: l.tradeFx, instrumentType: l.instrumentType, totalCostThb: l.totalCostThb });
         } else if (l && l.action === 'sell') {
           let remSell = l.quantity;
           while (remSell > 0 && lots.length > 0) {
-            if (lots[0].qty <= remSell) {
+            if (lots[0].qty <= remSell + 1e-8) {
               remSell -= lots[0].qty;
               lots.shift();
             } else {
@@ -754,7 +753,8 @@ export default function PortfolioApp() {
             price: targetHolding.avgCost,
             currency: targetHolding.currency,
             tradeFx: targetHolding.createdFxRate || fxRate,
-            instrumentType: targetHolding.instrumentType
+            instrumentType: targetHolding.instrumentType,
+            totalCostThb: targetHolding.totalCostThb
           });
         }
       }
@@ -763,14 +763,13 @@ export default function PortfolioApp() {
       return lots.map(lot => {
         const days = calcDaysAgo(lot?.date);
         const lotCurPrice = currentPrice;
-        const lotBuyPrice = lot?.price || 0;
         const lotQty = lot?.qty || 0;
 
         const lotIsUsd = lot?.currency === 'USD' && lot?.instrumentType !== 'dr';
         const lotFx = lotIsUsd ? (lot?.tradeFx || fxRate) : 1;
 
         const lotValThb = lotQty * lotCurPrice * (isUsd ? getEffectiveRate(assetType, fxRate) : 1);
-        const lotCostThb = lotQty * lotBuyPrice * lotFx;
+        const lotCostThb = lot?.totalCostThb !== undefined ? lot.totalCostThb : (lotQty * (lot?.price || 0) * lotFx);
 
         const lotGain = lotValThb - lotCostThb;
         const lotGainPct = lotCostThb > 0 ? (lotGain / lotCostThb) * 100 : 0;
@@ -874,7 +873,7 @@ export default function PortfolioApp() {
         const sellQty = parseFloat(form.tradeQty);
         const sellPrice = parseFloat(form.tradePrice);
         const feeInputVal = parseFloat(form.feePct) || 0;
-        if (isNaN(sellQty) || sellQty <= 0 || sellQty > currentQty || isNaN(sellPrice) || sellPrice < 0) {
+        if (isNaN(sellQty) || sellQty <= 0 || sellQty > currentQty + 1e-8 || isNaN(sellPrice) || sellPrice < 0) {
           setFormError('จำนวนหรือราคาขายไม่ถูกต้อง (ห้ามขายเกินจำนวนที่มี)');
           return;
         }
@@ -902,7 +901,10 @@ export default function PortfolioApp() {
         const prevTotalCostThb = currentTotalCostThb;
 
         currentQty = currentQty - sellQty;
+        if (currentQty <= 1e-8) currentQty = 0;
+
         currentTotalCostThb = currentTotalCostThb - costThbSold;
+        if (currentQty === 0) currentTotalCostThb = 0;
 
         newLogs.unshift({
           id: Date.now().toString(),
@@ -943,7 +945,7 @@ export default function PortfolioApp() {
       saveTradeLogs(newLogs);
 
       let next;
-      if (form.tradeAction === 'sell' && currentQty <= 0) {
+      if (form.tradeAction === 'sell' && currentQty <= 1e-8) {
         next = holdings.filter((h) => h && h.id !== editingId);
         showToast('ขายหมดและลบสินทรัพย์ออกจากพอร์ตแล้ว');
       } else {
@@ -1063,7 +1065,7 @@ export default function PortfolioApp() {
         ? log.prevTotalCostThb 
         : (log.prevQty * log.prevAvgCost * (log.currency === 'USD' && log.instrumentType !== 'dr' ? (target?.createdFxRate || fxRate) : 1));
 
-      if (log.prevQty <= 0) {
+      if (log.prevQty <= 1e-8) {
         saveHoldings(holdings.filter(h => h && h.id !== log.assetId));
       } else {
         if (target) {
@@ -1088,7 +1090,7 @@ export default function PortfolioApp() {
     } else {
       if (log.action === 'buy' && target) {
         const nextQty = target.quantity - log.quantity;
-        if (nextQty <= 0) {
+        if (nextQty <= 1e-8) {
           saveHoldings(holdings.filter(h => h.id !== log.assetId));
         } else {
           saveHoldings(holdings.map(h => h.id === log.assetId ? { ...h, quantity: nextQty } : h));
