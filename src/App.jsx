@@ -2698,10 +2698,10 @@ export default function PortfolioApp() {
               </select>
             </div>
             <div className="pf-field">
-              <label className="pf-label">สกุลเงิน</label>
+              <label className="pf-label">สกุลเงิน {editingId && <span style={{ color: 'var(--gold)', fontSize: '11px' }}>(ไม่สามารถเปลี่ยนสกุลเงินของสินทรัพย์เดิมได้)</span>}</label>
               <div className="pf-currency-toggle">
-                <button type="button" className={form.currency !== 'USD' ? 'pf-currency-active' : ''} onClick={() => setForm({ ...form, currency: 'THB' })}>บาท (THB)</button>
-                <button type="button" className={form.currency === 'USD' ? 'pf-currency-active' : ''} onClick={() => setForm({ ...form, currency: 'USD' })}>ดอลลาร์ (USD)</button>
+                <button type="button" disabled={!!editingId} style={editingId ? { opacity: 0.5, cursor: 'not-allowed' } : {}} className={form.currency !== 'USD' ? 'pf-currency-active' : ''} onClick={() => !editingId && setForm({ ...form, currency: 'THB' })}>บาท (THB)</button>
+                <button type="button" disabled={!!editingId} style={editingId ? { opacity: 0.5, cursor: 'not-allowed' } : {}} className={form.currency === 'USD' ? 'pf-currency-active' : ''} onClick={() => !editingId && setForm({ ...form, currency: 'USD' })}>ดอลลาร์ (USD)</button>
               </div>
             </div>
 
