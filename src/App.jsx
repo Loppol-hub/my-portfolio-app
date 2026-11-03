@@ -517,9 +517,12 @@ export default function PortfolioApp() {
     const pnlMap = { th_stock: 0, foreign_stock: 0, fund: 0, gold: 0, crypto: 0, other: 0 };
     (tradeLogs || []).forEach((log) => {
       if (log && log.action === 'sell' && log.pnl !== undefined) {
-        const t = log.assetType || 'th_stock';
+        let t = log.assetType || 'th_stock';
+        if (t === 'th_stock' && log.instrumentType === 'dr') {
+          t = 'foreign_stock';
+        }
         const logFx = (log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (parseFloat(log.tradeFx) || fxRate) : 1;
-        const pnlThb = log.pnlThb !== undefined ? log.pnlThb : ((log.currency === 'USD' || log.assetType === 'foreign_stock') ? ((parseFloat(log.pnl) || 0) * logFx) : (parseFloat(log.pnl) || 0));
+        const pnlThb = log.pnlThb !== undefined ? log.pnlThb : ((log.currency === 'USD' || t === 'foreign_stock') ? ((parseFloat(log.pnl) || 0) * logFx) : (parseFloat(log.pnl) || 0));
         if (!isNaN(pnlThb)) {
           pnlMap[t] = (pnlMap[t] || 0) + pnlThb;
         }
@@ -1431,7 +1434,14 @@ export default function PortfolioApp() {
   const filteredTradeLogs = useMemo(() => {
     let list = Array.isArray(tradeLogs) ? [...tradeLogs] : [];
     if (tradeFilterType !== 'all') {
-      list = list.filter((log) => log && log.assetType === tradeFilterType);
+      list = list.filter((log) => {
+        if (!log) return false;
+        let t = log.assetType || 'th_stock';
+        if (t === 'th_stock' && log.instrumentType === 'dr') {
+          t = 'foreign_stock';
+        }
+        return t === tradeFilterType;
+      });
     }
     if (tradeStartDate) {
       list = list.filter((log) => log && (log.date || '') >= tradeStartDate);
@@ -1736,7 +1746,7 @@ export default function PortfolioApp() {
               <div style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '15.5px', color: 'var(--text)', margin: '0 0 14px 2px', display: 'flex', alignItems: 'center', gap: '7px' }}>
                 <span className="pf-dot" style={{ background: '#C7A344' }} />หุ้นไทย (Thai Stocks)
               </div>
-              {holdings.filter((h) => h && h.type === 'th_stock').length === 0 ? (
+              {holdings.filter((h) => h && h.type === 'th_stock' && h.instrumentType !== 'dr').length === 0 ? (
                 <div className="pf-empty">
                   <Inbox size={26} style={{ marginBottom: 8, opacity: 0.6 }} />
                   <div>ยังไม่มีรายการหุ้นไทยในพอร์ต</div>
