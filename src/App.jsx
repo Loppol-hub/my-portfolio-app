@@ -430,21 +430,17 @@ export default function PortfolioApp() {
     const avg = parseFloat(h?.avgCost) || 0;
     const price = parseFloat(h?.currentPrice) || 0;
     const currency = h?.currency === 'USD' ? 'USD' : 'THB';
-    
-    const assetBuys = (tradeLogs || []).filter(l => l && l.assetId === h?.id && l.action === 'buy');
-    let historicalRate = 1;
-    if (currency === 'USD') {
-      if (assetBuys.length > 0 && assetBuys[0]?.tradeFx) {
-        historicalRate = parseFloat(assetBuys[0].tradeFx) || fxRate;
-      } else {
-        historicalRate = fxRate;
-      }
-    }
-
     const isDr = h?.instrumentType === 'dr';
+
     const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h?.type, fxRate) : 1;
     const marketValue = qty * price * effRate;
-    const costValue = qty * avg * ((currency === 'USD' && !isDr) ? historicalRate : 1);
+
+    // Use accumulated totalCostThb if available, otherwise fallback to locked createdFxRate or standard calculation without floating with fxRate
+    const fixedRate = (currency === 'USD' && !isDr) ? (h?.createdFxRate || fxRate) : 1;
+    const costValue = h?.totalCostThb !== undefined && h.totalCostThb !== null 
+      ? h.totalCostThb 
+      : (qty * avg * fixedRate);
+
     const gain = marketValue - costValue;
     const gainPct = costValue > 0 ? (gain / costValue) * 100 : 0;
 
@@ -464,7 +460,7 @@ export default function PortfolioApp() {
       gain: isNaN(gain) ? 0 : gain, 
       gainPct: isNaN(gainPct) ? 0 : gainPct 
     };
-  }), [holdings, fxRate, tradeLogs]);
+  }), [holdings, fxRate]);
 
   const totalInvestedValue = useMemo(() => enriched.filter((h) => h?.type !== 'cash').reduce((s, h) => s + (h?.marketValue || 0), 0), [enriched]);
   const totalInvestedCost = useMemo(() => enriched.filter((h) => h?.type !== 'cash').reduce((s, h) => s + (h?.costValue || 0), 0), [enriched]);
@@ -757,7 +753,7 @@ export default function PortfolioApp() {
             qty: targetHolding.quantity,
             price: targetHolding.avgCost,
             currency: targetHolding.currency,
-            tradeFx: fxRate,
+            tradeFx: targetHolding.createdFxRate || fxRate,
             instrumentType: targetHolding.instrumentType
           });
         }
@@ -803,6 +799,8 @@ export default function PortfolioApp() {
       let currentQty = parseFloat(target.quantity) || 0;
       let currentAvg = parseFloat(target.avgCost) || 0;
       let currentPrice = parseFloat(target.currentPrice) || parseFloat(form.currentPrice) || 0;
+      let currentTotalCostThb = target.totalCostThb !== undefined ? target.totalCostThb : (currentQty * currentAvg * (target.currency === 'USD' && target.instrumentType !== 'dr' ? (target.createdFxRate || fxRate) : 1));
+      
       let newLedgerEntries = [...ledger];
       let newLogs = [...tradeLogs];
 
@@ -816,26 +814,42 @@ export default function PortfolioApp() {
         }
         const subtotal = addQty * addPrice;
         const customFx = form.tradeFx && parseFloat(form.tradeFx) > 0 ? parseFloat(form.tradeFx) : fxRate;
+        const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
 
         let feeAmount = 0;
+        let feeThb = 0;
         if (isDirectFee) {
-          if (currency === 'USD' && instrumentType !== 'dr') {
-            feeAmount = form.feeCurrency === 'THB' ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : feeInputVal;
+          if (isUsdAsset) {
+            if (form.feeCurrency === 'THB') {
+              feeThb = feeInputVal;
+              feeAmount = customFx > 0 ? feeInputVal / customFx : 0;
+            } else {
+              feeAmount = feeInputVal;
+              feeThb = feeInputVal * customFx;
+            }
           } else {
             feeAmount = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
+            feeThb = feeAmount;
           }
         } else {
           feeAmount = (subtotal * feeInputVal) / 100;
+          feeThb = isUsdAsset ? feeAmount * customFx : feeAmount;
         }
+
+        const subtotalThb = isUsdAsset ? subtotal * customFx : subtotal;
+        const addTotalCostThb = subtotalThb + feeThb;
 
         const prevQty = currentQty;
         const prevAvgCost = currentAvg;
+        const prevTotalCostThb = currentTotalCostThb;
 
-        const totalCostBefore = currentQty * currentAvg;
         const newQty = currentQty + addQty;
-        const totalNewCost = totalCostBefore + subtotal + feeAmount;
-        currentAvg = newQty > 0 ? totalNewCost / newQty : 0;
+        const totalCostBefore = currentQty * currentAvg;
+        const newAvg = newQty > 0 ? (totalCostBefore + subtotal + feeAmount) / newQty : 0;
+        
+        currentAvg = newAvg;
         currentQty = newQty;
+        currentTotalCostThb = currentTotalCostThb + addTotalCostThb;
 
         newLogs.unshift({
           id: Date.now().toString(),
@@ -852,7 +866,9 @@ export default function PortfolioApp() {
           date: form.tradeDate || todayStr(),
           note: (form.note || '').trim(),
           prevQty: prevQty,
-          prevAvgCost: prevAvgCost
+          prevAvgCost: prevAvgCost,
+          prevTotalCostThb: prevTotalCostThb,
+          totalCostThb: addTotalCostThb
         });
       } else if (form.tradeAction === 'sell') {
         const sellQty = parseFloat(form.tradeQty);
@@ -867,9 +883,7 @@ export default function PortfolioApp() {
         const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
         const saleThb = sellQty * sellPrice * (isUsdAsset ? customFx : 1);
         
-        const assetBuys = (tradeLogs || []).filter(l => l.assetId === target.id && l.action === 'buy');
-        const costFx = (isUsdAsset && assetBuys.length > 0 && assetBuys[0].tradeFx) ? parseFloat(assetBuys[0].tradeFx) : customFx;
-        const costThb = sellQty * currentAvg * (isUsdAsset ? costFx : 1);
+        const costThbSold = currentTotalCostThb * (sellQty / currentQty);
 
         let feeThb = 0;
         if (form.type === 'th_stock' && instrumentType === 'stock') {
@@ -880,14 +894,16 @@ export default function PortfolioApp() {
           feeThb = (saleThb * feeInputVal) / 100;
         }
 
-        const netPnlThb = saleThb - costThb - feeThb;
+        const netPnlThb = saleThb - costThbSold - feeThb;
         const pnlAssetCurrency = isUsdAsset && customFx > 0 ? netPnlThb / customFx : netPnlThb;
 
         const prevQty = currentQty;
         const prevAvgCost = currentAvg;
+        const prevTotalCostThb = currentTotalCostThb;
 
         currentQty = currentQty - sellQty;
-        const feeDisplayThb = feeThb;
+        currentTotalCostThb = currentTotalCostThb - costThbSold;
+
         newLogs.unshift({
           id: Date.now().toString(),
           assetId: target.id,
@@ -897,7 +913,7 @@ export default function PortfolioApp() {
           action: 'sell',
           quantity: sellQty,
           price: sellPrice,
-          fee: feeDisplayThb,
+          fee: feeThb,
           isFeeThb: true,
           pnl: pnlAssetCurrency,
           pnlThb: netPnlThb,
@@ -906,7 +922,9 @@ export default function PortfolioApp() {
           date: form.tradeDate || todayStr(),
           note: form.note.trim(),
           prevQty: prevQty,
-          prevAvgCost: prevAvgCost
+          prevAvgCost: prevAvgCost,
+          prevTotalCostThb: prevTotalCostThb,
+          totalCostThb: costThbSold
         });
       } else {
         const qty = parseFloat(form.quantity);
@@ -916,6 +934,9 @@ export default function PortfolioApp() {
         currentQty = qty;
         currentAvg = avg;
         currentPrice = price;
+        const customFx = form.tradeFx && parseFloat(form.tradeFx) > 0 ? parseFloat(form.tradeFx) : (target.createdFxRate || fxRate);
+        const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
+        currentTotalCostThb = isCash ? 0 : (qty * avg * (isUsdAsset ? customFx : 1));
       }
 
       saveLedger(newLedgerEntries);
@@ -926,7 +947,19 @@ export default function PortfolioApp() {
         next = holdings.filter((h) => h && h.id !== editingId);
         showToast('ขายหมดและลบสินทรัพย์ออกจากพอร์ตแล้ว');
       } else {
-        next = holdings.map((h) => h && h.id === editingId ? { ...h, name, ticker: (form.ticker || '').trim(), type: form.type, quantity: currentQty, avgCost: Number(currentAvg), currentPrice: currentPrice, currency, industry, instrumentType } : h);
+        next = holdings.map((h) => h && h.id === editingId ? { 
+          ...h, 
+          name, 
+          ticker: (form.ticker || '').trim(), 
+          type: form.type, 
+          quantity: currentQty, 
+          avgCost: Number(currentAvg), 
+          currentPrice: currentPrice, 
+          currency, 
+          industry, 
+          instrumentType,
+          totalCostThb: currentTotalCostThb 
+        } : h);
         showToast('บันทึกข้อมูลเรียบร้อย');
       }
       saveHoldings(next);
@@ -941,22 +974,33 @@ export default function PortfolioApp() {
 
       const subtotal = qty * avg;
       const customFx = form.tradeFx && parseFloat(form.tradeFx) > 0 ? parseFloat(form.tradeFx) : fxRate;
+      const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
 
       let feeAmount = 0;
+      let feeThb = 0;
       if (!isCash) {
         if (isDirectFee) {
-          if (currency === 'USD' && instrumentType !== 'dr') {
-            feeAmount = form.feeCurrency === 'THB' ? (customFx > 0 ? feeInputVal / customFx : feeInputVal) : feeInputVal;
+          if (isUsdAsset) {
+            if (form.feeCurrency === 'THB') {
+              feeThb = feeInputVal;
+              feeAmount = customFx > 0 ? feeInputVal / customFx : 0;
+            } else {
+              feeAmount = feeInputVal;
+              feeThb = feeInputVal * customFx;
+            }
           } else {
             feeAmount = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
+            feeThb = feeAmount;
           }
         } else {
           feeAmount = (subtotal * feeInputVal) / 100;
+          feeThb = isUsdAsset ? feeAmount * customFx : feeAmount;
         }
       }
 
-      const totalInitialCost = subtotal + feeAmount;
-      const calculatedAvg = qty > 0 ? totalInitialCost / qty : avg;
+      const subtotalThb = isUsdAsset ? subtotal * customFx : subtotal;
+      const totalCostThb = isCash ? 0 : (subtotalThb + feeThb);
+      const calculatedAvg = qty > 0 ? (subtotal + feeAmount) / qty : avg;
 
       const newId = Date.now().toString();
       const nextHoldings = [...holdings, { 
@@ -970,6 +1014,8 @@ export default function PortfolioApp() {
         currency, 
         industry, 
         instrumentType, 
+        totalCostThb: totalCostThb,
+        createdFxRate: customFx,
         lastUpdated: todayStr() 
       }];
 
@@ -988,7 +1034,9 @@ export default function PortfolioApp() {
         date: form.tradeDate || todayStr(),
         note: (form.note || '').trim(),
         prevQty: 0,
-        prevAvgCost: 0
+        prevAvgCost: 0,
+        prevTotalCostThb: 0,
+        totalCostThb: totalCostThb
       }, ...(tradeLogs || [])];
 
       let newLedger = [...ledger];
@@ -1011,11 +1059,15 @@ export default function PortfolioApp() {
     const target = holdings.find(h => h && h.id === log.assetId);
 
     if (log.prevQty !== undefined && log.prevAvgCost !== undefined) {
+      const restoredTotalCostThb = log.prevTotalCostThb !== undefined 
+        ? log.prevTotalCostThb 
+        : (log.prevQty * log.prevAvgCost * (log.currency === 'USD' && log.instrumentType !== 'dr' ? (target?.createdFxRate || fxRate) : 1));
+
       if (log.prevQty <= 0) {
         saveHoldings(holdings.filter(h => h && h.id !== log.assetId));
       } else {
         if (target) {
-          saveHoldings(holdings.map(h => h && h.id === log.assetId ? { ...h, quantity: log.prevQty, avgCost: log.prevAvgCost } : h));
+          saveHoldings(holdings.map(h => h && h.id === log.assetId ? { ...h, quantity: log.prevQty, avgCost: log.prevAvgCost, totalCostThb: restoredTotalCostThb } : h));
         } else {
           const restoredHolding = {
             id: log.assetId,
@@ -1026,6 +1078,8 @@ export default function PortfolioApp() {
             currentPrice: log.price || 0,
             currency: log.currency || 'THB',
             instrumentType: log.instrumentType || 'stock',
+            totalCostThb: restoredTotalCostThb,
+            createdFxRate: log.tradeFx || fxRate,
             lastUpdated: todayStr()
           };
           saveHoldings([...holdings, restoredHolding]);
