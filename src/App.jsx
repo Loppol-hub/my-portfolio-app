@@ -163,15 +163,28 @@ const fmt = (n, digits = 2, isCrypto = false) => {
   return new Intl.NumberFormat('th-TH', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(num);
 };
 
-const todayStr = () => new Date().toISOString().slice(0, 10);
+const todayStr = () => {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
 const thaiDateAD = (iso) => {
   if (!iso) return '-';
+  const cleanIso = String(iso).split('T')[0];
+  const parts = cleanIso.split('-');
+  if (parts.length === 3) {
+    const [yyyy, mm, dd] = parts;
+    return `${dd}-${mm}-${yyyy}`;
+  }
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '-';
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const yy = String(d.getFullYear()).slice(-2);
-  return `${dd}-${mm}-${yy}`;
+  const yyyy = d.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
 };
 
 const calcDaysAgo = (dateStr) => {
