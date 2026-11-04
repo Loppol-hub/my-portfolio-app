@@ -730,8 +730,8 @@ export default function PortfolioApp() {
   const getAssetLots = (assetId, currentQty, currentPrice, assetCurrency, assetType, instrumentType) => {
     try {
       // แก้ไขการเรียงลำดับ tradeLogs โดยใช้ Secondary Sort (ID/Timestamp) เมื่อวันที่ตรงกัน
-      const logs = (tradeLogs || []).filter(l => l && l.assetId === assetId).sort((a, b) => {
-        const dateComp = (a?.date || '').localeCompare(b?.date || '');
+   const logs = (tradeLogs || []).filter(l => l && l.assetId === assetId).reverse().sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
+
         if (dateComp !== 0) return dateComp;
         return String(a?.id || '').localeCompare(String(b?.id || ''));
       });
@@ -739,19 +739,16 @@ export default function PortfolioApp() {
       logs.forEach(l => {
         if (l && l.action === 'buy') {
           lots.push({ date: l.date, qty: l.quantity, price: l.price, currency: l.currency, tradeFx: l.tradeFx, instrumentType: l.instrumentType, totalCostThb: l.totalCostThb });
-        } else if (l && l.action === 'sell') {
+                } else if (l && l.action === 'sell') {
           let remSell = l.quantity;
-          while (remSell > 0 && lots.length > 0) {
+          while (remSell > 1e-8 && lots.length > 0) {
             if (lots[0].qty <= remSell + 1e-8) {
               remSell -= lots[0].qty;
               lots.shift();
             } else {
-              // แก้ไขการขายบางส่วน: ปรับลด totalCostThb ลงตามสัดส่วนจำนวนหุ้นที่ถูกขายออกไป
-              const oldQty = lots[0].qty;
+              const ratio = (lots[0].qty - remSell) / lots[0].qty;
+              if (lots[0].totalCostThb !== undefined) lots[0].totalCostThb *= ratio;
               lots[0].qty -= remSell;
-              if (lots[0].totalCostThb !== undefined && lots[0].totalCostThb !== null && oldQty > 0) {
-                lots[0].totalCostThb *= (lots[0].qty / oldQty);
-              }
               remSell = 0;
             }
           }
