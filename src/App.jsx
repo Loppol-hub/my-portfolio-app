@@ -512,6 +512,7 @@ export default function PortfolioApp() {
     return list;
   }, [ledger, tradeLogs, fxRate]);
 
+  const totalFees = useMemo(() => (ledger || []).filter(e => e && e.type === 'fee').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0), [ledger]);
   const performanceTotal = useMemo(() => (
     combinedLedger.filter((e) => e && e.type === 'profit').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0)
     - combinedLedger.filter((e) => e && (e.type === 'loss' || e.type === 'fee')).reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0)
@@ -773,26 +774,36 @@ export default function PortfolioApp() {
     }));
   };
 
-  // ปรับปรุงฟังก์ชันประวัติย่อยใต้สินทรัพย์ (Logs Viewer) ให้แสดงทุกไม้ทั้งซื้อและขายตามประวัติจริง ไม่ซ่อน และเพิ่ม Scrollbar
-  const getAssetLogsList = (assetId, assetCurrency, assetType, instrumentType) => {
+  // ดึงประวัติไม้ทั้งหมด (ซื้อและขาย) ตามจริง เพื่อแสดงในประวัติย่อยใต้สินทรัพย์
+  const getAssetLogsList = (assetId, currentPrice, assetCurrency, assetType, instrumentType) => {
     try {
       const logs = (tradeLogs || []).filter(l => l && l.assetId === assetId).sort((a, b) => {
         const dateComp = (b?.date || '').localeCompare(a?.date || '');
         if (dateComp !== 0) return dateComp;
         return String(b?.id || '').localeCompare(String(a?.id || ''));
       });
+      const isDr = instrumentType === 'dr';
+      const isUsd = assetCurrency === 'USD' && !isDr;
+
       return logs.map(l => {
         const isBuy = l.action === 'buy';
-        const isUsd = l.currency === 'USD' && l.instrumentType !== 'dr';
-        const logFx = isUsd ? (l.tradeFx || fxRate) : 1;
-        const price = l.price || 0;
-        const qty = l.quantity || 0;
-        const days = calcDaysAgo(l?.date);
+        const logQty = parseFloat(l.quantity) || 0;
+        const logPrice = parseFloat(l.price) || 0;
+        const logFx = (l.currency === 'USD' && l.instrumentType !== 'dr') ? (parseFloat(l.tradeFx) || fxRate) : 1;
+        
+        const logValThb = logQty * currentPrice * (isUsd ? getEffectiveRate(assetType, fxRate) : 1);
+        const logCostThb = l.totalCostThb !== undefined && l.totalCostThb !== null 
+          ? l.totalCostThb 
+          : (logQty * logPrice * (isUsd ? logFx : 1));
+
+        const logGain = logValThb - logCostThb;
+        const logGainPct = logCostThb > 0 ? (logGain / logCostThb) * 100 : 0;
+
         return {
           ...l,
           isBuy,
-          days,
-          displayPrice: price,
+          days: calcDaysAgo(l?.date),
+          gainPct: logGainPct,
           currencySymbol: isUsd ? '$' : '฿'
         };
       });
@@ -848,7 +859,7 @@ export default function PortfolioApp() {
               feeAmount = customFx > 0 ? feeInputVal / customFx : 0;
               recordFeeForDisplay = feeInputVal;
             } else {
-              feeAmount = feeInputVal;
+              feeAmount = form.feeCurrency === 'USD' ? feeInputVal : feeInputVal;
               feeThb = feeAmount * (isUsdAsset ? customFx : 1);
               recordFeeForDisplay = feeInputVal;
             }
@@ -1983,7 +1994,7 @@ export default function PortfolioApp() {
                           if (!h) return null;
                           const isCrypto = h.type === 'crypto';
                           const isExpanded = expandedLotsId === h.id;
-                          const assetLogs = getAssetLogsList(h.id, h.currency, h.type, h.instrumentType);
+                          const assetLogs = getAssetLogsList(h.id, h.currentPrice, h.currency, h.type, h.instrumentType);
 
                           return (
                             <div key={h.id}>
@@ -2025,8 +2036,9 @@ export default function PortfolioApp() {
                                     <span style={{ textAlign: 'center', width: '50px' }}>ประเภท</span>
                                     <span style={{ textAlign: 'center', flex: 1 }}>จำนวน</span>
                                     <span style={{ textAlign: 'right', flex: 1 }}>ราคา/หน่วย</span>
+                                    <span style={{ textAlign: 'right', minWidth: '70px' }}>กำไร/ขาดทุน</span>
                                   </div>
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '140px', overflowY: 'auto', paddingRight: '4px' }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '160px', overflowY: 'auto', paddingRight: '4px' }}>
                                     {assetLogs.map((log, idx) => {
                                       const isBuyLog = log.action === 'buy';
                                       return (
@@ -2039,6 +2051,9 @@ export default function PortfolioApp() {
                                           </span>
                                           <span style={{ textAlign: 'center', flex: 1 }}><b>{fmt(log?.quantity, 2, isCrypto)}</b></span>
                                           <span style={{ textAlign: 'right', flex: 1 }}><b>{log.currencySymbol}{fmt(log?.price, 2)}</b></span>
+                                          <span className={!isBuyLog ? 'pf-muted' : (log?.gainPct >= 0 ? 'pf-chip-pos' : 'pf-chip-neg')} style={{ fontWeight: '600', textAlign: 'right', minWidth: '70px', fontSize: '11px' }}>
+                                            {isBuyLog ? `${log?.gainPct >= 0 ? '+' : ''}${fmt(log?.gainPct, 2)}%` : 'ขายแล้ว'}
+                                          </span>
                                         </div>
                                       );
                                     })}
@@ -2185,7 +2200,7 @@ export default function PortfolioApp() {
                           if (!h) return null;
                           const isCrypto = h.type === 'crypto';
                           const isExpanded = expandedLotsId === h.id;
-                          const assetLogs = getAssetLogsList(h.id, h.currency, h.type, h.instrumentType);
+                          const assetLogs = getAssetLogsList(h.id, h.currentPrice, h.currency, h.type, h.instrumentType);
 
                           return (
                             <div key={h.id}>
@@ -2227,8 +2242,9 @@ export default function PortfolioApp() {
                                     <span style={{ textAlign: 'center', width: '50px' }}>ประเภท</span>
                                     <span style={{ textAlign: 'center', flex: 1 }}>จำนวน</span>
                                     <span style={{ textAlign: 'right', flex: 1 }}>ราคา/หน่วย</span>
+                                    <span style={{ textAlign: 'right', minWidth: '70px' }}>กำไร/ขาดทุน</span>
                                   </div>
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '140px', overflowY: 'auto', paddingRight: '4px' }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '160px', overflowY: 'auto', paddingRight: '4px' }}>
                                     {assetLogs.map((log, idx) => {
                                       const isBuyLog = log.action === 'buy';
                                       return (
@@ -2241,6 +2257,9 @@ export default function PortfolioApp() {
                                           </span>
                                           <span style={{ textAlign: 'center', flex: 1 }}><b>{fmt(log?.quantity, 2, isCrypto)}</b></span>
                                           <span style={{ textAlign: 'right', flex: 1 }}><b>{log.currencySymbol}{fmt(log?.price, 2)}</b></span>
+                                          <span className={!isBuyLog ? 'pf-muted' : (log?.gainPct >= 0 ? 'pf-chip-pos' : 'pf-chip-neg')} style={{ fontWeight: '600', textAlign: 'right', minWidth: '70px', fontSize: '11px' }}>
+                                            {isBuyLog ? `${log?.gainPct >= 0 ? '+' : ''}{fmt(log?.gainPct, 2)}%` : 'ขายแล้ว'}
+                                          </span>
                                         </div>
                                       );
                                     })}
@@ -2601,7 +2620,7 @@ export default function PortfolioApp() {
                             if (!h) return null;
                             const isCrypto = h.type === 'crypto';
                             const isExpanded = expandedLotsId === h.id;
-                            const assetLogs = getAssetLogsList(h.id, h.currency, h.type, h.instrumentType);
+                            const assetLogs = getAssetLogsList(h.id, h.currentPrice, h.currency, h.type, h.instrumentType);
 
                             return (
                               <div key={h.id}>
