@@ -489,7 +489,6 @@ export default function PortfolioApp() {
   const totalInvestedCost = useMemo(() => enriched.filter((h) => h?.type !== 'cash').reduce((s, h) => s + (h?.costValue || 0), 0), [enriched]);
 
   const capitalAddTotal = useMemo(() => (ledger || []).filter((e) => e && e.type === 'capital_add').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0), [ledger]);
-  // ปรับให้ ทุนเริ่มต้นไม่ถูกหักด้วยค่าธรรมเนียม (คิดเฉพาะ capital_reduce เท่านั้น)
   const capitalReduceTotal = useMemo(() => (ledger || []).filter((e) => e && e.type === 'capital_reduce').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0), [ledger]);
   const capitalAdjTotal = useMemo(() => capitalAddTotal - capitalReduceTotal, [capitalAddTotal, capitalReduceTotal]);
 
@@ -513,8 +512,6 @@ export default function PortfolioApp() {
     return list;
   }, [ledger, tradeLogs, fxRate]);
 
-  // นำค่าธรรมเนียมมารวมคำนวณหักออกจากผลประกอบการรวม (Performance)
-  const totalFees = useMemo(() => (ledger || []).filter(e => e && e.type === 'fee').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0), [ledger]);
   const performanceTotal = useMemo(() => (
     combinedLedger.filter((e) => e && e.type === 'profit').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0)
     - combinedLedger.filter((e) => e && (e.type === 'loss' || e.type === 'fee')).reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0)
@@ -776,99 +773,28 @@ export default function PortfolioApp() {
     }));
   };
 
-  const getAssetLots = (assetId, currentQty, currentPrice, assetCurrency, assetType, instrumentType) => {
+  // ปรับปรุงฟังก์ชันประวัติย่อยใต้สินทรัพย์ (Logs Viewer) ให้แสดงทุกไม้ทั้งซื้อและขายตามประวัติจริง ไม่ซ่อน และเพิ่ม Scrollbar
+  const getAssetLogsList = (assetId, assetCurrency, assetType, instrumentType) => {
     try {
       const logs = (tradeLogs || []).filter(l => l && l.assetId === assetId).sort((a, b) => {
-        const dateComp = (a?.date || '').localeCompare(b?.date || '');
+        const dateComp = (b?.date || '').localeCompare(a?.date || '');
         if (dateComp !== 0) return dateComp;
-        return String(a?.id || '').localeCompare(String(b?.id || ''));
+        return String(b?.id || '').localeCompare(String(a?.id || ''));
       });
-      let lots = [];
-      logs.forEach(l => {
-        if (l && l.action === 'buy') {
-          lots.push({ date: l.date, qty: l.quantity, price: l.price, currency: l.currency, tradeFx: l.tradeFx, instrumentType: l.instrumentType, totalCostThb: l.totalCostThb });
-        } else if (l && l.action === 'sell') {
-          let remSell = l.quantity;
-          while (remSell > 0 && lots.length > 0) {
-            if (lots[0].qty <= remSell + 1e-8) {
-              remSell -= lots[0].qty;
-              lots.shift();
-            } else {
-              const oldQty = lots[0].qty;
-              lots[0].qty -= remSell;
-              if (lots[0].totalCostThb !== undefined && lots[0].totalCostThb !== null && oldQty > 0) {
-                lots[0].totalCostThb *= (lots[0].qty / oldQty);
-              }
-              remSell = 0;
-            }
-          }
-        }
-      });
-      if (lots.length === 0) {
-        const targetHolding = holdings.find(h => h && h.id === assetId);
-        if (targetHolding) {
-          lots.push({
-            date: targetHolding.lastUpdated || todayStr(),
-            qty: targetHolding.quantity,
-            price: targetHolding.avgCost,
-            currency: targetHolding.currency,
-            tradeFx: targetHolding.createdFxRate || fxRate,
-            instrumentType: targetHolding.instrumentType,
-            totalCostThb: targetHolding.totalCostThb
-          });
-        }
-      }
-
-      const targetHolding = holdings.find(h => h && h.id === assetId);
-      if (targetHolding) {
-        const hQty = parseFloat(targetHolding.quantity) || 0;
-        const hCostThb = targetHolding.totalCostThb !== undefined && targetHolding.totalCostThb !== null 
-          ? targetHolding.totalCostThb 
-          : (hQty * (parseFloat(targetHolding.avgCost) || 0) * (targetHolding.currency === 'USD' && targetHolding.instrumentType !== 'dr' ? (targetHolding.createdFxRate || fxRate) : 1));
-        
-        const currentTotalLotQty = lots.reduce((s, l) => s + (l.qty || 0), 0);
-        if (currentTotalLotQty > 0 && Math.abs(currentTotalLotQty - hQty) > 1e-8) {
-          const diff = hQty - currentTotalLotQty;
-          lots[lots.length - 1].qty += diff;
-          if (lots[lots.length - 1].qty < 0) lots[lots.length - 1].qty = 0;
-        } else if (lots.length === 0 && hQty > 0) {
-          lots.push({
-            date: targetHolding.lastUpdated || todayStr(),
-            qty: hQty,
-            price: targetHolding.avgCost,
-            currency: targetHolding.currency,
-            tradeFx: targetHolding.createdFxRate || fxRate,
-            instrumentType: targetHolding.instrumentType,
-            totalCostThb: hCostThb
-          });
-        }
-
-        const rawLotsCost = lots.reduce((s, l) => s + (l.totalCostThb !== undefined ? l.totalCostThb : (l.qty * (l.price || 0) * (l.currency === 'USD' && l.instrumentType !== 'dr' ? (l.tradeFx || fxRate) : 1))), 0);
-        if (rawLotsCost > 0 && hCostThb > 0) {
-          lots.forEach(l => {
-            const baseCost = l.totalCostThb !== undefined ? l.totalCostThb : (l.qty * (l.price || 0) * (l.currency === 'USD' && l.instrumentType !== 'dr' ? (l.tradeFx || fxRate) : 1));
-            l.totalCostThb = baseCost * (hCostThb / rawLotsCost);
-          });
-        } else if (hCostThb > 0 && lots.length === 1) {
-          lots[0].totalCostThb = hCostThb;
-        }
-      }
-
-      const isDr = instrumentType === 'dr';
-      const isUsd = assetCurrency === 'USD' && !isDr;
-      return lots.map(lot => {
-        const days = calcDaysAgo(lot?.date);
-        const lotCurPrice = currentPrice;
-        const lotQty = lot?.qty || 0;
-
-        const lotIsUsd = lot?.currency === 'USD' && lot?.instrumentType !== 'dr';
-        const lotValThb = lotQty * lotCurPrice * (isUsd ? getEffectiveRate(assetType, fxRate) : 1);
-        const lotCostThb = lot?.totalCostThb !== undefined ? lot.totalCostThb : (lotQty * (lot?.price || 0) * (lotIsUsd ? (lot?.tradeFx || fxRate) : 1));
-
-        const lotGain = lotValThb - lotCostThb;
-        const lotGainPct = lotCostThb > 0 ? (lotGain / lotCostThb) * 100 : 0;
-
-        return { ...lot, days, gainPct: lotGainPct, isUsd: lotIsUsd };
+      return logs.map(l => {
+        const isBuy = l.action === 'buy';
+        const isUsd = l.currency === 'USD' && l.instrumentType !== 'dr';
+        const logFx = isUsd ? (l.tradeFx || fxRate) : 1;
+        const price = l.price || 0;
+        const qty = l.quantity || 0;
+        const days = calcDaysAgo(l?.date);
+        return {
+          ...l,
+          isBuy,
+          days,
+          displayPrice: price,
+          currencySymbol: isUsd ? '$' : '฿'
+        };
       });
     } catch (e) {
       return [];
@@ -922,7 +848,7 @@ export default function PortfolioApp() {
               feeAmount = customFx > 0 ? feeInputVal / customFx : 0;
               recordFeeForDisplay = feeInputVal;
             } else {
-              feeAmount = form.feeCurrency === 'USD' ? feeInputVal : feeInputVal;
+              feeAmount = feeInputVal;
               feeThb = feeAmount * (isUsdAsset ? customFx : 1);
               recordFeeForDisplay = feeInputVal;
             }
@@ -2057,7 +1983,7 @@ export default function PortfolioApp() {
                           if (!h) return null;
                           const isCrypto = h.type === 'crypto';
                           const isExpanded = expandedLotsId === h.id;
-                          const lots = getAssetLots(h.id, h.qty, h.price, h.currency, h.type, h.instrumentType);
+                          const assetLogs = getAssetLogsList(h.id, h.currency, h.type, h.instrumentType);
 
                           return (
                             <div key={h.id}>
@@ -2091,26 +2017,31 @@ export default function PortfolioApp() {
                                 </div>
                               </div>
 
-                              {isExpanded && lots.length > 0 && (
+                              {isExpanded && assetLogs.length > 0 && (
                                 <div style={{ background: 'rgba(0,0,0,0.25)', padding: '10px 12px', borderRadius: '10px', margin: '6px 0 12px', border: '1px solid var(--divider)' }}>
-                                  <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '8px', fontWeight: '600' }}>ไม้ที่ถืออยู่ ({lots.length})</div>
+                                  <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '8px', fontWeight: '600' }}>ประวัติรายการ ({assetLogs.length})</div>
                                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: 'var(--muted)', paddingBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: '6px' }} className="pf-mono">
-                                    <span style={{ minWidth: '85px' }}>วันที่ซื้อ</span>
+                                    <span style={{ minWidth: '85px' }}>วันที่</span>
+                                    <span style={{ textAlign: 'center', width: '50px' }}>ประเภท</span>
                                     <span style={{ textAlign: 'center', flex: 1 }}>จำนวน</span>
                                     <span style={{ textAlign: 'right', flex: 1 }}>ราคา/หน่วย</span>
-                                    <span style={{ textAlign: 'right', minWidth: '70px' }}>กำไร/ขาดทุน</span>
                                   </div>
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    {lots.map((lot, idx) => (
-                                      <div key={idx} style={{ background: 'var(--surface-alt)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '6px 8px', fontSize: '11.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="pf-mono">
-                                        <span style={{ color: 'var(--gold)', minWidth: '85px' }}>{thaiDateAD(lot?.date)} <span style={{ color: 'var(--muted)', fontSize: '10px' }}>({lot?.days || 0}ว)</span></span>
-                                        <span style={{ textAlign: 'center', flex: 1 }}><b>{fmt(lot?.qty, 2, isCrypto)}</b></span>
-                                        <span style={{ textAlign: 'right', flex: 1 }}><b>{fmt(lot?.price, 2)}</b></span>
-                                        <span className={(lot?.gainPct || 0) >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'} style={{ fontWeight: '600', textAlign: 'right', minWidth: '70px' }}>
-                                          {(lot?.gainPct || 0) >= 0 ? '+' : ''}{fmt(lot?.gainPct, 2)}%
-                                        </span>
-                                      </div>
-                                    ))}
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '140px', overflowY: 'auto', paddingRight: '4px' }}>
+                                    {assetLogs.map((log, idx) => {
+                                      const isBuyLog = log.action === 'buy';
+                                      return (
+                                        <div key={idx} style={{ background: 'var(--surface-alt)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '6px 8px', fontSize: '11.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="pf-mono">
+                                          <span style={{ color: 'var(--gold)', minWidth: '85px' }}>{thaiDateAD(log?.date)}</span>
+                                          <span style={{ textAlign: 'center', width: '50px' }}>
+                                            <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '4px', background: isBuyLog ? 'rgba(52,211,153,0.15)' : 'rgba(252,165,165,0.15)', color: isBuyLog ? '#34d399' : '#fca5a5' }}>
+                                              {isBuyLog ? 'ซื้อ' : 'ขาย'}
+                                            </span>
+                                          </span>
+                                          <span style={{ textAlign: 'center', flex: 1 }}><b>{fmt(log?.quantity, 2, isCrypto)}</b></span>
+                                          <span style={{ textAlign: 'right', flex: 1 }}><b>{log.currencySymbol}{fmt(log?.price, 2)}</b></span>
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               )}
@@ -2254,7 +2185,7 @@ export default function PortfolioApp() {
                           if (!h) return null;
                           const isCrypto = h.type === 'crypto';
                           const isExpanded = expandedLotsId === h.id;
-                          const lots = getAssetLots(h.id, h.qty, h.price, h.currency, h.type, h.instrumentType);
+                          const assetLogs = getAssetLogsList(h.id, h.currency, h.type, h.instrumentType);
 
                           return (
                             <div key={h.id}>
@@ -2288,26 +2219,31 @@ export default function PortfolioApp() {
                                 </div>
                               </div>
 
-                              {isExpanded && lots.length > 0 && (
+                              {isExpanded && assetLogs.length > 0 && (
                                 <div style={{ background: 'rgba(0,0,0,0.25)', padding: '10px 12px', borderRadius: '10px', margin: '6px 0 12px', border: '1px solid var(--divider)' }}>
-                                  <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '8px', fontWeight: '600' }}>ไม้ที่ถืออยู่ ({lots.length})</div>
+                                  <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '8px', fontWeight: '600' }}>ประวัติรายการ ({assetLogs.length})</div>
                                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: 'var(--muted)', paddingBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: '6px' }} className="pf-mono">
-                                    <span style={{ minWidth: '85px' }}>วันที่ซื้อ</span>
+                                    <span style={{ minWidth: '85px' }}>วันที่</span>
+                                    <span style={{ textAlign: 'center', width: '50px' }}>ประเภท</span>
                                     <span style={{ textAlign: 'center', flex: 1 }}>จำนวน</span>
                                     <span style={{ textAlign: 'right', flex: 1 }}>ราคา/หน่วย</span>
-                                    <span style={{ textAlign: 'right', minWidth: '70px' }}>กำไร/ขาดทุน</span>
                                   </div>
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    {lots.map((lot, idx) => (
-                                      <div key={idx} style={{ background: 'var(--surface-alt)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '6px 8px', fontSize: '11.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="pf-mono">
-                                        <span style={{ color: 'var(--gold)', minWidth: '85px' }}>{thaiDateAD(lot?.date)} <span style={{ color: 'var(--muted)', fontSize: '10px' }}>({lot?.days || 0}ว)</span></span>
-                                        <span style={{ textAlign: 'center', flex: 1 }}><b>{fmt(lot?.qty, 2, isCrypto)}</b></span>
-                                        <span style={{ textAlign: 'right', flex: 1 }}><b>{lot?.currency === 'USD' && h.instrumentType !== 'dr' ? '$' : '฿'}{fmt(lot?.price, 2)}</b></span>
-                                        <span className={(lot?.gainPct || 0) >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'} style={{ fontWeight: '600', textAlign: 'right', minWidth: '70px' }}>
-                                          {(lot?.gainPct || 0) >= 0 ? '+' : ''}{fmt(lot?.gainPct, 2)}%
-                                        </span>
-                                      </div>
-                                    ))}
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '140px', overflowY: 'auto', paddingRight: '4px' }}>
+                                    {assetLogs.map((log, idx) => {
+                                      const isBuyLog = log.action === 'buy';
+                                      return (
+                                        <div key={idx} style={{ background: 'var(--surface-alt)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '6px 8px', fontSize: '11.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="pf-mono">
+                                          <span style={{ color: 'var(--gold)', minWidth: '85px' }}>{thaiDateAD(log?.date)}</span>
+                                          <span style={{ textAlign: 'center', width: '50px' }}>
+                                            <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '4px', background: isBuyLog ? 'rgba(52,211,153,0.15)' : 'rgba(252,165,165,0.15)', color: isBuyLog ? '#34d399' : '#fca5a5' }}>
+                                              {isBuyLog ? 'ซื้อ' : 'ขาย'}
+                                            </span>
+                                          </span>
+                                          <span style={{ textAlign: 'center', flex: 1 }}><b>{fmt(log?.quantity, 2, isCrypto)}</b></span>
+                                          <span style={{ textAlign: 'right', flex: 1 }}><b>{log.currencySymbol}{fmt(log?.price, 2)}</b></span>
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               )}
@@ -2665,7 +2601,7 @@ export default function PortfolioApp() {
                             if (!h) return null;
                             const isCrypto = h.type === 'crypto';
                             const isExpanded = expandedLotsId === h.id;
-                            const lots = getAssetLots(h.id, h.qty, h.price, h.currency, h.type, h.instrumentType);
+                            const assetLogs = getAssetLogsList(h.id, h.currency, h.type, h.instrumentType);
 
                             return (
                               <div key={h.id}>
@@ -2695,26 +2631,31 @@ export default function PortfolioApp() {
                                   </div>
                                 </div>
 
-                                {isExpanded && lots.length > 0 && (
+                                {isExpanded && assetLogs.length > 0 && (
                                   <div style={{ background: 'rgba(0,0,0,0.25)', padding: '10px 12px', borderRadius: '10px', margin: '6px 0 12px', border: '1px solid var(--divider)' }}>
-                                    <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '8px', fontWeight: '600' }}>ไม้ที่ถืออยู่ ({lots.length})</div>
+                                    <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '8px', fontWeight: '600' }}>ประวัติรายการ ({assetLogs.length})</div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: 'var(--muted)', paddingBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: '6px' }} className="pf-mono">
-                                      <span style={{ minWidth: '85px' }}>วันที่ซื้อ</span>
+                                      <span style={{ minWidth: '85px' }}>วันที่</span>
+                                      <span style={{ textAlign: 'center', width: '50px' }}>ประเภท</span>
                                       <span style={{ textAlign: 'center', flex: 1 }}>จำนวน</span>
                                       <span style={{ textAlign: 'right', flex: 1 }}>ราคา/หน่วย</span>
-                                      <span style={{ textAlign: 'right', minWidth: '70px' }}>กำไร/ขาดทุน</span>
                                     </div>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                      {lots.map((lot, idx) => (
-                                        <div key={idx} style={{ background: 'var(--surface-alt)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '6px 8px', fontSize: '11.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="pf-mono">
-                                          <span style={{ color: 'var(--gold)', minWidth: '85px' }}>{thaiDateAD(lot?.date)} <span style={{ color: 'var(--muted)', fontSize: '10px' }}>({lot?.days || 0}ว)</span></span>
-                                          <span style={{ textAlign: 'center', flex: 1 }}><b>{fmt(lot?.qty, 2, isCrypto)}</b></span>
-                                          <span style={{ textAlign: 'right', flex: 1 }}><b>{fmt(lot?.price, 2)}</b></span>
-                                          <span className={(lot?.gainPct || 0) >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'} style={{ fontWeight: '600', textAlign: 'right', minWidth: '70px' }}>
-                                            {(lot?.gainPct || 0) >= 0 ? '+' : ''}{fmt(lot?.gainPct, 2)}%
-                                          </span>
-                                        </div>
-                                      ))}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '140px', overflowY: 'auto', paddingRight: '4px' }}>
+                                      {assetLogs.map((log, idx) => {
+                                        const isBuyLog = log.action === 'buy';
+                                        return (
+                                          <div key={idx} style={{ background: 'var(--surface-alt)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '6px 8px', fontSize: '11.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="pf-mono">
+                                            <span style={{ color: 'var(--gold)', minWidth: '85px' }}>{thaiDateAD(log?.date)}</span>
+                                            <span style={{ textAlign: 'center', width: '50px' }}>
+                                              <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '4px', background: isBuyLog ? 'rgba(52,211,153,0.15)' : 'rgba(252,165,165,0.15)', color: isBuyLog ? '#34d399' : '#fca5a5' }}>
+                                                {isBuyLog ? 'ซื้อ' : 'ขาย'}
+                                              </span>
+                                            </span>
+                                            <span style={{ textAlign: 'center', flex: 1 }}><b>{fmt(log?.quantity, 2, isCrypto)}</b></span>
+                                            <span style={{ textAlign: 'right', flex: 1 }}><b>{log.currencySymbol}{fmt(log?.price, 2)}</b></span>
+                                          </div>
+                                        );
+                                      })}
                                     </div>
                                   </div>
                                 )}
