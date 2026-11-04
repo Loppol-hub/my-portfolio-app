@@ -489,7 +489,8 @@ export default function PortfolioApp() {
   const totalInvestedCost = useMemo(() => enriched.filter((h) => h?.type !== 'cash').reduce((s, h) => s + (h?.costValue || 0), 0), [enriched]);
 
   const capitalAddTotal = useMemo(() => (ledger || []).filter((e) => e && e.type === 'capital_add').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0), [ledger]);
-  const capitalReduceTotal = useMemo(() => (ledger || []).filter((e) => e && (e.type === 'capital_reduce' || e.type === 'fee')).reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0), [ledger]);
+  // ปรับให้ ทุนเริ่มต้นไม่ถูกหักด้วยค่าธรรมเนียม (คิดเฉพาะ capital_reduce เท่านั้น)
+  const capitalReduceTotal = useMemo(() => (ledger || []).filter((e) => e && e.type === 'capital_reduce').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0), [ledger]);
   const capitalAdjTotal = useMemo(() => capitalAddTotal - capitalReduceTotal, [capitalAddTotal, capitalReduceTotal]);
 
   const combinedLedger = useMemo(() => {
@@ -512,9 +513,11 @@ export default function PortfolioApp() {
     return list;
   }, [ledger, tradeLogs, fxRate]);
 
+  // นำค่าธรรมเนียมมารวมคำนวณหักออกจากผลประกอบการรวม (Performance)
+  const totalFees = useMemo(() => (ledger || []).filter(e => e && e.type === 'fee').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0), [ledger]);
   const performanceTotal = useMemo(() => (
     combinedLedger.filter((e) => e && e.type === 'profit').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0)
-    - combinedLedger.filter((e) => e && e.type === 'loss').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0)
+    - combinedLedger.filter((e) => e && (e.type === 'loss' || e.type === 'fee')).reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0)
   ), [combinedLedger]);
 
   const rebalanceTotal = useMemo(() => (
@@ -919,8 +922,8 @@ export default function PortfolioApp() {
               feeAmount = customFx > 0 ? feeInputVal / customFx : 0;
               recordFeeForDisplay = feeInputVal;
             } else {
-              feeAmount = feeInputVal;
-              feeThb = feeInputVal * customFx;
+              feeAmount = form.feeCurrency === 'USD' ? feeInputVal : feeInputVal;
+              feeThb = feeAmount * (isUsdAsset ? customFx : 1);
               recordFeeForDisplay = feeInputVal;
             }
           } else {
@@ -1139,8 +1142,8 @@ export default function PortfolioApp() {
               feeAmount = customFx > 0 ? feeInputVal / customFx : 0;
               recordFeeForDisplay = feeInputVal;
             } else {
-              feeAmount = feeInputVal;
-              feeThb = feeInputVal * customFx;
+              feeAmount = form.feeCurrency === 'USD' ? feeInputVal : feeInputVal;
+              feeThb = feeAmount * (isUsdAsset ? customFx : 1);
               recordFeeForDisplay = feeInputVal;
             }
           } else {
