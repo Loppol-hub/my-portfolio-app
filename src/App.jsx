@@ -932,16 +932,30 @@ export default function PortfolioApp() {
           totalCostThb: costThbSold
         });
       } else {
+        // tradeAction === 'none' (แก้ไขข้อมูลทั่วไป: ห้ามเขียนทับต้นทุนรวมบาทเดิมถ้าปริมาณ/ทุนเท่าเดิม)
         const qty = parseFloat(form.quantity);
         const avg = isCash ? 1 : parseFloat(form.avgCost);
         const price = isCash ? 1 : parseFloat(form.currentPrice);
         if (isNaN(qty) || qty <= 0) { setFormError('จำนวนต้องเป็นตัวเลขมากกว่า 0'); return; }
+        
         currentQty = qty;
         currentAvg = avg;
         currentPrice = price;
-        const customFx = form.tradeFx && parseFloat(form.tradeFx) > 0 ? parseFloat(form.tradeFx) : (target.createdFxRate || fxRate);
-        const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
-        currentTotalCostThb = isCash ? 0 : (qty * avg * (isUsdAsset ? customFx : 1));
+
+        const origQty = parseFloat(target.quantity) || 0;
+        const origAvg = parseFloat(target.avgCost) || 0;
+
+        if (origQty > 0 && qty === origQty && avg === origAvg) {
+          // ถ้าไม่ได้เปลี่ยนจำนวนและทุนเฉลี่ย ให้คงค่า totalCostThb เดิมไว้สนิทเพื่อป้องกันต้นทุนเพี้ยน
+          currentTotalCostThb = target.totalCostThb !== undefined ? target.totalCostThb : (qty * avg * (target.currency === 'USD' && target.instrumentType !== 'dr' ? (target.createdFxRate || fxRate) : 1));
+        } else if (origQty > 0 && target.totalCostThb !== undefined) {
+          // ถ้ามีการแก้จำนวนด้วยมือ ให้ปรับต้นทุนรวมบาทตามสัดส่วน
+          currentTotalCostThb = target.totalCostThb * (qty / origQty);
+        } else {
+          const customFx = form.tradeFx && parseFloat(form.tradeFx) > 0 ? parseFloat(form.tradeFx) : (target.createdFxRate || fxRate);
+          const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
+          currentTotalCostThb = isCash ? 0 : (qty * avg * (isUsdAsset ? customFx : 1));
+        }
       }
 
       saveLedger(newLedgerEntries);
