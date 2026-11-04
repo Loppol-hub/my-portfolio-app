@@ -25,7 +25,6 @@ const getEffectiveInstrumentType = (type, instType) => {
   return (type === 'th_stock' || type === 'foreign_stock') ? (instType || 'stock') : 'stock';
 };
 
-// เพิ่ม 'fund' เข้าไปในกลุ่ม Direct Fee ให้กรอกค่าธรรมเนียมเป็นบาทตรงๆ
 const checkIsDirectFee = (type, instType) => {
   const effInst = getEffectiveInstrumentType(type, instType);
   return ['foreign_stock', 'gold', 'crypto', 'fund'].includes(type) || ['dr', 'etf'].includes(effInst);
@@ -35,7 +34,7 @@ const isFeeExcludedFromAssetCost = (type, instrumentType) => {
   const effInst = getEffectiveInstrumentType(type, instrumentType);
   if (type === 'th_stock' && effInst === 'stock') return false;
   if (type === 'crypto') return false;
-  return true; // หุ้นนอก, กองทุน, ทองคำ, อื่นๆ, DR และ ETF แยกค่าธรรมเนียม หักจากเงินสดโดยตรง
+  return true;
 };
 
 function hexToHsl(hex) {
@@ -946,7 +945,6 @@ export default function PortfolioApp() {
         currentQty = newQty;
         currentTotalCostThb = currentTotalCostThb + addTotalCostThb;
 
-        // บันทึกค่าธรรมเนียมเป็นประเภท 'fee' เพื่อแสดงในประวัติและหมวดกระแสเงินสด ค่าธรรมเนียม
         const feeEntryId = Date.now().toString() + '_fee';
         if (excludeFeeFromCost && feeThb > 0) {
           newLedgerEntries.push({
@@ -969,7 +967,7 @@ export default function PortfolioApp() {
           action: 'buy',
           quantity: addQty,
           price: addPrice,
-          fee: excludeFeeFromCost ? feeAmount : feeAmount, 
+          fee: feeAmount,
           feeThbRecord: feeThb,
           ledgerFeeId: excludeFeeFromCost && feeThb > 0 ? feeEntryId : null,
           currency: currency,
@@ -1049,7 +1047,7 @@ export default function PortfolioApp() {
           action: 'sell',
           quantity: sellQty,
           price: sellPrice,
-          fee: excludeFeeFromCost ? feeAmount : feeThb,
+          fee: feeAmount,
           isFeeThb: true,
           feeThbRecord: feeThb,
           ledgerFeeId: excludeFeeFromCost && feeThb > 0 ? sellFeeEntryId : null,
@@ -1296,7 +1294,6 @@ export default function PortfolioApp() {
       }
     }
 
-    // หาก log มีการบันทึก ledgerFeeId ไว้ ให้ลบออกจาก ledger ด้วยเพื่อให้เงินสดคืนกลับมา
     if (log.ledgerFeeId) {
       saveLedger((ledger || []).filter(e => e && e.id !== log.ledgerFeeId));
     }
@@ -1597,12 +1594,6 @@ export default function PortfolioApp() {
   const deleteLedgerEntry = (id) => {
     saveLedger((ledger || []).filter((e) => e && e.id !== id));
     showToast('ลบรายการแล้ว');
-  };
-
-  // ฟังค์ชันสำหรับปุ่มคืนค่าสีทองในประวัติรายการเงินสด (เฉพาะรายการค่าธรรมเนียม)
-  const revertFeeLedgerEntry = (feeId) => {
-    saveLedger((ledger || []).filter((e) => e && e.id !== feeId));
-    showToast('คืนค่าค่าธรรมเนียมกลับเข้าเงินสดแล้ว');
   };
 
   const toggleTypeInclusion = (typeKey) => {
@@ -3138,11 +3129,7 @@ export default function PortfolioApp() {
                         <span className={`pf-mono pf-ledger-amount ${['capital_add', 'profit', 'dividend'].includes(e.type) || (e.type === 'rebalance' && e.amount >= 0) ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
                           {['capital_add', 'profit', 'dividend'].includes(e.type) || (e.type === 'rebalance' && e.amount >= 0) ? '+' : '-'}฿{fmt(Math.abs(e.amount), 2)}
                         </span>
-                        {e.type === 'fee' ? (
-                          <button style={{ background: 'transparent', border: '1px solid var(--gold)', borderRadius: '4px', cursor: 'pointer', padding: '2px 4px', color: 'var(--gold)', display: 'flex', alignItems: 'center' }} onClick={() => revertFeeLedgerEntry(e.id)} title="คืนค่าค่าธรรมเนียมนี้กลับเข้าเงินสด">
-                            <RotateCcw size={13} />
-                          </button>
-                        ) : !e.id.toString().startsWith('log_pnl_') && (
+                        {e.type !== 'fee' && !e.id.toString().startsWith('log_pnl_') && (
                           <button style={{ background: 'transparent', border: '1px solid var(--muted)', cursor: 'pointer', padding: '2px' }} onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type] || e.type)}>
                             <Trash2 size={13} />
                           </button>
