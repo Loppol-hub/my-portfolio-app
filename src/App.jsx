@@ -21,7 +21,6 @@ const TICKER_HINT = {
 
 const LEDGER_LABELS = { capital_add: 'เพิ่มทุน', capital_reduce: 'ลดทุน', profit: 'กำไรจากการขาย', loss: 'ขาดทุนจากการขาย', dividend: 'ปันผล', rebalance: 'รีบาลานซ์' };
 
-// ฟังก์ชันกลางสำหรับจัดการประเภทตราสารและเช็คค่าธรรมเนียมแบบ Direct Fee
 const getEffectiveInstrumentType = (type, instType) => {
   return (type === 'th_stock' || type === 'foreign_stock') ? (instType || 'stock') : 'stock';
 };
@@ -741,7 +740,6 @@ export default function PortfolioApp() {
 
   const closePanel = () => { setPanel(null); setEditingId(null); setUpdateDraft({}); setLedgerSearchQuery(''); };
   
-  // อัปเดต onFormTypeChange ให้รีเซ็ต instrumentType ตามประเภทสินทรัพย์ที่เลือก
   const onFormTypeChange = (type) => {
     setForm((f) => ({ 
       ...f, 
@@ -823,8 +821,8 @@ export default function PortfolioApp() {
 
     const currency = form.currency === 'USD' ? 'USD' : 'THB';
     const industry = (form.industry || '').trim();
+    const ticker = (form.ticker || '').trim();
     
-    // ใช้ฟังก์ชันกลางตรวจสอบ instrumentType และ isDirectFee ให้ตรงกับ UI 100%
     const instrumentType = getEffectiveInstrumentType(form.type, form.instrumentType);
     const isDirectFee = checkIsDirectFee(form.type, form.instrumentType);
 
@@ -893,6 +891,8 @@ export default function PortfolioApp() {
           assetName: name,
           assetType: form.type,
           instrumentType: instrumentType,
+          ticker: ticker || target.ticker || '',
+          industry: industry || target.industry || '',
           action: 'buy',
           quantity: addQty,
           price: addPrice,
@@ -949,6 +949,8 @@ export default function PortfolioApp() {
           assetName: name,
           assetType: form.type,
           instrumentType: instrumentType,
+          ticker: ticker || target.ticker || '',
+          industry: industry || target.industry || '',
           action: 'sell',
           quantity: sellQty,
           price: sellPrice,
@@ -1000,7 +1002,7 @@ export default function PortfolioApp() {
         next = holdings.map((h) => h && h.id === editingId ? { 
           ...h, 
           name, 
-          ticker: (form.ticker || '').trim(), 
+          ticker, 
           type: form.type, 
           quantity: currentQty, 
           avgCost: Number(currentAvg), 
@@ -1056,7 +1058,7 @@ export default function PortfolioApp() {
       const nextHoldings = [...holdings, { 
         id: newId, 
         name, 
-        ticker: (form.ticker || '').trim(), 
+        ticker, 
         type: form.type, 
         quantity: qty, 
         avgCost: calculatedAvg, 
@@ -1075,6 +1077,8 @@ export default function PortfolioApp() {
         assetName: name,
         assetType: form.type,
         instrumentType: instrumentType,
+        ticker: ticker,
+        industry: industry,
         action: 'buy',
         quantity: qty,
         price: avg,
@@ -1108,6 +1112,10 @@ export default function PortfolioApp() {
     if (!log) return;
     const target = holdings.find(h => h && h.id === log.assetId);
 
+    // ดึง ticker และ industry สำรองจาก log หรือประวัติเก่าของสินทรัพย์นั้น
+    const resolvedTicker = log.ticker || (tradeLogs || []).find(l => l && l.assetId === log.assetId && l.ticker)?.ticker || '';
+    const resolvedIndustry = log.industry || (tradeLogs || []).find(l => l && l.assetId === log.assetId && l.industry)?.industry || '';
+
     if (log.prevQty !== undefined && log.prevAvgCost !== undefined) {
       const restoredTotalCostThb = log.prevTotalCostThb !== undefined 
         ? log.prevTotalCostThb 
@@ -1117,12 +1125,21 @@ export default function PortfolioApp() {
         saveHoldings(holdings.filter(h => h && h.id !== log.assetId));
       } else {
         if (target) {
-          saveHoldings(holdings.map(h => h && h.id === log.assetId ? { ...h, quantity: log.prevQty, avgCost: log.prevAvgCost, totalCostThb: restoredTotalCostThb } : h));
+          saveHoldings(holdings.map(h => h && h.id === log.assetId ? { 
+            ...h, 
+            quantity: log.prevQty, 
+            avgCost: log.prevAvgCost, 
+            totalCostThb: restoredTotalCostThb,
+            ticker: h.ticker || resolvedTicker,
+            industry: h.industry || resolvedIndustry
+          } : h));
         } else {
           const restoredHolding = {
             id: log.assetId,
             name: log.assetName || 'สินทรัพย์',
             type: log.assetType || 'th_stock',
+            ticker: resolvedTicker,
+            industry: resolvedIndustry,
             quantity: log.prevQty,
             avgCost: log.prevAvgCost,
             currentPrice: log.price || 0,
@@ -1146,12 +1163,19 @@ export default function PortfolioApp() {
       } else if (log.action === 'sell') {
         const sellQty = parseFloat(log.quantity) || 0;
         if (target) {
-          saveHoldings(holdings.map(h => h.id === log.assetId ? { ...h, quantity: h.quantity + sellQty } : h));
+          saveHoldings(holdings.map(h => h.id === log.assetId ? { 
+            ...h, 
+            quantity: h.quantity + sellQty,
+            ticker: h.ticker || resolvedTicker,
+            industry: h.industry || resolvedIndustry
+          } : h));
         } else {
           const restoredHolding = {
             id: log.assetId || Date.now().toString(),
             name: log.assetName || 'สินทรัพย์',
             type: log.assetType || 'th_stock',
+            ticker: resolvedTicker,
+            industry: resolvedIndustry,
             quantity: sellQty,
             avgCost: log.price || 0,
             currentPrice: log.price || 0,
@@ -1532,7 +1556,6 @@ export default function PortfolioApp() {
     return { name: assetName, pnl: totalPnlThb, count: matchingLogs.length };
   }, [tradeLogs, fxRate, tradeSearchQuery]);
 
-  // ใช้ฟังก์ชันกลางตรวจสอบ isDirectFeeType สำหรับ UI
   const isDirectFeeType = checkIsDirectFee(form.type, form.instrumentType);
 
   return (
