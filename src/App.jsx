@@ -917,11 +917,11 @@ export default function PortfolioApp() {
             if (form.feeCurrency === 'THB') {
               feeThb = feeInputVal;
               feeAmount = customFx > 0 ? feeInputVal / customFx : 0;
-              recordFeeForDisplay = feeInputVal; // แสดงเป็นบาทตามที่กรอก
+              recordFeeForDisplay = feeInputVal;
             } else {
               feeAmount = feeInputVal;
               feeThb = feeInputVal * customFx;
-              recordFeeForDisplay = feeInputVal; // แสดงเป็น USD ตามที่กรอก
+              recordFeeForDisplay = feeInputVal;
             }
           } else {
             feeAmount = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
@@ -1730,7 +1730,7 @@ export default function PortfolioApp() {
         .pf-year-flow-out { height: 100%; background: #5B6779; }
         .pf-year-flow-legend { display: flex; justify-content: space-between; gap: 10px; margin-top: 8px; font-size: 11.5px; color: var(--muted); }
         .pf-year-rows { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--divider); display: flex; flex-direction: column; gap: 10px; }
-        .pf-year-row { display: flex; align-items: center; gap: 9px; font-size: 13px; }
+        .pf-year-row { display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
 
         .pf-cash-actions-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; position: relative; z-index: 50; }
         .pf-cash-action-btn-styled { background: var(--surface-alt); border: 1px solid var(--divider); color: var(--text); border-radius: 12px; padding: 12px 10px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s ease; position: relative; z-index: 50; }
@@ -3080,25 +3080,48 @@ export default function PortfolioApp() {
               </div>
               <div className="pf-year-rows">
                 {yearSummary.capital_add !== 0 && (
-                  <div className="pf-year-row">เพิ่มทุน: <b className="pf-mono">฿{fmt(yearSummary.capital_add, 2)}</b></div>
+                  <div className="pf-year-row">
+                    <span>เพิ่มทุน:</span>
+                    <b className="pf-mono pf-chip-pos">฿{fmt(yearSummary.capital_add, 2)}</b>
+                  </div>
                 )}
                 {yearSummary.capital_reduce !== 0 && (
-                  <div className="pf-year-row">ลดทุน: <b className="pf-mono">฿{fmt(yearSummary.capital_reduce, 2)}</b></div>
+                  <div className="pf-year-row">
+                    <span>ลดทุน:</span>
+                    <b className="pf-mono pf-chip-neg">฿{fmt(yearSummary.capital_reduce, 2)}</b>
+                  </div>
                 )}
                 {yearSummary.fee !== 0 && (
-                  <div className="pf-year-row">ค่าธรรมเนียม: <b className="pf-mono pf-chip-neg">฿{fmt(yearSummary.fee, 2)}</b></div>
+                  <div className="pf-year-row">
+                    <span>ค่าธรรมเนียม:</span>
+                    <b className="pf-mono pf-chip-neg">฿{fmt(yearSummary.fee, 2)}</b>
+                  </div>
                 )}
                 {yearSummary.profit !== 0 && (
-                  <div className="pf-year-row">กำไรขาย: <b className="pf-mono pf-chip-pos">฿{fmt(yearSummary.profit, 2)}</b></div>
+                  <div className="pf-year-row">
+                    <span>กำไรขาย:</span>
+                    <b className="pf-mono pf-chip-pos">฿{fmt(yearSummary.profit, 2)}</b>
+                  </div>
                 )}
                 {yearSummary.loss !== 0 && (
-                  <div className="pf-year-row">ขาดทุนขาย: <b className="pf-mono pf-chip-neg">฿{fmt(yearSummary.loss, 2)}</b></div>
+                  <div className="pf-year-row">
+                    <span>ขาดทุนขาย:</span>
+                    <b className="pf-mono pf-chip-neg">฿{fmt(yearSummary.loss, 2)}</b>
+                  </div>
                 )}
                 {yearSummary.dividend !== 0 && (
-                  <div className="pf-year-row">ปันผล: <b className="pf-mono pf-chip-pos">฿{fmt(yearSummary.dividend, 2)}</b></div>
+                  <div className="pf-year-row">
+                    <span>ปันผล:</span>
+                    <b className="pf-mono pf-chip-pos">฿{fmt(yearSummary.dividend, 2)}</b>
+                  </div>
                 )}
                 {yearSummary.rebalance !== 0 && (
-                  <div className="pf-year-row">รีบาลานซ์: <b className="pf-mono">฿{fmt(yearSummary.rebalance, 2)}</b></div>
+                  <div className="pf-year-row">
+                    <span>รีบาลานซ์:</span>
+                    <b className={`pf-mono ${yearSummary.rebalance >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
+                      {yearSummary.rebalance >= 0 ? '+' : ''}฿{fmt(yearSummary.rebalance, 2)}
+                    </b>
+                  </div>
                 )}
               </div>
             </div>
