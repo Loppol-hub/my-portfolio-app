@@ -21,6 +21,15 @@ const TICKER_HINT = {
 
 const LEDGER_LABELS = { capital_add: 'เพิ่มทุน', capital_reduce: 'ลดทุน', profit: 'กำไรจากการขาย', loss: 'ขาดทุนจากการขาย', dividend: 'ปันผล', rebalance: 'รีบาลานซ์' };
 
+// ฟังก์ชันกลางสำหรับจัดการประเภทตราสารและเช็คค่าธรรมเนียมแบบ Direct Fee
+const getEffectiveInstrumentType = (type, instType) => {
+  return (type === 'th_stock' || type === 'foreign_stock') ? (instType || 'stock') : 'stock';
+};
+const checkIsDirectFee = (type, instType) => {
+  const effInst = getEffectiveInstrumentType(type, instType);
+  return ['foreign_stock', 'gold', 'crypto'].includes(type) || ['dr', 'etf'].includes(effInst);
+};
+
 function hexToHsl(hex) {
   const c = (hex || '').replace('#', '');
   if (c.length < 6) return { h: 0, s: 0, l: 50 };
@@ -731,8 +740,15 @@ export default function PortfolioApp() {
   };
 
   const closePanel = () => { setPanel(null); setEditingId(null); setUpdateDraft({}); setLedgerSearchQuery(''); };
+  
+  // อัปเดต onFormTypeChange ให้รีเซ็ต instrumentType ตามประเภทสินทรัพย์ที่เลือก
   const onFormTypeChange = (type) => {
-    setForm((f) => ({ ...f, type, currency: editingId ? f.currency : typeInfo(type).defaultCurrency }));
+    setForm((f) => ({ 
+      ...f, 
+      type, 
+      currency: editingId ? f.currency : typeInfo(type).defaultCurrency,
+      instrumentType: (type === 'th_stock' || type === 'foreign_stock') ? f.instrumentType : 'stock'
+    }));
   };
 
   const getAssetLots = (assetId, currentQty, currentPrice, assetCurrency, assetType, instrumentType) => {
@@ -807,8 +823,10 @@ export default function PortfolioApp() {
 
     const currency = form.currency === 'USD' ? 'USD' : 'THB';
     const industry = (form.industry || '').trim();
-    const instrumentType = (form.type === 'th_stock' || form.type === 'foreign_stock') ? (form.instrumentType || 'stock') : 'stock';
-    const isDirectFee = ['foreign_stock', 'gold', 'crypto'].includes(form.type) || ['dr', 'etf'].includes(instrumentType);
+    
+    // ใช้ฟังก์ชันกลางตรวจสอบ instrumentType และ isDirectFee ให้ตรงกับ UI 100%
+    const instrumentType = getEffectiveInstrumentType(form.type, form.instrumentType);
+    const isDirectFee = checkIsDirectFee(form.type, form.instrumentType);
 
     if (editingId) {
       const target = holdings.find((h) => h && h.id === editingId);
@@ -1514,7 +1532,8 @@ export default function PortfolioApp() {
     return { name: assetName, pnl: totalPnlThb, count: matchingLogs.length };
   }, [tradeLogs, fxRate, tradeSearchQuery]);
 
-  const isDirectFeeType = ['foreign_stock', 'gold', 'crypto'].includes(form.type) || ['dr', 'etf'].includes(form.instrumentType);
+  // ใช้ฟังก์ชันกลางตรวจสอบ isDirectFeeType สำหรับ UI
+  const isDirectFeeType = checkIsDirectFee(form.type, form.instrumentType);
 
   return (
     <div className="pf-root">
