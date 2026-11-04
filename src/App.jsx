@@ -610,8 +610,22 @@ export default function PortfolioApp() {
 
   const displayByType = useMemo(() => byType.filter((t) => t && !excludedTypes[t.key]), [byType, excludedTypes]);
   const displayTotalValue = useMemo(() => displayByType.reduce((s, t) => s + (t?.value || 0), 0), [displayByType]);
-  const heroProfitAmount = displayTotalValue - totalCapital;
-  const heroProfitPct = totalCapital > 0 ? (heroProfitAmount / totalCapital) * 100 : null;
+  
+  const visibleInvestedCost = useMemo(() => {
+    return enriched.filter((h) => h && h.type !== 'cash' && !excludedTypes[h.type]).reduce((s, h) => s + (h?.costValue || 0), 0);
+  }, [enriched, excludedTypes]);
+
+  const visibleInvestedGain = useMemo(() => {
+    return enriched.filter((h) => h && h.type !== 'cash' && !excludedTypes[h.type]).reduce((s, h) => s + (h?.gain || 0), 0);
+  }, [enriched, excludedTypes]);
+
+  const heroProfitAmount = useMemo(() => {
+    return visibleInvestedGain + cashAdjTotal;
+  }, [visibleInvestedGain, cashAdjTotal]);
+
+  const heroProfitPct = useMemo(() => {
+    return visibleInvestedCost > 0 ? (heroProfitAmount / visibleInvestedCost) * 100 : (totalCapital > 0 ? (heroProfitAmount / totalCapital) * 100 : null);
+  }, [visibleInvestedGain, visibleInvestedCost, totalCapital, heroProfitAmount]);
 
   const lastUpdated = useMemo(() => {
     const dates = holdings.map((h) => h?.lastUpdated).filter(Boolean).sort();
@@ -791,6 +805,42 @@ export default function PortfolioApp() {
           });
         }
       }
+
+      const targetHolding = holdings.find(h => h && h.id === assetId);
+      if (targetHolding) {
+        const hQty = parseFloat(targetHolding.quantity) || 0;
+        const hCostThb = targetHolding.totalCostThb !== undefined && targetHolding.totalCostThb !== null 
+          ? targetHolding.totalCostThb 
+          : (hQty * (parseFloat(targetHolding.avgCost) || 0) * (targetHolding.currency === 'USD' && targetHolding.instrumentType !== 'dr' ? (targetHolding.createdFxRate || fxRate) : 1));
+        
+        const currentTotalLotQty = lots.reduce((s, l) => s + (l.qty || 0), 0);
+        if (currentTotalLotQty > 0 && Math.abs(currentTotalLotQty - hQty) > 1e-8) {
+          const diff = hQty - currentTotalLotQty;
+          lots[lots.length - 1].qty += diff;
+          if (lots[lots.length - 1].qty < 0) lots[lots.length - 1].qty = 0;
+        } else if (lots.length === 0 && hQty > 0) {
+          lots.push({
+            date: targetHolding.lastUpdated || todayStr(),
+            qty: hQty,
+            price: targetHolding.avgCost,
+            currency: targetHolding.currency,
+            tradeFx: targetHolding.createdFxRate || fxRate,
+            instrumentType: targetHolding.instrumentType,
+            totalCostThb: hCostThb
+          });
+        }
+
+        const rawLotsCost = lots.reduce((s, l) => s + (l.totalCostThb !== undefined ? l.totalCostThb : (l.qty * (l.price || 0) * (l.currency === 'USD' && l.instrumentType !== 'dr' ? (l.tradeFx || fxRate) : 1))), 0);
+        if (rawLotsCost > 0 && hCostThb > 0) {
+          lots.forEach(l => {
+            const baseCost = l.totalCostThb !== undefined ? l.totalCostThb : (l.qty * (l.price || 0) * (l.currency === 'USD' && l.instrumentType !== 'dr' ? (l.tradeFx || fxRate) : 1));
+            l.totalCostThb = baseCost * (hCostThb / rawLotsCost);
+          });
+        } else if (hCostThb > 0 && lots.length === 1) {
+          lots[0].totalCostThb = hCostThb;
+        }
+      }
+
       const isDr = instrumentType === 'dr';
       const isUsd = assetCurrency === 'USD' && !isDr;
       return lots.map(lot => {
@@ -799,10 +849,8 @@ export default function PortfolioApp() {
         const lotQty = lot?.qty || 0;
 
         const lotIsUsd = lot?.currency === 'USD' && lot?.instrumentType !== 'dr';
-        const lotFx = lotIsUsd ? (lot?.tradeFx || fxRate) : 1;
-
         const lotValThb = lotQty * lotCurPrice * (isUsd ? getEffectiveRate(assetType, fxRate) : 1);
-        const lotCostThb = lot?.totalCostThb !== undefined ? lot.totalCostThb : (lotQty * (lot?.price || 0) * lotFx);
+        const lotCostThb = lot?.totalCostThb !== undefined ? lot.totalCostThb : (lotQty * (lot?.price || 0) * (lotIsUsd ? (lot?.tradeFx || fxRate) : 1));
 
         const lotGain = lotValThb - lotCostThb;
         const lotGainPct = lotCostThb > 0 ? (lotGain / lotCostThb) * 100 : 0;
@@ -1112,7 +1160,6 @@ export default function PortfolioApp() {
     if (!log) return;
     const target = holdings.find(h => h && h.id === log.assetId);
 
-    // ดึง ticker และ industry สำรองจาก log หรือประวัติเก่าของสินทรัพย์นั้น
     const resolvedTicker = log.ticker || (tradeLogs || []).find(l => l && l.assetId === log.assetId && l.ticker)?.ticker || '';
     const resolvedIndustry = log.industry || (tradeLogs || []).find(l => l && l.assetId === log.assetId && l.industry)?.industry || '';
 
