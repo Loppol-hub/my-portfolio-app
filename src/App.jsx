@@ -24,17 +24,18 @@ const LEDGER_LABELS = { capital_add: 'เพิ่มทุน', capital_reduce:
 const getEffectiveInstrumentType = (type, instType) => {
   return (type === 'th_stock' || type === 'foreign_stock') ? (instType || 'stock') : 'stock';
 };
+
+// เพิ่ม 'fund' เข้าไปในกลุ่ม Direct Fee ให้กรอกค่าธรรมเนียมเป็นบาทตรงๆ
 const checkIsDirectFee = (type, instType) => {
   const effInst = getEffectiveInstrumentType(type, instType);
-  return ['foreign_stock', 'gold', 'crypto'].includes(type) || ['dr', 'etf'].includes(effInst);
+  return ['foreign_stock', 'gold', 'crypto', 'fund'].includes(type) || ['dr', 'etf'].includes(effInst);
 };
 
-// ตรวจสอบว่าประเภทนี้ต้องแยกค่าธรรมเนียมออกจากต้นทุนสินทรัพย์หรือไม่ (Dime style)
 const isFeeExcludedFromAssetCost = (type, instrumentType) => {
   const effInst = getEffectiveInstrumentType(type, instrumentType);
-  if (type === 'th_stock' && effInst === 'stock') return false; // หุ้นไทย (หุ้นรายตัว) รวมค่าธรรมเนียมเข้าต้นทุนตามเดิม
-  if (type === 'crypto') return false; // คริปโต รวมค่าธรรมเนียมเข้าต้นทุนตามเดิม
-  return true; // หุ้นนอก, กองทุน, ทองคำ, อื่นๆ, DR และ ETF แยกค่าธรรมเนียมออก หักจากเงินสดโดยตรง
+  if (type === 'th_stock' && effInst === 'stock') return false;
+  if (type === 'crypto') return false;
+  return true; // หุ้นนอก, กองทุน, ทองคำ, อื่นๆ, DR และ ETF แยกค่าธรรมเนียม หักจากเงินสดโดยตรง
 };
 
 function hexToHsl(hex) {
@@ -489,7 +490,7 @@ export default function PortfolioApp() {
   const totalInvestedCost = useMemo(() => enriched.filter((h) => h?.type !== 'cash').reduce((s, h) => s + (h?.costValue || 0), 0), [enriched]);
 
   const capitalAddTotal = useMemo(() => (ledger || []).filter((e) => e && e.type === 'capital_add').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0), [ledger]);
-  const capitalReduceTotal = useMemo(() => (ledger || []).filter((e) => e && e.type === 'capital_reduce').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0), [ledger]);
+  const capitalReduceTotal = useMemo(() => (ledger || []).filter((e) => e && (e.type === 'capital_reduce' || e.type === 'fee')).reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0), [ledger]);
   const capitalAdjTotal = useMemo(() => capitalAddTotal - capitalReduceTotal, [capitalAddTotal, capitalReduceTotal]);
 
   const combinedLedger = useMemo(() => {
@@ -583,20 +584,22 @@ export default function PortfolioApp() {
   }, [yearOptions]);
 
   const yearSummary = useMemo(() => {
-    const d = { capital_add: 0, capital_reduce: 0, profit: 0, loss: 0, dividend: 0, rebalance: 0 };
+    const d = { capital_add: 0, capital_reduce: 0, profit: 0, loss: 0, dividend: 0, rebalance: 0, fee: 0 };
     combinedLedger.forEach((e) => {
       if (e && (e?.date || '').slice(0, 4) === selectedYear) {
         const amt = parseFloat(e.amount) || 0;
         if (e.type === 'rebalance') {
           d.rebalance = (d.rebalance || 0) + amt;
+        } else if (e.type === 'fee') {
+          d.fee = (d.fee || 0) + amt;
         } else if (d[e.type] !== undefined) {
           d[e.type] = (d[e.type] || 0) + amt;
         }
       }
     });
-    const net = d.capital_add - d.capital_reduce + d.profit - d.loss + d.dividend + d.rebalance;
+    const net = d.capital_add - d.capital_reduce - d.fee + d.profit - d.loss + d.dividend + d.rebalance;
     const totalIn = d.capital_add + d.profit + d.dividend + (d.rebalance > 0 ? d.rebalance : 0);
-    const totalOut = d.capital_reduce + d.loss + (d.rebalance < 0 ? Math.abs(d.rebalance) : 0);
+    const totalOut = d.capital_reduce + d.fee + d.loss + (d.rebalance < 0 ? Math.abs(d.rebalance) : 0);
     const totalFlow = totalIn + totalOut;
     const inPct = totalFlow > 0 ? (totalIn / totalFlow) * 100 : 0;
     return { ...d, net, totalIn, totalOut, inPct };
@@ -928,8 +931,6 @@ export default function PortfolioApp() {
         }
 
         const subtotalThb = isUsdAsset ? subtotal * customFx : subtotal;
-        
-        // ถ้า excludeFeeFromCost เป็น true จะไม่เอา feeThb ไปรวมในต้นทุนสินทรัพย์
         const addTotalCostThb = excludeFeeFromCost ? subtotalThb : (subtotalThb + feeThb);
         const addAvgCostImpact = excludeFeeFromCost ? subtotal : (subtotal + feeAmount);
 
@@ -945,11 +946,12 @@ export default function PortfolioApp() {
         currentQty = newQty;
         currentTotalCostThb = currentTotalCostThb + addTotalCostThb;
 
-        // ถ้าแยกค่าธรรมเนียมออกจากต้นทุน ให้บันทึกค่าธรรมเนียมลง Ledger (หักเงินสดโดยตรง)
+        // บันทึกค่าธรรมเนียมเป็นประเภท 'fee' เพื่อแสดงในประวัติและหมวดกระแสเงินสด ค่าธรรมเนียม
+        const feeEntryId = Date.now().toString() + '_fee';
         if (excludeFeeFromCost && feeThb > 0) {
           newLedgerEntries.push({
-            id: Date.now().toString() + '_fee',
-            type: 'capital_reduce',
+            id: feeEntryId,
+            type: 'fee',
             amount: feeThb,
             date: form.tradeDate || todayStr(),
             note: `ค่าธรรมเนียมซื้อ ${name}`
@@ -967,7 +969,9 @@ export default function PortfolioApp() {
           action: 'buy',
           quantity: addQty,
           price: addPrice,
-          fee: excludeFeeFromCost ? 0 : feeAmount, // ถ้าแยกออกให้เก็บบันทึกค่าธรรมเนียมแยกต่างหาก
+          fee: excludeFeeFromCost ? feeAmount : feeAmount, 
+          feeThbRecord: feeThb,
+          ledgerFeeId: excludeFeeFromCost && feeThb > 0 ? feeEntryId : null,
           currency: currency,
           tradeFx: customFx,
           date: form.tradeDate || todayStr(),
@@ -993,21 +997,26 @@ export default function PortfolioApp() {
         const costThbSold = currentTotalCostThb * (sellQty / currentQty);
 
         let feeThb = 0;
+        let feeAmount = 0;
         if (form.type === 'th_stock' && instrumentType === 'stock') {
           feeThb = (saleThb * feeInputVal) / 100;
+          feeAmount = feeThb;
         } else if (isDirectFee) {
+          feeAmount = feeInputVal;
           feeThb = form.feeCurrency === 'USD' ? (feeInputVal * customFx) : feeInputVal;
         } else {
           feeThb = (saleThb * feeInputVal) / 100;
+          feeAmount = feeThb;
         }
 
         let netPnlThb = 0;
+        const sellFeeEntryId = Date.now().toString() + '_sell_fee';
         if (excludeFeeFromCost) {
-          netPnlThb = saleThb - costThbSold; // ไม่เอาค่าธรรมเนียมมาหักจากกำไรขาดทุนของสินทรัพย์
+          netPnlThb = saleThb - costThbSold;
           if (feeThb > 0) {
             newLedgerEntries.push({
-              id: Date.now().toString() + '_sell_fee',
-              type: 'capital_reduce',
+              id: sellFeeEntryId,
+              type: 'fee',
               amount: feeThb,
               date: form.tradeDate || todayStr(),
               note: `ค่าธรรมเนียมขาย ${name}`
@@ -1040,8 +1049,10 @@ export default function PortfolioApp() {
           action: 'sell',
           quantity: sellQty,
           price: sellPrice,
-          fee: excludeFeeFromCost ? 0 : feeThb,
+          fee: excludeFeeFromCost ? feeAmount : feeThb,
           isFeeThb: true,
+          feeThbRecord: feeThb,
+          ledgerFeeId: excludeFeeFromCost && feeThb > 0 ? sellFeeEntryId : null,
           pnl: pnlAssetCurrency,
           pnlThb: netPnlThb,
           currency: currency,
@@ -1141,10 +1152,11 @@ export default function PortfolioApp() {
       const calculatedAvg = qty > 0 ? (excludeFeeFromCost ? subtotal : (subtotal + feeAmount)) / qty : avg;
 
       let newLedger = [...ledger];
+      const feeEntryId = Date.now().toString() + '_fee';
       if (!isCash && excludeFeeFromCost && feeThb > 0) {
         newLedger.push({
-          id: Date.now().toString() + '_fee',
-          type: 'capital_reduce',
+          id: feeEntryId,
+          type: 'fee',
           amount: feeThb,
           date: form.tradeDate || todayStr(),
           note: `ค่าธรรมเนียมซื้อ ${name}`
@@ -1179,7 +1191,9 @@ export default function PortfolioApp() {
         action: 'buy',
         quantity: qty,
         price: avg,
-        fee: excludeFeeFromCost ? 0 : feeAmount,
+        fee: feeAmount,
+        feeThbRecord: feeThb,
+        ledgerFeeId: excludeFeeFromCost && feeThb > 0 ? feeEntryId : null,
         currency: currency,
         tradeFx: customFx,
         date: form.tradeDate || todayStr(),
@@ -1280,6 +1294,11 @@ export default function PortfolioApp() {
           saveHoldings([...holdings, restoredHolding]);
         }
       }
+    }
+
+    // หาก log มีการบันทึก ledgerFeeId ไว้ ให้ลบออกจาก ledger ด้วยเพื่อให้เงินสดคืนกลับมา
+    if (log.ledgerFeeId) {
+      saveLedger((ledger || []).filter(e => e && e.id !== log.ledgerFeeId));
     }
 
     const nextLogs = (tradeLogs || []).filter(l => l && l.id !== log.id);
@@ -1580,6 +1599,12 @@ export default function PortfolioApp() {
     showToast('ลบรายการแล้ว');
   };
 
+  // ฟังค์ชันสำหรับปุ่มคืนค่าสีทองในประวัติรายการเงินสด (เฉพาะรายการค่าธรรมเนียม)
+  const revertFeeLedgerEntry = (feeId) => {
+    saveLedger((ledger || []).filter((e) => e && e.id !== feeId));
+    showToast('คืนค่าค่าธรรมเนียมกลับเข้าเงินสดแล้ว');
+  };
+
   const toggleTypeInclusion = (typeKey) => {
     setExcludedTypes((prev) => {
       const next = { ...prev, [typeKey]: !prev[typeKey] };
@@ -1625,12 +1650,12 @@ export default function PortfolioApp() {
   const totalFilteredFee = useMemo(() => {
     return filteredTradeLogs.reduce((sum, log) => {
       if (!log) return sum;
-      if (log.isFeeThb) {
-        return sum + (parseFloat(log.fee) || 0);
-      }
       const logFx = (log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (log.tradeFx ? parseFloat(log.tradeFx) : fxRate) : 1;
-      const feeThb = (log.currency === 'USD' || log.assetType === 'foreign_stock') ? ((parseFloat(log.fee) || 0) * logFx) : (parseFloat(log.fee) || 0);
-      return sum + feeThb;
+      const rawFee = log.feeThbRecord !== undefined ? log.feeThbRecord : (log.fee || 0);
+      const feeThb = (log.currency === 'USD' || log.assetType === 'foreign_stock' || log.assetType === 'fund' || log.assetType === 'gold' || log.assetType === 'crypto') && !log.isFeeThb 
+        ? (rawFee * logFx) 
+        : rawFee;
+      return sum + (isNaN(feeThb) ? 0 : feeThb);
     }, 0);
   }, [filteredTradeLogs, fxRate]);
 
@@ -3063,6 +3088,9 @@ export default function PortfolioApp() {
                 {yearSummary.capital_reduce !== 0 && (
                   <div className="pf-year-row">ลดทุน: <b className="pf-mono">฿{fmt(yearSummary.capital_reduce, 2)}</b></div>
                 )}
+                {yearSummary.fee !== 0 && (
+                  <div className="pf-year-row">ค่าธรรมเนียม: <b className="pf-mono pf-chip-neg">฿{fmt(yearSummary.fee, 2)}</b></div>
+                )}
                 {yearSummary.profit !== 0 && (
                   <div className="pf-year-row">กำไรขาย: <b className="pf-mono pf-chip-pos">฿{fmt(yearSummary.profit, 2)}</b></div>
                 )}
@@ -3101,16 +3129,20 @@ export default function PortfolioApp() {
                     <div key={e.id} style={{ background: 'var(--surface-alt)', border: '1px solid var(--divider)', borderRadius: '8px', padding: '8px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12.5px' }}>
                       <div>
                         <div style={{ fontWeight: '600' }}>
-                          {e.note?.startsWith('ค่าธรรมเนียม') ? e.note : (LEDGER_LABELS[e.type] || e.type)} 
+                          {e.type === 'fee' ? e.note : (LEDGER_LABELS[e.type] || e.type)} 
                           <span style={{ fontSize: '11px', color: 'var(--muted)' }}> ({thaiDateAD(e.date)})</span>
                         </div>
-                        {e.note && !e.note?.startsWith('ค่าธรรมเนียม') && <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{e.note}</div>}
+                        {e.type !== 'fee' && e.note && <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{e.note}</div>}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <span className={`pf-mono pf-ledger-amount ${['capital_add', 'profit', 'dividend'].includes(e.type) || (e.type === 'rebalance' && e.amount >= 0) ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
                           {['capital_add', 'profit', 'dividend'].includes(e.type) || (e.type === 'rebalance' && e.amount >= 0) ? '+' : '-'}฿{fmt(Math.abs(e.amount), 2)}
                         </span>
-                        {!e.id.toString().startsWith('log_pnl_') && (
+                        {e.type === 'fee' ? (
+                          <button style={{ background: 'transparent', border: '1px solid var(--gold)', borderRadius: '4px', cursor: 'pointer', padding: '2px 4px', color: 'var(--gold)', display: 'flex', alignItems: 'center' }} onClick={() => revertFeeLedgerEntry(e.id)} title="คืนค่าค่าธรรมเนียมนี้กลับเข้าเงินสด">
+                            <RotateCcw size={13} />
+                          </button>
+                        ) : !e.id.toString().startsWith('log_pnl_') && (
                           <button style={{ background: 'transparent', border: '1px solid var(--muted)', cursor: 'pointer', padding: '2px' }} onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type] || e.type)}>
                             <Trash2 size={13} />
                           </button>
@@ -3251,7 +3283,10 @@ export default function PortfolioApp() {
                   const isLatestForAsset = (tradeLogs || []).find(l => l && l.assetId === log.assetId)?.id === log.id;
 
                   const displayPrice = isUsdAsset ? (log.price * logFx) : log.price;
-                  const displayFee = log.isFeeThb ? log.fee : (isUsdAsset ? ((log.fee || 0) * logFx) : (log.fee || 0));
+                  const rawFee = log.feeThbRecord !== undefined ? log.feeThbRecord : (log.fee || 0);
+                  const displayFee = (log.currency === 'USD' || log.assetType === 'foreign_stock' || log.assetType === 'fund' || log.assetType === 'gold' || log.assetType === 'crypto') && !log.isFeeThb
+                    ? (rawFee * logFx)
+                    : rawFee;
                   const displayPnl = log.pnlThb !== undefined ? log.pnlThb : ((log.pnl !== undefined) ? (isUsdAsset ? (log.pnl * logFx) : log.pnl) : undefined);
 
                   return (
@@ -3276,7 +3311,7 @@ export default function PortfolioApp() {
                         <span>จำนวน <b>{fmt(log.quantity, 2, log.assetType === 'crypto')}</b></span>
                         <span>ราคา <b>{isUsdAsset ? '$' : '฿'}{fmt(log.price, 2, log.assetType === 'crypto')}</b> {isUsdAsset && <span style={{ fontSize: '10px', opacity: 0.6 }}>(฿{fmt(displayPrice, 2)})</span>}</span>
                         {log.note && <span style={{ color: 'var(--muted)' }}>({log.note})</span>}
-                        {displayFee > 0 && <span>ค่าธรรมเนียม <b>฿{fmt(displayFee, 2)}</b></span>}
+                        {displayFee > 0 && <span>ค่าธรรมเนียม <b style={{ color: 'var(--gold)' }}>฿{fmt(displayFee, 2)}</b></span>}
                       </div>
                       {!isBuy && displayPnl !== undefined && (
                         <div style={{ marginTop: '4px', paddingTop: '4px', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', fontSize: '12px' }} className="pf-mono">
