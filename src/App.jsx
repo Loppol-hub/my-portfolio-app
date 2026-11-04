@@ -189,11 +189,19 @@ const thaiDateAD = (iso) => {
 
 const calcDaysAgo = (dateStr) => {
   if (!dateStr) return 0;
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return 0;
+  const cleanIso = String(dateStr).split('T')[0];
+  const parts = cleanIso.split('-');
+  if (parts.length !== 3) return 0;
+  const [y, m, d] = parts.map(Number);
+  const targetDate = new Date(y, m - 1, d);
+  if (isNaN(targetDate.getTime())) return 0;
+
   const now = new Date();
-  const diffTime = Math.abs(now - d);
-  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  const nowDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const diffTime = nowDate - targetDate;
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+  return Math.max(0, diffDays);
 };
 
 const emptyForm = { 
@@ -729,7 +737,6 @@ export default function PortfolioApp() {
 
   const getAssetLots = (assetId, currentQty, currentPrice, assetCurrency, assetType, instrumentType) => {
     try {
-      // แก้ไขการเรียงลำดับ tradeLogs โดยใช้ Secondary Sort (ID/Timestamp) เมื่อวันที่ตรงกัน
       const logs = (tradeLogs || []).filter(l => l && l.assetId === assetId).sort((a, b) => {
         const dateComp = (a?.date || '').localeCompare(b?.date || '');
         if (dateComp !== 0) return dateComp;
@@ -746,7 +753,6 @@ export default function PortfolioApp() {
               remSell -= lots[0].qty;
               lots.shift();
             } else {
-              // แก้ไขการขายบางส่วน: ปรับลด totalCostThb ลงตามสัดส่วนจำนวนหุ้นที่ถูกขายออกไป
               const oldQty = lots[0].qty;
               lots[0].qty -= remSell;
               if (lots[0].totalCostThb !== undefined && lots[0].totalCostThb !== null && oldQty > 0) {
