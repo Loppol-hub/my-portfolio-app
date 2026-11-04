@@ -911,22 +911,27 @@ export default function PortfolioApp() {
 
         let feeAmount = 0;
         let feeThb = 0;
+        let recordFeeForDisplay = 0;
         if (isDirectFee) {
           if (isUsdAsset) {
             if (form.feeCurrency === 'THB') {
               feeThb = feeInputVal;
               feeAmount = customFx > 0 ? feeInputVal / customFx : 0;
+              recordFeeForDisplay = feeInputVal; // แสดงเป็นบาทตามที่กรอก
             } else {
               feeAmount = feeInputVal;
               feeThb = feeInputVal * customFx;
+              recordFeeForDisplay = feeInputVal; // แสดงเป็น USD ตามที่กรอก
             }
           } else {
             feeAmount = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
             feeThb = feeAmount;
+            recordFeeForDisplay = feeAmount;
           }
         } else {
           feeAmount = (subtotal * feeInputVal) / 100;
           feeThb = isUsdAsset ? feeAmount * customFx : feeAmount;
+          recordFeeForDisplay = feeThb;
         }
 
         const subtotalThb = isUsdAsset ? subtotal * customFx : subtotal;
@@ -967,7 +972,7 @@ export default function PortfolioApp() {
           action: 'buy',
           quantity: addQty,
           price: addPrice,
-          fee: feeAmount,
+          fee: recordFeeForDisplay,
           feeThbRecord: feeThb,
           ledgerFeeId: excludeFeeFromCost && feeThb > 0 ? feeEntryId : null,
           currency: currency,
@@ -1125,23 +1130,28 @@ export default function PortfolioApp() {
 
       let feeAmount = 0;
       let feeThb = 0;
+      let recordFeeForDisplay = 0;
       if (!isCash) {
         if (isDirectFee) {
           if (isUsdAsset) {
             if (form.feeCurrency === 'THB') {
               feeThb = feeInputVal;
               feeAmount = customFx > 0 ? feeInputVal / customFx : 0;
+              recordFeeForDisplay = feeInputVal;
             } else {
               feeAmount = feeInputVal;
               feeThb = feeInputVal * customFx;
+              recordFeeForDisplay = feeInputVal;
             }
           } else {
             feeAmount = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
             feeThb = feeAmount;
+            recordFeeForDisplay = feeAmount;
           }
         } else {
           feeAmount = (subtotal * feeInputVal) / 100;
           feeThb = isUsdAsset ? feeAmount * customFx : feeAmount;
+          recordFeeForDisplay = feeThb;
         }
       }
 
@@ -1189,7 +1199,7 @@ export default function PortfolioApp() {
         action: 'buy',
         quantity: qty,
         price: avg,
-        fee: feeAmount,
+        fee: recordFeeForDisplay,
         feeThbRecord: feeThb,
         ledgerFeeId: excludeFeeFromCost && feeThb > 0 ? feeEntryId : null,
         currency: currency,
@@ -1641,14 +1651,10 @@ export default function PortfolioApp() {
   const totalFilteredFee = useMemo(() => {
     return filteredTradeLogs.reduce((sum, log) => {
       if (!log) return sum;
-      const logFx = (log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (log.tradeFx ? parseFloat(log.tradeFx) : fxRate) : 1;
-      const rawFee = log.feeThbRecord !== undefined ? log.feeThbRecord : (log.fee || 0);
-      const feeThb = (log.currency === 'USD' || log.assetType === 'foreign_stock' || log.assetType === 'fund' || log.assetType === 'gold' || log.assetType === 'crypto') && !log.isFeeThb 
-        ? (rawFee * logFx) 
-        : rawFee;
-      return sum + (isNaN(feeThb) ? 0 : feeThb);
+      const feeVal = log.fee !== undefined ? (parseFloat(log.fee) || 0) : 0;
+      return sum + feeVal;
     }, 0);
-  }, [filteredTradeLogs, fxRate]);
+  }, [filteredTradeLogs]);
 
   const searchFilteredAssetPnL = useMemo(() => {
     const q = tradeSearchQuery.trim().toLowerCase();
@@ -3270,10 +3276,7 @@ export default function PortfolioApp() {
                   const isLatestForAsset = (tradeLogs || []).find(l => l && l.assetId === log.assetId)?.id === log.id;
 
                   const displayPrice = isUsdAsset ? (log.price * logFx) : log.price;
-                  const rawFee = log.feeThbRecord !== undefined ? log.feeThbRecord : (log.fee || 0);
-                  const displayFee = (log.currency === 'USD' || log.assetType === 'foreign_stock' || log.assetType === 'fund' || log.assetType === 'gold' || log.assetType === 'crypto') && !log.isFeeThb
-                    ? (rawFee * logFx)
-                    : rawFee;
+                  const displayFee = log.fee !== undefined ? (parseFloat(log.fee) || 0) : 0;
                   const displayPnl = log.pnlThb !== undefined ? log.pnlThb : ((log.pnl !== undefined) ? (isUsdAsset ? (log.pnl * logFx) : log.pnl) : undefined);
 
                   return (
@@ -3298,7 +3301,7 @@ export default function PortfolioApp() {
                         <span>จำนวน <b>{fmt(log.quantity, 2, log.assetType === 'crypto')}</b></span>
                         <span>ราคา <b>{isUsdAsset ? '$' : '฿'}{fmt(log.price, 2, log.assetType === 'crypto')}</b> {isUsdAsset && <span style={{ fontSize: '10px', opacity: 0.6 }}>(฿{fmt(displayPrice, 2)})</span>}</span>
                         {log.note && <span style={{ color: 'var(--muted)' }}>({log.note})</span>}
-                        {displayFee > 0 && <span>ค่าธรรมเนียม <b style={{ color: 'var(--gold)' }}>฿{fmt(displayFee, 2)}</b></span>}
+                        {displayFee > 0 && <span>ค่าธรรมเนียม <b style={{ color: 'var(--gold)' }}>{log.currency === 'USD' && log.assetType === 'foreign_stock' ? '$' : '฿'}{fmt(displayFee, 2)}</b></span>}
                       </div>
                       {!isBuy && displayPnl !== undefined && (
                         <div style={{ marginTop: '4px', paddingTop: '4px', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', fontSize: '12px' }} className="pf-mono">
