@@ -220,7 +220,6 @@ const calcDaysAgo = (dateStr) => {
   return Math.max(0, diffDays);
 };
 
-// บันทึกเฉพาะวันสิ้นเดือน ตั้งแต่ 30 พ.ย. 2026 เป็นต้นไป และเก็บบันทึกย้อนหลัง 36 เดือน
 const getMonthlySlotDate = (dateStr) => {
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return null;
@@ -498,17 +497,21 @@ export default function PortfolioApp() {
   const combinedLedger = useMemo(() => {
     let list = Array.isArray(ledger) ? ledger.filter(e => e) : [];
     (tradeLogs || []).forEach((log) => {
-      if (log && log.action === 'sell' && log.manualPnlAmount !== undefined && log.manualPnlAmount !== null) {
-        const amt = parseFloat(log.manualPnlAmount) || 0;
-        if (amt > 0) {
-          const isLoss = log.manualPnlType === 'loss';
-          list.push({
-            id: 'log_pnl_' + log.id,
-            type: isLoss ? 'loss' : 'profit',
-            amount: amt,
-            date: log.date || todayStr(),
-            note: `ขาย ${log.assetName || ''}` + (log.note ? ` (${log.note})` : '')
-          });
+      if (log && log.action === 'sell') {
+        const rawAmt = log.manualPnlAmount !== undefined ? log.manualPnlAmount : (log.pnl !== undefined ? log.pnl : log.pnlThb);
+        const amt = parseFloat(rawAmt) || 0;
+        if (amt !== 0 || rawAmt !== undefined) {
+          const isLoss = log.manualPnlType === 'loss' || (log.manualPnlType === undefined && amt < 0);
+          const absAmt = Math.abs(amt);
+          if (absAmt > 0) {
+            list.push({
+              id: 'log_pnl_' + log.id,
+              type: isLoss ? 'loss' : 'profit',
+              amount: absAmt,
+              date: log.date || todayStr(),
+              note: `ขาย ${log.assetName || ''}` + (log.note ? ` (${log.note})` : '')
+            });
+          }
         }
       }
     });
@@ -543,13 +546,15 @@ export default function PortfolioApp() {
   const realizedPnLByType = useMemo(() => {
     const pnlMap = { th_stock: 0, foreign_stock: 0, fund: 0, gold: 0, crypto: 0, other: 0 };
     (tradeLogs || []).forEach((log) => {
-      if (log && log.action === 'sell' && log.manualPnlAmount !== undefined) {
+      if (log && log.action === 'sell') {
         let t = log.assetType || 'th_stock';
         if (t === 'th_stock' && log.instrumentType === 'dr') {
           t = 'foreign_stock';
         }
-        const amt = parseFloat(log.manualPnlAmount) || 0;
-        const pnlThb = log.manualPnlType === 'loss' ? -amt : amt;
+        const rawAmt = log.manualPnlAmount !== undefined ? log.manualPnlAmount : (log.pnl !== undefined ? log.pnl : log.pnlThb);
+        const amt = parseFloat(rawAmt) || 0;
+        const isLoss = log.manualPnlType === 'loss' || (log.manualPnlType === undefined && amt < 0);
+        const pnlThb = isLoss ? -Math.abs(amt) : Math.abs(amt);
         if (!isNaN(pnlThb)) {
           pnlMap[t] = (pnlMap[t] || 0) + pnlThb;
         }
@@ -1033,6 +1038,8 @@ export default function PortfolioApp() {
         const avg = isCash ? 1 : parseFloat(form.avgCost);
         const price = isCash ? 1 : parseFloat(form.currentPrice);
         if (isNaN(qty) || qty <= 0) { setFormError('จำนวนต้องเป็นตัวเลขมากกว่า 0'); return; }
+        if (!isCash && (isNaN(avg) || avg < 0)) { setFormError('ราคาต้นทุนไม่ถูกต้อง'); return; }
+        if (!isCash && (isNaN(price) || price < 0)) { setFormError('ราคาปัจจุบันไม่ถูกต้อง'); return; }
         
         currentQty = qty;
         currentAvg = avg;
@@ -1443,7 +1450,7 @@ export default function PortfolioApp() {
   const confirmImport = async () => {
     if (!pendingImport) return;
     await saveHoldings(Array.isArray(pendingImport.holdings) ? pendingImport.holdings : []);
-    if (Array.isArray(pendingImport.tradeLogs)) await saveTradeLogs(pendingImport.tradeLogs);
+    await saveTradeLogs(Array.isArray(pendingImport.tradeLogs) ? pendingImport.tradeLogs : []);
     await saveHistory(Array.isArray(pendingImport.history) ? pendingImport.history : []);
     if (typeof pendingImport.fxRate === 'number' && pendingImport.fxRate > 0) {
       setFxRate(pendingImport.fxRate);
@@ -1459,7 +1466,7 @@ export default function PortfolioApp() {
       setInitialCapitalDraft(pendingImport.initialCapital > 0 ? String(pendingImport.initialCapital) : '');
       try { await window.storage.set('initial-capital', String(pendingImport.initialCapital), false); } catch (e) { /* ignore */ }
     }
-    if (Array.isArray(pendingImport.ledger)) { await saveLedger(pendingImport.ledger); }
+    await saveLedger(Array.isArray(pendingImport.ledger) ? pendingImport.ledger : []);
     setPendingImport(null);
     showToast('นำเข้าข้อมูลสำเร็จ');
   };
@@ -1554,9 +1561,11 @@ export default function PortfolioApp() {
     let totalPnlThb = 0;
     matchingLogs.forEach(l => {
       if (!l) return;
-      if (l.action === 'sell' && l.manualPnlAmount !== undefined) {
-        const amt = parseFloat(l.manualPnlAmount) || 0;
-        totalPnlThb += l.manualPnlType === 'loss' ? -amt : amt;
+      if (l.action === 'sell') {
+        const rawAmt = l.manualPnlAmount !== undefined ? l.manualPnlAmount : (l.pnl !== undefined ? l.pnl : l.pnlThb);
+        const amt = parseFloat(rawAmt) || 0;
+        const isLoss = l.manualPnlType === 'loss' || (l.manualPnlType === undefined && amt < 0);
+        totalPnlThb += isLoss ? -Math.abs(amt) : Math.abs(amt);
       }
     });
     const assetName = matchingLogs[0]?.assetName || '';
@@ -3207,8 +3216,9 @@ export default function PortfolioApp() {
 
                   const displayPrice = isUsdAsset ? (log.price * logFx) : log.price;
                   const displayFee = log.feeThbRecord !== undefined ? (parseFloat(log.feeThbRecord) || 0) : (log.fee !== undefined ? (parseFloat(log.fee) || 0) : 0);
-                  const manualPnlAmt = log.manualPnlAmount !== undefined ? parseFloat(log.manualPnlAmount) || 0 : 0;
-                  const isLoss = log.manualPnlType === 'loss';
+                  const rawManualPnl = log.manualPnlAmount !== undefined ? log.manualPnlAmount : (log.pnl !== undefined ? log.pnl : log.pnlThb);
+                  const manualPnlAmt = rawManualPnl !== undefined ? Math.abs(parseFloat(rawManualPnl) || 0) : 0;
+                  const isLoss = log.manualPnlType === 'loss' || (log.manualPnlType === undefined && parseFloat(rawManualPnl) < 0);
 
                   return (
                     <div key={log.id} style={{ background: 'var(--surface-alt)', border: '1px solid var(--divider)', borderRadius: '10px', padding: '10px 12px', fontSize: '13px' }}>
