@@ -778,8 +778,7 @@ export default function PortfolioApp() {
     }));
   };
 
-  // ดึงประวัติเฉพาะไม้ซื้อมาแสดงใต้สินทรัพย์ (แสดงทุกไม้ซื้อจนกว่าจะถูกลบสินทรัพย์ออกเมื่อขายหมด)
-  const getAssetLots = (assetId, assetCurrency, assetType, instrumentType) => {
+  const getAssetLots = (assetId, assetCurrency, assetType, instrumentType, currentPrice) => {
     try {
       const logs = (tradeLogs || []).filter(l => l && l.assetId === assetId && l.action === 'buy').sort((a, b) => {
         const dateComp = (b?.date || '').localeCompare(a?.date || '');
@@ -793,11 +792,13 @@ export default function PortfolioApp() {
         const logQty = parseFloat(l.quantity) || 0;
         const logPrice = parseFloat(l.price) || 0;
         const days = calcDaysAgo(l?.date);
+        const gainPct = logPrice > 0 ? ((currentPrice - logPrice) / logPrice) * 100 : 0;
         return {
           ...l,
           days,
           price: logPrice,
           qty: logQty,
+          gainPct,
           currencySymbol: isUsd ? '$' : '฿'
         };
       });
@@ -907,6 +908,7 @@ export default function PortfolioApp() {
         const sellPrice = parseFloat(form.tradePrice);
         const manualPnlVal = parseFloat(form.tradePnlAmount) || 0;
         const pnlType = form.tradePnlType; // 'profit' or 'loss'
+        const feeInputVal = parseFloat(form.feePct) || 0;
 
         if (isNaN(sellQty) || sellQty <= 0 || isNaN(sellPrice) || sellPrice < 0) {
           setFormError('กรอกจำนวนหรือราคาขายให้ถูกต้อง');
@@ -914,7 +916,48 @@ export default function PortfolioApp() {
         }
 
         const customFx = form.tradeFx && parseFloat(form.tradeFx) > 0 ? parseFloat(form.tradeFx) : fxRate;
-        
+        const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
+        const sellSubtotal = sellQty * sellPrice;
+
+        let sellFeeAmount = 0;
+        let sellFeeThb = 0;
+        let recordSellFeeForDisplay = 0;
+
+        if (feeInputVal > 0) {
+          if (isDirectFee) {
+            if (isUsdAsset) {
+              if (form.feeCurrency === 'THB') {
+                sellFeeThb = feeInputVal;
+                sellFeeAmount = customFx > 0 ? feeInputVal / customFx : 0;
+                recordSellFeeForDisplay = feeInputVal;
+              } else {
+                sellFeeAmount = feeInputVal;
+                sellFeeThb = sellFeeAmount * customFx;
+                recordSellFeeForDisplay = feeInputVal;
+              }
+            } else {
+              sellFeeAmount = form.feeCurrency === 'USD' ? feeInputVal * customFx : feeInputVal;
+              sellFeeThb = sellFeeAmount;
+              recordSellFeeForDisplay = sellFeeAmount;
+            }
+          } else {
+            sellFeeAmount = (sellSubtotal * feeInputVal) / 100;
+            sellFeeThb = isUsdAsset ? sellFeeAmount * customFx : sellFeeAmount;
+            recordSellFeeForDisplay = sellFeeThb;
+          }
+        }
+
+        const sellFeeEntryId = Date.now().toString() + '_sell_fee';
+        if (sellFeeThb > 0) {
+          newLedgerEntries.push({
+            id: sellFeeEntryId,
+            type: 'fee',
+            amount: sellFeeThb,
+            date: form.tradeDate || todayStr(),
+            note: `ค่าธรรมเนียมขาย ${name}`
+          });
+        }
+
         newLogs.unshift({
           id: Date.now().toString(),
           assetId: target.id,
@@ -926,6 +969,9 @@ export default function PortfolioApp() {
           action: 'sell',
           quantity: sellQty,
           price: sellPrice,
+          fee: recordSellFeeForDisplay,
+          feeThbRecord: sellFeeThb,
+          ledgerFeeId: sellFeeThb > 0 ? sellFeeEntryId : null,
           manualPnlType: pnlType,
           manualPnlAmount: manualPnlVal,
           currency: currency,
@@ -1075,10 +1121,13 @@ export default function PortfolioApp() {
 
   const executeRevertTrade = (log) => {
     if (!log) return;
+    if (log.ledgerFeeId) {
+      saveLedger((ledger || []).filter(e => e && e.id !== log.ledgerFeeId));
+    }
     const nextLogs = (tradeLogs || []).filter(l => l && l.id !== log.id);
     saveTradeLogs(nextLogs);
     setConfirmRevertTarget(null);
-    showToast(`คืนค่ารายการสำเร็จ`);
+    showToast(`คืนค่ารายการและอัปเดตเงินสด/สรุปรายปีสำเร็จ`);
   };
 
   const requestDelete = (type, id, label) => setConfirmDeleteTarget({ type, id, label });
@@ -1417,7 +1466,7 @@ export default function PortfolioApp() {
   const totalFilteredFee = useMemo(() => {
     return filteredTradeLogs.reduce((sum, log) => {
       if (!log) return sum;
-      const feeVal = log.fee !== undefined ? (parseFloat(log.fee) || 0) : 0;
+      const feeVal = log.feeThbRecord !== undefined ? (parseFloat(log.feeThbRecord) || 0) : (log.fee !== undefined ? (parseFloat(log.fee) || 0) : 0);
       return sum + feeVal;
     }, 0);
   }, [filteredTradeLogs]);
@@ -1821,7 +1870,7 @@ export default function PortfolioApp() {
                           if (!h) return null;
                           const isCrypto = h.type === 'crypto';
                           const isExpanded = expandedLotsId === h.id;
-                          const lots = getAssetLots(h.id, h.currency, h.type, h.instrumentType);
+                          const lots = getAssetLots(h.id, h.currency, h.type, h.instrumentType, h.price);
 
                           return (
                             <div key={h.id}>
@@ -1863,6 +1912,7 @@ export default function PortfolioApp() {
                                     <span style={{ minWidth: '85px' }}>วันที่ซื้อ</span>
                                     <span style={{ textAlign: 'center', flex: 1 }}>จำนวน</span>
                                     <span style={{ textAlign: 'right', flex: 1 }}>ราคา/หน่วย</span>
+                                    <span style={{ textAlign: 'right', minWidth: '70px' }}>กำไร/ขาดทุน</span>
                                   </div>
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '140px', overflowY: 'auto', paddingRight: '4px' }}>
                                     {lots.map((lot, idx) => (
@@ -1870,6 +1920,9 @@ export default function PortfolioApp() {
                                         <span style={{ color: 'var(--gold)', minWidth: '85px' }}>{thaiDateAD(lot?.date)} <span style={{ color: 'var(--muted)', fontSize: '10px' }}>({lot?.days || 0}ว)</span></span>
                                         <span style={{ textAlign: 'center', flex: 1 }}><b>{fmt(lot?.qty, 2, isCrypto)}</b></span>
                                         <span style={{ textAlign: 'right', flex: 1 }}><b>{lot.currencySymbol}{fmt(lot?.price, 2)}</b></span>
+                                        <span className={(lot?.gainPct || 0) >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'} style={{ fontWeight: '600', textAlign: 'right', minWidth: '70px' }}>
+                                          {(lot?.gainPct || 0) >= 0 ? '+' : ''}{fmt(lot?.gainPct, 2)}%
+                                        </span>
                                       </div>
                                     ))}
                                   </div>
@@ -2015,7 +2068,7 @@ export default function PortfolioApp() {
                           if (!h) return null;
                           const isCrypto = h.type === 'crypto';
                           const isExpanded = expandedLotsId === h.id;
-                          const lots = getAssetLots(h.id, h.currency, h.type, h.instrumentType);
+                          const lots = getAssetLots(h.id, h.currency, h.type, h.instrumentType, h.price);
 
                           return (
                             <div key={h.id}>
@@ -2057,6 +2110,7 @@ export default function PortfolioApp() {
                                     <span style={{ minWidth: '85px' }}>วันที่ซื้อ</span>
                                     <span style={{ textAlign: 'center', flex: 1 }}>จำนวน</span>
                                     <span style={{ textAlign: 'right', flex: 1 }}>ราคา/หน่วย</span>
+                                    <span style={{ textAlign: 'right', minWidth: '70px' }}>กำไร/ขาดทุน</span>
                                   </div>
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '140px', overflowY: 'auto', paddingRight: '4px' }}>
                                     {lots.map((lot, idx) => (
@@ -2064,6 +2118,9 @@ export default function PortfolioApp() {
                                         <span style={{ color: 'var(--gold)', minWidth: '85px' }}>{thaiDateAD(lot?.date)} <span style={{ color: 'var(--muted)', fontSize: '10px' }}>({lot?.days || 0}ว)</span></span>
                                         <span style={{ textAlign: 'center', flex: 1 }}><b>{fmt(lot?.qty, 2, isCrypto)}</b></span>
                                         <span style={{ textAlign: 'right', flex: 1 }}><b>{lot.currencySymbol}{fmt(lot?.price, 2)}</b></span>
+                                        <span className={(lot?.gainPct || 0) >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'} style={{ fontWeight: '600', textAlign: 'right', minWidth: '70px' }}>
+                                          {(lot?.gainPct || 0) >= 0 ? '+' : ''}{fmt(lot?.gainPct, 2)}%
+                                        </span>
                                       </div>
                                     ))}
                                   </div>
@@ -2423,7 +2480,7 @@ export default function PortfolioApp() {
                             if (!h) return null;
                             const isCrypto = h.type === 'crypto';
                             const isExpanded = expandedLotsId === h.id;
-                            const lots = getAssetLots(h.id, h.currency, h.type, h.instrumentType);
+                            const lots = getAssetLots(h.id, h.currency, h.type, h.instrumentType, h.price);
 
                             return (
                               <div key={h.id}>
@@ -2461,6 +2518,7 @@ export default function PortfolioApp() {
                                       <span style={{ minWidth: '85px' }}>วันที่ซื้อ</span>
                                       <span style={{ textAlign: 'center', flex: 1 }}>จำนวน</span>
                                       <span style={{ textAlign: 'right', flex: 1 }}>ราคา/หน่วย</span>
+                                      <span style={{ textAlign: 'right', minWidth: '70px' }}>กำไร/ขาดทุน</span>
                                     </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '140px', overflowY: 'auto', paddingRight: '4px' }}>
                                       {lots.map((lot, idx) => (
@@ -2468,6 +2526,9 @@ export default function PortfolioApp() {
                                           <span style={{ color: 'var(--gold)', minWidth: '85px' }}>{thaiDateAD(lot?.date)} <span style={{ color: 'var(--muted)', fontSize: '10px' }}>({lot?.days || 0}ว)</span></span>
                                           <span style={{ textAlign: 'center', flex: 1 }}><b>{fmt(lot?.qty, 2, isCrypto)}</b></span>
                                           <span style={{ textAlign: 'right', flex: 1 }}><b>{lot.currencySymbol}{fmt(lot?.price, 2)}</b></span>
+                                          <span className={(lot?.gainPct || 0) >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'} style={{ fontWeight: '600', textAlign: 'right', minWidth: '70px' }}>
+                                            {(lot?.gainPct || 0) >= 0 ? '+' : ''}{fmt(lot?.gainPct, 2)}%
+                                          </span>
                                         </div>
                                       ))}
                                     </div>
@@ -3070,7 +3131,7 @@ export default function PortfolioApp() {
                   const isLatestForAsset = (tradeLogs || []).find(l => l && l.assetId === log.assetId)?.id === log.id;
 
                   const displayPrice = isUsdAsset ? (log.price * logFx) : log.price;
-                  const displayFee = log.fee !== undefined ? (parseFloat(log.fee) || 0) : 0;
+                  const displayFee = log.feeThbRecord !== undefined ? (parseFloat(log.feeThbRecord) || 0) : (log.fee !== undefined ? (parseFloat(log.fee) || 0) : 0);
                   const manualPnlAmt = log.manualPnlAmount !== undefined ? parseFloat(log.manualPnlAmount) || 0 : 0;
                   const isLoss = log.manualPnlType === 'loss';
 
@@ -3096,7 +3157,7 @@ export default function PortfolioApp() {
                         <span>จำนวน <b>{fmt(log.quantity, 2, log.assetType === 'crypto')}</b></span>
                         <span>ราคา <b>{isUsdAsset ? '$' : '฿'}{fmt(log.price, 2, log.assetType === 'crypto')}</b> {isUsdAsset && <span style={{ fontSize: '10px', opacity: 0.6 }}>(฿{fmt(displayPrice, 2)})</span>}</span>
                         {log.note && <span style={{ color: 'var(--muted)' }}>({log.note})</span>}
-                        {displayFee > 0 && <span>ค่าธรรมเนียม <b style={{ color: 'var(--gold)' }}>{log.currency === 'USD' && log.assetType === 'foreign_stock' ? '$' : '฿'}{fmt(displayFee, 2)}</b></span>}
+                        {displayFee > 0 && <span>ค่าธรรมเนียม <b style={{ color: 'var(--gold)' }}>฿{fmt(displayFee, 2)}</b></span>}
                       </div>
                       {!isBuy && manualPnlAmt > 0 && (
                         <div style={{ marginTop: '4px', paddingTop: '4px', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', fontSize: '12px' }} className="pf-mono">
@@ -3121,7 +3182,7 @@ export default function PortfolioApp() {
           <div className="pf-confirm-modal" onClick={(e) => e.stopPropagation()}>
             <div style={{ marginBottom: 12, fontSize: 15, fontWeight: '600' }}>ยืนยันลบประวัติรายการ?</div>
             <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--muted)' }}>
-              ต้องการลบประวัติรายการ "{confirmRevertTarget.assetName}" ({confirmRevertTarget.action === 'buy' ? 'ซื้อ' : 'ขาย'}) นี้ใช่หรือไม่?
+              ต้องการลบประวัติรายการ "{confirmRevertTarget.assetName}" ({confirmRevertTarget.action === 'buy' ? 'ซื้อ' : 'ขาย'}) นี้ใช่หรือไม่? ระบบจะยกเลิกค่าธรรมเนียมและผลกำไร/ขาดทุนที่เกี่ยวข้องในหน้าสรุปรายปีด้วย
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button className="pf-btn pf-btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setConfirmRevertTarget(null)}>ยกเลิก</button>
