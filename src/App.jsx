@@ -235,16 +235,6 @@ const getMonthlySlotDate = (dateStr) => {
   return formattedCheck;
 };
 
-// บันทึกเฉพาะวันสิ้นปี สำหรับโหมดรายปี
-const getYearlySlotDate = (dateStr) => {
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return null;
-  const y = d.getFullYear();
-  const formattedCheck = `${y}-12-31`;
-  if (`${y}-12-31` < '2026-12-31') return null;
-  return String(y);
-};
-
 const emptyForm = { 
   name: '', ticker: '', type: 'th_stock', quantity: '', avgCost: '', currentPrice: '', currency: 'THB', industry: '', instrumentType: 'stock',
   feePct: '0', feeCurrency: 'THB', tradeDate: todayStr(), note: '',
@@ -685,7 +675,7 @@ export default function PortfolioApp() {
     const map = {};
     (history || []).filter(h => h && h.date >= '2026-11-30').forEach(h => {
       const yr = (h.date || '').slice(0, 4);
-      if (yr) map[yr] = h.value; // เอาค่าล่าสุดของปีนั้นๆ
+      if (yr) map[yr] = h.value;
     });
     const years = Object.keys(map).sort();
     if (years.length === 0) {
@@ -1266,18 +1256,26 @@ export default function PortfolioApp() {
         return { ...h, currentPrice: updatedPrice, lastUpdated: rawToday };
       });
       await saveHoldings(nextHoldings);
-      const newTotal = nextHoldings.reduce((s, h) => {
-        if (!h) return s;
+
+      const newInvestedTotal = nextHoldings.reduce((s, h) => {
+        if (!h || h.type === 'cash') return s;
         const currency = h.currency === 'USD' ? 'USD' : 'THB';
         const isDr = h.instrumentType === 'dr';
         const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h.type, rate) : 1;
         return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0) * effRate;
       }, 0);
+      const currentComputedCash = cashActive ? (totalCapital - nextHoldings.filter(h => h && h.type !== 'cash').reduce((s, h) => {
+        const cur = h.currency === 'USD' ? 'USD' : 'THB';
+        const dr = h.instrumentType === 'dr';
+        const fr = (cur === 'USD' && !dr) ? (h.createdFxRate || rate) : 1;
+        return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.avgCost) || 0) * fr;
+      }, 0) + cashAdjTotal) : 0;
+      const totalAssetVal = newInvestedTotal + Math.max(0, currentComputedCash);
 
       const slotDate = getMonthlySlotDate(rawToday);
       if (slotDate) {
         const existing = (historyRef.current || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-30');
-        const histNext = [...existing, { date: slotDate, value: newTotal }].sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
+        const histNext = [...existing, { date: slotDate, value: totalAssetVal }].sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
         await saveHistory(histNext);
       }
       setFetchIssues(failedNames);
@@ -1308,18 +1306,25 @@ export default function PortfolioApp() {
       }
     }
 
-    const newTotal = next.reduce((s, h) => {
-      if (!h) return s;
+    const newInvestedTotal = next.reduce((s, h) => {
+      if (!h || h.type === 'cash') return s;
       const currency = h.currency === 'USD' ? 'USD' : 'THB';
       const isDr = h.instrumentType === 'dr';
       const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h.type, rate) : 1;
       return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0) * effRate;
     }, 0);
+    const currentComputedCash = cashActive ? (totalCapital - next.filter(h => h && h.type !== 'cash').reduce((s, h) => {
+      const cur = h.currency === 'USD' ? 'USD' : 'THB';
+      const dr = h.instrumentType === 'dr';
+      const fr = (cur === 'USD' && !dr) ? (h.createdFxRate || rate) : 1;
+      return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.avgCost) || 0) * fr;
+    }, 0) + cashAdjTotal) : 0;
+    const totalAssetVal = newInvestedTotal + Math.max(0, currentComputedCash);
 
     const slotDate = getMonthlySlotDate(rawToday);
     if (slotDate) {
       const existing = (history || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-30');
-      const histNext = [...existing, { date: slotDate, value: newTotal }].sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
+      const histNext = [...existing, { date: slotDate, value: totalAssetVal }].sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
       saveHistory(histNext);
     }
 
