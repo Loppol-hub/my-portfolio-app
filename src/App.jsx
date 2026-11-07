@@ -655,13 +655,15 @@ export default function PortfolioApp() {
   }, [enriched, excludedTypes]);
 
   const heroProfitAmount = useMemo(() => {
-    return visibleInvestedGain + cashAdjTotal;
-  }, [visibleInvestedGain, cashAdjTotal]);
+    const dividendTotal = combinedLedger.filter((e) => e && e.type === 'dividend').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0);
+    return visibleInvestedGain + performanceTotal + dividendTotal;
+  }, [visibleInvestedGain, performanceTotal, combinedLedger]);
 
   const heroProfitBase = useMemo(() => {
-    const base = visibleInvestedCost + Math.max(0, computedCash);
+    const cashVal = (cashActive && !excludedTypes['cash']) ? Math.max(0, computedCash) : 0;
+    const base = visibleInvestedCost + cashVal;
     return base > 0 ? base : (totalCapital > 0 ? totalCapital : 1);
-  }, [visibleInvestedCost, computedCash, totalCapital]);
+  }, [visibleInvestedCost, cashActive, computedCash, excludedTypes, totalCapital]);
 
   const heroProfitPct = useMemo(() => {
     return heroProfitBase > 0 ? (heroProfitAmount / heroProfitBase) * 100 : 0;
@@ -810,8 +812,9 @@ export default function PortfolioApp() {
     setPanel('form'); 
   };
 
-  const openEdit = (h) => {
-    if (!h) return;
+  const openEdit = (item) => {
+    if (!item) return;
+    const h = (holdings || []).find(x => x && x.id === item.id) || item;
     setForm({ 
       name: h.name || '', 
       ticker: h.ticker || '', 
