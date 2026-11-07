@@ -636,7 +636,7 @@ export default function PortfolioApp() {
     const map = {};
     enriched.forEach((h) => { if (h && h.type !== 'cash') map[h.type] = (map[h.type] || 0) + (h.marketValue || 0); });
     const list = ASSET_TYPES.filter((t) => t && t.key !== 'cash').map((t) => ({ ...t, value: map[t.key] || 0 })).filter((t) => t.value > 0);
-    if (cashActive && computedCash > 0) {
+    if (cashActive) {
       const cashType = ASSET_TYPES.find((t) => t && t.key === 'cash');
       list.push({ ...cashType, value: computedCash });
     }
@@ -660,7 +660,7 @@ export default function PortfolioApp() {
   }, [visibleInvestedGain, performanceTotal, combinedLedger]);
 
   const heroProfitBase = useMemo(() => {
-    const cashVal = (cashActive && !excludedTypes['cash']) ? Math.max(0, computedCash) : 0;
+    const cashVal = (cashActive && !excludedTypes['cash']) ? computedCash : 0;
     const base = visibleInvestedCost + cashVal;
     return base > 0 ? base : (totalCapital > 0 ? totalCapital : 1);
   }, [visibleInvestedCost, cashActive, computedCash, excludedTypes, totalCapital]);
@@ -748,21 +748,8 @@ export default function PortfolioApp() {
   }, [dividendYears, combinedLedger, totalInvestedCost]);
 
   const dividendChartData = useMemo(() => {
-    if (dividendGraphMode === 'all') {
-      const totalDiv = combinedLedger.filter((e) => e && e.type === 'dividend').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0);
-      const yearsWithDiv = dividendByYear.filter((d) => d && d.dividend > 0);
-      const avgInvested = yearsWithDiv.length
-        ? yearsWithDiv.reduce((s, d) => s + d.invested, 0) / yearsWithDiv.length
-        : totalInvestedCost;
-      return [{
-        year: 'ตั้งแต่เริ่มต้น',
-        dividend: totalDiv,
-        invested: totalDiv > 0 ? avgInvested : 0,
-        yieldPct: totalDiv > 0 && avgInvested > 0 ? (totalDiv / avgInvested) * 100 : 0,
-      }];
-    }
     return dividendByYear;
-  }, [dividendGraphMode, dividendByYear, combinedLedger, totalInvestedCost]);
+  }, [dividendByYear]);
 
   const totalDividendAmount = useMemo(() => {
     return combinedLedger.filter((e) => e && e.type === 'dividend').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0);
@@ -2285,63 +2272,61 @@ export default function PortfolioApp() {
               </div>
 
               {/* 2. การ์ดเงินสด / สภาพคล่องในพอร์ต */}
-              {byType.find((t) => t && t.key === 'cash') && (
-                <div className="pf-hero" style={{ border: '2px solid rgba(124, 139, 158, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #1a2230 100%)', position: 'relative' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                    <div className="pf-hero-label" style={{ margin: 0 }}>เงินสด / สภาพคล่องในพอร์ต</div>
-                    <span style={{
-                      display: 'inline-block',
-                      padding: '3px 8px',
-                      borderRadius: '20px',
-                      fontSize: '11px',
-                      fontWeight: '600',
-                      background: cashRatio >= 30 ? 'rgba(52, 211, 153, 0.15)' : cashRatio >= 10 ? 'rgba(56, 189, 248, 0.15)' : 'rgba(251, 191, 36, 0.15)',
-                      color: cashRatio >= 30 ? '#34d399' : cashRatio >= 10 ? '#38bdf8' : '#fbbf24',
-                      border: `1px solid ${cashRatio >= 30 ? 'rgba(52, 211, 153, 0.4)' : cashRatio >= 10 ? 'rgba(56, 189, 248, 0.4)' : 'rgba(251, 191, 36, 0.4)'}`
-                    }} className="pf-mono">
-                      {cashRatio >= 30 ? 'สภาพคล่องสูง' : cashRatio >= 10 ? 'สภาพคล่องสมดุล' : 'สภาพคล่องต่ำ'} ({fmt(cashRatio, 2)}%)
-                    </span>
-                  </div>
-                  <div className="pf-hero-value pf-mono" style={{ fontSize: '38px', color: '#EDF1F5' }}>฿{fmt(computedCash, 2)}</div>
-
-                  <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--divider)' }}>
-                    {initialCapital > 0 && (
-                      <div className="pf-capital-row">
-                        <span style={{ color: 'var(--muted)' }}>ทุนเริ่มต้นสะสม</span>
-                        <span className="pf-mono">฿{fmt(totalCapital, 2)}</span>
-                      </div>
-                    )}
-                    {totalInvestedCost > 0 && (
-                      <div className="pf-capital-row">
-                        <span style={{ color: 'var(--muted)' }}>เงินที่นำไปลงทุน</span>
-                        <span className="pf-mono">฿{fmt(totalInvestedCost, 2)}</span>
-                      </div>
-                    )}
-                    {performanceTotal !== 0 && (
-                      <div className="pf-capital-row">
-                        <span style={{ color: 'var(--muted)' }}>ผลประกอบการรวม</span>
-                        <span className={`pf-mono ${performanceTotal >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
-                          {performanceTotal >= 0 ? '+' : ''}฿{fmt(performanceTotal, 2)}
-                        </span>
-                      </div>
-                    )}
-                    {totalDividendAmount > 0 && (
-                      <div className="pf-capital-row">
-                        <span style={{ color: 'var(--muted)' }}>เงินปันผลรับ</span>
-                        <span className="pf-mono pf-chip-pos">฿{fmt(totalDividendAmount, 2)}</span>
-                      </div>
-                    )}
-                    {rebalanceTotal !== 0 && (
-                      <div className="pf-capital-row">
-                        <span style={{ color: 'var(--muted)' }}>รีบาลานซ์</span>
-                        <span className={`pf-mono ${rebalanceTotal >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
-                          {rebalanceTotal >= 0 ? '+' : ''}฿{fmt(rebalanceTotal, 2)}
-                        </span>
-                      </div>
-                    )}
-                  </div>
+              <div className="pf-hero" style={{ border: `2px solid ${computedCash < 0 ? 'rgba(252, 165, 165, 0.5)' : 'rgba(124, 139, 158, 0.3)'}`, background: 'linear-gradient(135deg, #111827 0%, #1a2230 100%)', position: 'relative' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                  <div className="pf-hero-label" style={{ margin: 0 }}>เงินสด / สภาพคล่องในพอร์ต</div>
+                  <span style={{
+                    display: 'inline-block',
+                    padding: '3px 8px',
+                    borderRadius: '20px',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    background: computedCash < 0 ? 'rgba(252, 165, 165, 0.2)' : cashRatio >= 30 ? 'rgba(52, 211, 153, 0.15)' : cashRatio >= 10 ? 'rgba(56, 189, 248, 0.15)' : 'rgba(251, 191, 36, 0.15)',
+                    color: computedCash < 0 ? '#fca5a5' : cashRatio >= 30 ? '#34d399' : cashRatio >= 10 ? '#38bdf8' : '#fbbf24',
+                    border: `1px solid ${computedCash < 0 ? 'rgba(252, 165, 165, 0.5)' : cashRatio >= 30 ? 'rgba(52, 211, 153, 0.4)' : cashRatio >= 10 ? 'rgba(56, 189, 248, 0.4)' : 'rgba(251, 191, 36, 0.4)'}`
+                  }} className="pf-mono">
+                    {computedCash < 0 ? '⚠️ เงินสดติดลบ!' : cashRatio >= 30 ? 'สภาพคล่องสูง' : cashRatio >= 10 ? 'สภาพคล่องสมดุล' : 'สภาพคล่องต่ำ'} ({fmt(cashRatio, 2)}%)
+                  </span>
                 </div>
-              )}
+                <div className="pf-hero-value pf-mono" style={{ fontSize: '38px', color: computedCash < 0 ? '#fca5a5' : '#EDF1F5' }}>฿{fmt(computedCash, 2)}</div>
+
+                <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--divider)' }}>
+                  {initialCapital > 0 && (
+                    <div className="pf-capital-row">
+                      <span style={{ color: 'var(--muted)' }}>ทุนเริ่มต้นสะสม</span>
+                      <span className="pf-mono">฿{fmt(totalCapital, 2)}</span>
+                    </div>
+                  )}
+                  {totalInvestedCost > 0 && (
+                    <div className="pf-capital-row">
+                      <span style={{ color: 'var(--muted)' }}>เงินที่นำไปลงทุน</span>
+                      <span className="pf-mono">฿{fmt(totalInvestedCost, 2)}</span>
+                    </div>
+                  )}
+                  {performanceTotal !== 0 && (
+                    <div className="pf-capital-row">
+                      <span style={{ color: 'var(--muted)' }}>ผลประกอบการรวม</span>
+                      <span className={`pf-mono ${performanceTotal >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
+                        {performanceTotal >= 0 ? '+' : ''}฿{fmt(performanceTotal, 2)}
+                      </span>
+                    </div>
+                  )}
+                  {totalDividendAmount > 0 && (
+                    <div className="pf-capital-row">
+                      <span style={{ color: 'var(--muted)' }}>เงินปันผลรับ</span>
+                      <span className="pf-mono pf-chip-pos">฿{fmt(totalDividendAmount, 2)}</span>
+                    </div>
+                  )}
+                  {rebalanceTotal !== 0 && (
+                    <div className="pf-capital-row">
+                      <span style={{ color: 'var(--muted)' }}>รีบาลานซ์</span>
+                      <span className={`pf-mono ${rebalanceTotal >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
+                        {rebalanceTotal >= 0 ? '+' : ''}฿{fmt(rebalanceTotal, 2)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
 
               {/* 3. การ์ดมูลค่าสินทรัพย์ทั้งหมด */}
               <div className="pf-hero" style={{ border: '2px solid rgba(251, 191, 36, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #1f2937 100%)' }}>
@@ -2433,10 +2418,6 @@ export default function PortfolioApp() {
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '14px 0 8px', paddingTop: '12px', borderTop: '1px solid var(--divider)' }}>
                   <div className="pf-hero-label" style={{ margin: 0 }}>กราฟปันผล / เงินที่ลงทุนไป</div>
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    <button className={dividendGraphMode === 'all' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setDividendGraphMode('all')} style={{ padding: '2px 8px', fontSize: '11px' }}>ตั้งแต่เริ่มต้น</button>
-                    <button className={dividendGraphMode === 'year' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setDividendGraphMode('year')} style={{ padding: '2px 8px', fontSize: '11px' }}>รายปี</button>
-                  </div>
                 </div>
 
                 <div className="pf-spark" style={{ marginTop: '10px', height: '190px' }}>
@@ -2517,17 +2498,17 @@ export default function PortfolioApp() {
                       borderRadius: '20px',
                       fontSize: '11.5px',
                       fontWeight: '600',
-                      background: cashRatio >= 30 ? 'rgba(52, 211, 153, 0.15)' : cashRatio >= 10 ? 'rgba(56, 189, 248, 0.15)' : 'rgba(251, 191, 36, 0.15)',
-                      color: cashRatio >= 30 ? '#34d399' : cashRatio >= 10 ? '#38bdf8' : '#fbbf24',
-                      border: `1px solid ${cashRatio >= 30 ? 'rgba(52, 211, 153, 0.4)' : cashRatio >= 10 ? 'rgba(56, 189, 248, 0.4)' : 'rgba(251, 191, 36, 0.4)'}`
+                      background: computedCash < 0 ? 'rgba(252, 165, 165, 0.2)' : cashRatio >= 30 ? 'rgba(52, 211, 153, 0.15)' : cashRatio >= 10 ? 'rgba(56, 189, 248, 0.15)' : 'rgba(251, 191, 36, 0.15)',
+                      color: computedCash < 0 ? '#fca5a5' : cashRatio >= 30 ? '#34d399' : cashRatio >= 10 ? '#38bdf8' : '#fbbf24',
+                      border: `1px solid ${computedCash < 0 ? 'rgba(252, 165, 165, 0.5)' : cashRatio >= 30 ? 'rgba(52, 211, 153, 0.4)' : cashRatio >= 10 ? 'rgba(56, 189, 248, 0.4)' : 'rgba(251, 191, 36, 0.4)'}`
                     }} className="pf-mono">
-                      {cashRatio >= 30 ? 'สภาพคล่องสูง' : cashRatio >= 10 ? 'สภาพคล่องสมดุล' : 'สภาพคล่องต่ำ'} ({fmt(cashRatio, 2)}%)
+                      {computedCash < 0 ? '⚠️ เงินสดติดลบ!' : cashRatio >= 30 ? 'สภาพคล่องสูง' : cashRatio >= 10 ? 'สภาพคล่องสมดุล' : 'สภาพคล่องต่ำ'} ({fmt(cashRatio, 2)}%)
                     </span>
                   </div>
                 </div>
 
                 <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden', margin: '16px 0 6px' }}>
-                  <div style={{ width: `${Math.min(100, Math.max(0, cashRatio))}%`, height: '100%', background: cashRatio >= 30 ? '#34d399' : cashRatio >= 10 ? '#38bdf8' : '#fbbf24', borderRadius: '3px', transition: 'width 0.4s ease' }} />
+                  <div style={{ width: `${Math.min(100, Math.max(0, cashRatio))}%`, height: '100%', background: computedCash < 0 ? '#fca5a5' : cashRatio >= 30 ? '#34d399' : cashRatio >= 10 ? '#38bdf8' : '#fbbf24', borderRadius: '3px', transition: 'width 0.4s ease' }} />
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--muted)', marginBottom: '4px' }}>
                   <span>เทียบกับมูลค่าพอร์ตลงทุน</span>
