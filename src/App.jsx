@@ -21,6 +21,22 @@ const TICKER_HINT = {
 
 const LEDGER_LABELS = { capital_add: 'เพิ่มทุน', capital_reduce: 'ลดทุน', profit: 'กำไรจากการขาย', loss: 'ขาดทุนจากการขาย', dividend: 'ปันผล', rebalance: 'รีบาลานซ์' };
 
+const genId = () => `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+const sanitizeAndPruneHistory = (histList) => {
+  const map = {};
+  (histList || []).forEach(item => {
+    if (item && item.date && typeof item.value === 'number') {
+      map[item.date] = item.value;
+    }
+  });
+  return Object.keys(map)
+    .sort()
+    .filter(date => date >= '2026-11-30')
+    .slice(-36)
+    .map(date => ({ date, value: map[date] }));
+};
+
 const getEffectiveInstrumentType = (type, instType) => {
   return (type === 'th_stock' || type === 'foreign_stock') ? (instType || 'stock') : 'stock';
 };
@@ -379,7 +395,7 @@ export default function PortfolioApp() {
       } catch (e) { /* no data */ }
       try {
         const r2 = await window.storage.get('portfolio-history', false);
-        if (r2 && r2.value) hist = JSON.parse(r2.value);
+        if (r2 && r2.value) hist = sanitizeAndPruneHistory(JSON.parse(r2.value));
       } catch (e) { /* no data */ }
       let url = '';
       try {
@@ -437,8 +453,9 @@ export default function PortfolioApp() {
   };
 
   const saveHistory = async (next) => {
-    setHistory(next);
-    try { await window.storage.set('portfolio-history', JSON.stringify(next), false); }
+    const pruned = sanitizeAndPruneHistory(next);
+    setHistory(pruned);
+    try { await window.storage.set('portfolio-history', JSON.stringify(pruned), false); }
     catch (e) { showToast('บันทึกประวัติไม่สำเร็จ'); }
   };
 
@@ -926,7 +943,7 @@ export default function PortfolioApp() {
         const subtotalThb = isUsdAsset ? subtotal * customFx : subtotal;
         const addTotalCostThb = excludeFeeFromCost ? subtotalThb : (subtotalThb + feeThb);
 
-        const feeEntryId = Date.now().toString() + '_fee';
+        const feeEntryId = genId() + '_fee';
         if (excludeFeeFromCost && feeThb > 0) {
           newLedgerEntries.push({
             id: feeEntryId,
@@ -938,7 +955,7 @@ export default function PortfolioApp() {
         }
 
         newLogs.unshift({
-          id: Date.now().toString(),
+          id: genId(),
           assetId: target.id,
           assetName: name,
           assetType: form.type,
@@ -1001,7 +1018,7 @@ export default function PortfolioApp() {
           }
         }
 
-        const sellFeeEntryId = Date.now().toString() + '_sell_fee';
+        const sellFeeEntryId = genId() + '_sell_fee';
         if (sellFeeThb > 0) {
           newLedgerEntries.push({
             id: sellFeeEntryId,
@@ -1013,7 +1030,7 @@ export default function PortfolioApp() {
         }
 
         newLogs.unshift({
-          id: Date.now().toString(),
+          id: genId(),
           assetId: target.id,
           assetName: name,
           assetType: form.type,
@@ -1113,7 +1130,7 @@ export default function PortfolioApp() {
       const calculatedAvg = qty > 0 ? (excludeFeeFromCost ? subtotal : (subtotal + feeAmount)) / qty : avg;
 
       let newLedger = [...ledger];
-      const feeEntryId = Date.now().toString() + '_fee';
+      const feeEntryId = genId() + '_fee';
       if (!isCash && excludeFeeFromCost && feeThb > 0) {
         newLedger.push({
           id: feeEntryId,
@@ -1124,7 +1141,7 @@ export default function PortfolioApp() {
         });
       }
 
-      const newId = Date.now().toString();
+      const newId = genId();
       const nextHoldings = [...holdings, { 
         id: newId, 
         name, 
@@ -1142,7 +1159,7 @@ export default function PortfolioApp() {
       }];
 
       const newLogs = [{
-        id: Date.now().toString(),
+        id: genId(),
         assetId: newId,
         assetName: name,
         assetType: form.type,
@@ -1282,7 +1299,7 @@ export default function PortfolioApp() {
       const slotDate = getMonthlySlotDate(rawToday);
       if (slotDate) {
         const existing = (historyRef.current || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-30');
-        const histNext = [...existing, { date: slotDate, value: totalAssetVal }].sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
+        const histNext = [...existing, { date: slotDate, value: totalAssetVal }];
         await saveHistory(histNext);
       }
       setFetchIssues(failedNames);
@@ -1331,7 +1348,7 @@ export default function PortfolioApp() {
     const slotDate = getMonthlySlotDate(rawToday);
     if (slotDate) {
       const existing = (history || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-30');
-      const histNext = [...existing, { date: slotDate, value: totalAssetVal }].sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
+      const histNext = [...existing, { date: slotDate, value: totalAssetVal }];
       saveHistory(histNext);
     }
 
@@ -1451,7 +1468,7 @@ export default function PortfolioApp() {
     if (!pendingImport) return;
     await saveHoldings(Array.isArray(pendingImport.holdings) ? pendingImport.holdings : []);
     await saveTradeLogs(Array.isArray(pendingImport.tradeLogs) ? pendingImport.tradeLogs : []);
-    await saveHistory(Array.isArray(pendingImport.history) ? pendingImport.history : []);
+    await saveHistory(Array.isArray(pendingImport.history) ? sanitizeAndPruneHistory(pendingImport.history) : []);
     if (typeof pendingImport.fxRate === 'number' && pendingImport.fxRate > 0) {
       setFxRate(pendingImport.fxRate);
       try { await window.storage.set('fx-usdthb', String(pendingImport.fxRate), false); } catch (e) { /* ignore */ }
@@ -1482,7 +1499,7 @@ export default function PortfolioApp() {
     if (ledgerType === 'rebalance') {
       if (isNaN(amt)) { setLedgerError('กรอกจำนวนเงินให้ถูกต้อง'); return; }
       const finalAmt = ledgerSign === '-' ? -Math.abs(amt) : Math.abs(amt);
-      const entry = { id: Date.now().toString(), type: 'rebalance', amount: finalAmt, date: ledgerDate || todayStr(), note: ledgerNote.trim() || 'รีบาลานซ์เงินสด' };
+      const entry = { id: genId(), type: 'rebalance', amount: finalAmt, date: ledgerDate || todayStr(), note: ledgerNote.trim() || 'รีบาลานซ์เงินสด' };
       saveLedger([...ledger, entry]);
       showToast('บันทึกรีบาลานซ์สำเร็จ');
       setPanel('cashManage');
@@ -1491,7 +1508,7 @@ export default function PortfolioApp() {
 
     if (isNaN(amt) || amt <= 0) { setLedgerError('กรอกจำนวนเงินให้มากกว่า 0'); return; }
 
-    const entry = { id: Date.now().toString(), type: ledgerType, amount: amt, date: ledgerDate || todayStr(), note: ledgerNote.trim() };
+    const entry = { id: genId(), type: ledgerType, amount: amt, date: ledgerDate || todayStr(), note: ledgerNote.trim() };
     if (ledgerType === 'dividend') entry.invested = totalInvestedCost;
     saveLedger([...ledger, entry]);
     showToast('บันทึกรายการสำเร็จ');
