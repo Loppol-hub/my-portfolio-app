@@ -634,9 +634,14 @@ export default function PortfolioApp() {
     return visibleInvestedGain + cashAdjTotal;
   }, [visibleInvestedGain, cashAdjTotal]);
 
+  const heroProfitBase = useMemo(() => {
+    const base = visibleInvestedCost + Math.max(0, computedCash);
+    return base > 0 ? base : (totalCapital > 0 ? totalCapital : 1);
+  }, [visibleInvestedCost, computedCash, totalCapital]);
+
   const heroProfitPct = useMemo(() => {
-    return visibleInvestedCost > 0 ? (heroProfitAmount / visibleInvestedCost) * 100 : (totalCapital > 0 ? (heroProfitAmount / totalCapital) * 100 : null);
-  }, [visibleInvestedGain, visibleInvestedCost, totalCapital, heroProfitAmount]);
+    return heroProfitBase > 0 ? (heroProfitAmount / heroProfitBase) * 100 : 0;
+  }, [heroProfitAmount, heroProfitBase]);
 
   const lastUpdated = useMemo(() => {
     const dates = holdings.map((h) => h?.lastUpdated).filter(Boolean).sort();
@@ -2991,8 +2996,8 @@ export default function PortfolioApp() {
                           {['capital_add', 'profit', 'dividend'].includes(e.type) || (e.type === 'rebalance' && e.amount >= 0) ? '+' : '-'}฿{fmt(Math.abs(e.amount), 2)}
                         </span>
                         {e.type !== 'fee' && !e.id.toString().startsWith('log_pnl_') && (
-                          <button style={{ background: 'transparent', border: '1px solid var(--muted)', cursor: 'pointer', padding: '2px' }} onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type] || e.type)}>
-                            <Trash2 size={13} />
+                          <button style={{ background: 'transparent', border: '1px solid var(--gold)', borderRadius: '6px', cursor: 'pointer', padding: '4px', color: 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type] || e.type)} title="คืนค่ารายการ">
+                            <RotateCcw size={14} />
                           </button>
                         )}
                       </div>
