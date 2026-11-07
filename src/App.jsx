@@ -220,6 +220,25 @@ const calcDaysAgo = (dateStr) => {
   return Math.max(0, diffDays);
 };
 
+const getTwiceMonthlySlotDate = (dateStr) => {
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1;
+  const day = d.getDate();
+  const mm = String(m).padStart(2, '0');
+
+  const formattedCheck = `${y}-${mm}-${String(day).padStart(2, '0')}`;
+  if (formattedCheck < '2026-11-15') return null;
+
+  if (day <= 20) {
+    return `${y}-${mm}-15`;
+  } else {
+    const lastDay = new Date(y, m, 0).getDate();
+    return `${y}-${mm}-${String(lastDay).padStart(2, '0')}`;
+  }
+};
+
 const emptyForm = { 
   name: '', ticker: '', type: 'th_stock', quantity: '', avgCost: '', currentPrice: '', currency: 'THB', industry: '', instrumentType: 'stock',
   feePct: '0', feeCurrency: 'THB', tradeDate: todayStr(), note: '',
@@ -240,19 +259,6 @@ const getDynamicDomain = (currentVal, baseVal) => {
   const min = Math.max(0, refVal - margin);
   const max = refVal + margin;
   return [Math.floor(min / 5000) * 5000, Math.ceil(max / 5000) * 5000];
-};
-
-const getMonthlyAxisData = () => {
-  const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-  const now = new Date();
-  const currentMonthIdx = now.getMonth();
-  const currentYearShort = String(now.getFullYear()).slice(-2);
-  const result = [];
-  for (let i = 0; i < 12; i++) {
-    const idx = (currentMonthIdx - 11 + i + 12) % 12;
-    result.push({ date: `${months[idx]} ${currentYearShort}` });
-  }
-  return result;
 };
 
 export default function PortfolioApp() {
@@ -648,20 +654,45 @@ export default function PortfolioApp() {
     return dates.length ? dates[dates.length - 1] : null;
   }, [holdings]);
 
-  const monthlyList = useMemo(() => getMonthlyAxisData(), []);
+  // ประวัติพอร์ตจริง เริ่มต้น 15 พ.ย. 2026 เป็นต้นไป
+  const historyDates = useMemo(() => {
+    const valid = (history || []).filter(h => h && h.date >= '2026-11-15').sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
+    if (valid.length === 0) {
+      return [{ rawDate: '2026-11-15', date: '15 พ.ย. 69', value: displayTotalValue }];
+    }
+    return valid.map(h => {
+      const [yyyy, mm, dd] = (h.date || '').split('-');
+      const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+      const mName = months[parseInt(mm, 10) - 1] || '';
+      const yShort = (yyyy || '').slice(-2);
+      return {
+        rawDate: h.date,
+        date: `${parseInt(dd, 10)} ${mName} ${yShort}`,
+        value: h.value
+      };
+    });
+  }, [history, displayTotalValue]);
 
   const chartDataTotal = useMemo(() => {
-    const base = monthlyList.map((p) => ({ date: p.date, value: displayTotalValue, principal: totalCapital }));
-    if (graphModeTotal === 'year') return base.filter((p) => p.date.includes(String(graphYearTotal).slice(-2)));
+    const base = historyDates.map(h => ({ date: h.date, value: h.value, principal: totalCapital }));
+    if (graphModeTotal === 'year') {
+      const yr = String(graphYearTotal).slice(-2);
+      return base.filter((p) => p.date.includes(yr));
+    }
     return base;
-  }, [monthlyList, graphModeTotal, graphYearTotal, displayTotalValue, totalCapital]);
+  }, [historyDates, totalCapital, graphModeTotal, graphYearTotal]);
 
   const chartDataGainCard = useMemo(() => {
     const currentValForGainChart = totalInvestedCost + totalGain;
-    const base = monthlyList.map((p) => ({ date: p.date, gain: currentValForGainChart, cost: totalInvestedCost }));
-    if (graphModeGain === 'year') return base.filter((p) => p.date.includes(String(graphYearGain).slice(-2)));
+    const latestVal = historyDates[historyDates.length - 1]?.value || currentValForGainChart;
+    const ratio = latestVal > 0 ? currentValForGainChart / latestVal : 1;
+    const base = historyDates.map(h => ({ date: h.date, gain: h.value * ratio, cost: totalInvestedCost }));
+    if (graphModeGain === 'year') {
+      const yr = String(graphYearGain).slice(-2);
+      return base.filter((p) => p.date.includes(yr));
+    }
     return base;
-  }, [monthlyList, graphModeGain, graphYearGain, totalInvestedCost, totalGain]);
+  }, [historyDates, totalInvestedCost, totalGain, graphModeGain, graphYearGain]);
 
   const dividendYears = useMemo(() => {
     const y = new Date().getFullYear();
@@ -714,19 +745,29 @@ export default function PortfolioApp() {
     const thHoldings = enriched.filter((h) => h && h.type === 'th_stock');
     const thCost = thHoldings.reduce((s, h) => s + (h?.costValue || 0), 0);
     const thVal = thHoldings.reduce((s, h) => s + (h?.marketValue || 0), 0);
-    const base = monthlyList.map((p) => ({ date: p.date, gain: thVal, cost: thCost }));
-    if (graphModeTh === 'year') return base.filter((p) => p.date.includes(String(graphYearTh).slice(-2)));
+    const latestVal = historyDates[historyDates.length - 1]?.value || (thVal || 1);
+    const ratio = latestVal > 0 ? thVal / latestVal : 1;
+    const base = historyDates.map(h => ({ date: h.date, gain: h.value * ratio, cost: thCost }));
+    if (graphModeTh === 'year') {
+      const yr = String(graphYearTh).slice(-2);
+      return base.filter((p) => p.date.includes(yr));
+    }
     return base;
-  }, [monthlyList, graphModeTh, graphYearTh, enriched]);
+  }, [historyDates, enriched, graphModeTh, graphYearTh]);
 
   const chartDataUs = useMemo(() => {
     const usHoldings = enriched.filter((h) => h && h.type === 'foreign_stock');
     const usCost = usHoldings.reduce((s, h) => s + (h?.costValue || 0), 0);
     const usVal = usHoldings.reduce((s, h) => s + (h?.marketValue || 0), 0);
-    const base = monthlyList.map((p) => ({ date: p.date, gain: usVal, cost: usCost }));
-    if (graphModeUs === 'year') return base.filter((p) => p.date.includes(String(graphYearUs).slice(-2)));
+    const latestVal = historyDates[historyDates.length - 1]?.value || (usVal || 1);
+    const ratio = latestVal > 0 ? usVal / latestVal : 1;
+    const base = historyDates.map(h => ({ date: h.date, gain: h.value * ratio, cost: usCost }));
+    if (graphModeUs === 'year') {
+      const yr = String(graphYearUs).slice(-2);
+      return base.filter((p) => p.date.includes(yr));
+    }
     return base;
-  }, [monthlyList, graphModeUs, graphYearUs, enriched]);
+  }, [historyDates, enriched, graphModeUs, graphYearUs]);
 
   const openAdd = () => { 
     setForm({ 
@@ -1204,12 +1245,12 @@ export default function PortfolioApp() {
         setFxDraft(String(rate));
         try { await window.storage.set('fx-usdthb', String(rate), false); } catch (e) { /* ignore */ }
       }
-      const today = todayStr();
+      const rawToday = todayStr();
       const nextHoldings = (currentHoldings || []).map((h) => {
         if (!h || priceById[h.id] === undefined) return h;
         let updatedPrice = priceById[h.id];
         if (h.type === 'crypto' && h.currency === 'THB') { updatedPrice = updatedPrice * rate; }
-        return { ...h, currentPrice: updatedPrice, lastUpdated: today };
+        return { ...h, currentPrice: updatedPrice, lastUpdated: rawToday };
       });
       await saveHoldings(nextHoldings);
       const newTotal = nextHoldings.reduce((s, h) => {
@@ -1219,8 +1260,13 @@ export default function PortfolioApp() {
         const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h.type, rate) : 1;
         return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0) * effRate;
       }, 0);
-      const histNext = [...(historyRef.current || []).filter((p) => p && p.date !== today), { date: today, value: newTotal }].sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
-      await saveHistory(histNext);
+
+      const slotDate = getTwiceMonthlySlotDate(rawToday);
+      if (slotDate) {
+        const existing = (historyRef.current || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-15');
+        const histNext = [...existing, { date: slotDate, value: newTotal }].sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
+        await saveHistory(histNext);
+      }
       setFetchIssues(failedNames);
 
       const okCount = Object.keys(priceById).length;
@@ -1229,12 +1275,12 @@ export default function PortfolioApp() {
   };
 
   const submitUpdatePrices = async () => {
-    const today = todayStr();
+    const rawToday = todayStr();
     const next = (holdings || []).map((h) => {
       if (!h) return h;
       const v = parseFloat(updateDraft[h.id]);
       if (isNaN(v) || v < 0) return h;
-      return { ...h, currentPrice: v, lastUpdated: today };
+      return { ...h, currentPrice: v, lastUpdated: rawToday };
     });
     saveHoldings(next);
 
@@ -1256,8 +1302,14 @@ export default function PortfolioApp() {
       const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h.type, rate) : 1;
       return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0) * effRate;
     }, 0);
-    const histNext = [...(history || []).filter((p) => p && p.date !== today), { date: today, value: newTotal }].sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
-    saveHistory(histNext);
+
+    const slotDate = getTwiceMonthlySlotDate(rawToday);
+    if (slotDate) {
+      const existing = (history || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-15');
+      const histNext = [...existing, { date: slotDate, value: newTotal }].sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
+      saveHistory(histNext);
+    }
+
     showToast(`ดึงราคาสำเร็จ จำนวน ${Object.keys(updateDraft).length} ตัว`);
     closePanel();
   };
