@@ -220,23 +220,29 @@ const calcDaysAgo = (dateStr) => {
   return Math.max(0, diffDays);
 };
 
-const getTwiceMonthlySlotDate = (dateStr) => {
+// บันทึกเฉพาะวันสิ้นเดือน ตั้งแต่ 30 พ.ย. 2026 เป็นต้นไป และเก็บบันทึกย้อนหลัง 36 เดือน
+const getMonthlySlotDate = (dateStr) => {
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return null;
   const y = d.getFullYear();
   const m = d.getMonth() + 1;
-  const day = d.getDate();
+  const lastDay = new Date(y, m, 0).getDate();
   const mm = String(m).padStart(2, '0');
+  const dd = String(lastDay).padStart(2, '0');
+  const formattedCheck = `${y}-${mm}-${dd}`;
 
-  const formattedCheck = `${y}-${mm}-${String(day).padStart(2, '0')}`;
-  if (formattedCheck < '2026-11-15') return null;
+  if (formattedCheck < '2026-11-30') return null;
+  return formattedCheck;
+};
 
-  if (day <= 20) {
-    return `${y}-${mm}-15`;
-  } else {
-    const lastDay = new Date(y, m, 0).getDate();
-    return `${y}-${mm}-${String(lastDay).padStart(2, '0')}`;
-  }
+// บันทึกเฉพาะวันสิ้นปี สำหรับโหมดรายปี
+const getYearlySlotDate = (dateStr) => {
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  const formattedCheck = `${y}-12-31`;
+  if (`${y}-12-31` < '2026-12-31') return null;
+  return String(y);
 };
 
 const emptyForm = { 
@@ -654,45 +660,58 @@ export default function PortfolioApp() {
     return dates.length ? dates[dates.length - 1] : null;
   }, [holdings]);
 
-  // ประวัติพอร์ตจริง เริ่มต้น 15 พ.ย. 2026 เป็นต้นไป
-  const historyDates = useMemo(() => {
-    const valid = (history || []).filter(h => h && h.date >= '2026-11-15').sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
-    if (valid.length === 0) {
-      return [{ rawDate: '2026-11-15', date: '15 พ.ย. 69', value: displayTotalValue }];
+  // ประวัติพอร์ตจริงรายเดือน (ย้อนหลัง 36 เดือน เริ่มตั้งแต่ พ.ย. 26)
+  const historyMonthly = useMemo(() => {
+    const valid = (history || []).filter(h => h && h.date >= '2026-11-30').sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
+    const slice36 = valid.slice(-36);
+    if (slice36.length === 0) {
+      return [{ rawDate: '2026-11-30', date: 'พ.ย. 26', value: displayTotalValue }];
     }
-    return valid.map(h => {
+    return slice36.map(h => {
       const [yyyy, mm, dd] = (h.date || '').split('-');
       const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
       const mName = months[parseInt(mm, 10) - 1] || '';
       const yShort = (yyyy || '').slice(-2);
       return {
         rawDate: h.date,
-        date: `${parseInt(dd, 10)} ${mName} ${yShort}`,
+        date: `${mName} ${yShort}`,
         value: h.value
       };
     });
   }, [history, displayTotalValue]);
 
-  const chartDataTotal = useMemo(() => {
-    const base = historyDates.map(h => ({ date: h.date, value: h.value, principal: totalCapital }));
-    if (graphModeTotal === 'year') {
-      const yr = String(graphYearTotal).slice(-2);
-      return base.filter((p) => p.date.includes(yr));
+  // ประวัติพอร์ตจริงรายปี
+  const historyYearly = useMemo(() => {
+    const map = {};
+    (history || []).filter(h => h && h.date >= '2026-11-30').forEach(h => {
+      const yr = (h.date || '').slice(0, 4);
+      if (yr) map[yr] = h.value; // เอาค่าล่าสุดของปีนั้นๆ
+    });
+    const years = Object.keys(map).sort();
+    if (years.length === 0) {
+      const currentYr = String(new Date().getFullYear());
+      return [{ date: currentYr, value: displayTotalValue }];
     }
-    return base;
-  }, [historyDates, totalCapital, graphModeTotal, graphYearTotal]);
+    return years.map(yr => ({
+      date: yr,
+      value: map[yr]
+    }));
+  }, [history, displayTotalValue]);
+
+  const chartDataTotal = useMemo(() => {
+    const isYearMode = graphModeTotal === 'year';
+    const dataSrc = isYearMode ? historyYearly : historyMonthly;
+    return dataSrc.map(h => ({ date: h.date, value: h.value, principal: totalCapital }));
+  }, [historyMonthly, historyYearly, graphModeTotal, totalCapital]);
 
   const chartDataGainCard = useMemo(() => {
     const currentValForGainChart = totalInvestedCost + totalGain;
-    const latestVal = historyDates[historyDates.length - 1]?.value || currentValForGainChart;
+    const isYearMode = graphModeGain === 'year';
+    const dataSrc = isYearMode ? historyYearly : historyMonthly;
+    const latestVal = dataSrc[dataSrc.length - 1]?.value || currentValForGainChart;
     const ratio = latestVal > 0 ? currentValForGainChart / latestVal : 1;
-    const base = historyDates.map(h => ({ date: h.date, gain: h.value * ratio, cost: totalInvestedCost }));
-    if (graphModeGain === 'year') {
-      const yr = String(graphYearGain).slice(-2);
-      return base.filter((p) => p.date.includes(yr));
-    }
-    return base;
-  }, [historyDates, totalInvestedCost, totalGain, graphModeGain, graphYearGain]);
+    return dataSrc.map(h => ({ date: h.date, gain: h.value * ratio, cost: totalInvestedCost }));
+  }, [historyMonthly, historyYearly, totalInvestedCost, totalGain, graphModeGain]);
 
   const dividendYears = useMemo(() => {
     const y = new Date().getFullYear();
@@ -745,29 +764,23 @@ export default function PortfolioApp() {
     const thHoldings = enriched.filter((h) => h && h.type === 'th_stock');
     const thCost = thHoldings.reduce((s, h) => s + (h?.costValue || 0), 0);
     const thVal = thHoldings.reduce((s, h) => s + (h?.marketValue || 0), 0);
-    const latestVal = historyDates[historyDates.length - 1]?.value || (thVal || 1);
+    const isYearMode = graphModeTh === 'year';
+    const dataSrc = isYearMode ? historyYearly : historyMonthly;
+    const latestVal = dataSrc[dataSrc.length - 1]?.value || (thVal || 1);
     const ratio = latestVal > 0 ? thVal / latestVal : 1;
-    const base = historyDates.map(h => ({ date: h.date, gain: h.value * ratio, cost: thCost }));
-    if (graphModeTh === 'year') {
-      const yr = String(graphYearTh).slice(-2);
-      return base.filter((p) => p.date.includes(yr));
-    }
-    return base;
-  }, [historyDates, enriched, graphModeTh, graphYearTh]);
+    return dataSrc.map(h => ({ date: h.date, gain: h.value * ratio, cost: thCost }));
+  }, [historyMonthly, historyYearly, enriched, graphModeTh]);
 
   const chartDataUs = useMemo(() => {
     const usHoldings = enriched.filter((h) => h && h.type === 'foreign_stock');
     const usCost = usHoldings.reduce((s, h) => s + (h?.costValue || 0), 0);
     const usVal = usHoldings.reduce((s, h) => s + (h?.marketValue || 0), 0);
-    const latestVal = historyDates[historyDates.length - 1]?.value || (usVal || 1);
+    const isYearMode = graphModeUs === 'year';
+    const dataSrc = isYearMode ? historyYearly : historyMonthly;
+    const latestVal = dataSrc[dataSrc.length - 1]?.value || (usVal || 1);
     const ratio = latestVal > 0 ? usVal / latestVal : 1;
-    const base = historyDates.map(h => ({ date: h.date, gain: h.value * ratio, cost: usCost }));
-    if (graphModeUs === 'year') {
-      const yr = String(graphYearUs).slice(-2);
-      return base.filter((p) => p.date.includes(yr));
-    }
-    return base;
-  }, [historyDates, enriched, graphModeUs, graphYearUs]);
+    return dataSrc.map(h => ({ date: h.date, gain: h.value * ratio, cost: usCost }));
+  }, [historyMonthly, historyYearly, enriched, graphModeUs]);
 
   const openAdd = () => { 
     setForm({ 
@@ -1261,9 +1274,9 @@ export default function PortfolioApp() {
         return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0) * effRate;
       }, 0);
 
-      const slotDate = getTwiceMonthlySlotDate(rawToday);
+      const slotDate = getMonthlySlotDate(rawToday);
       if (slotDate) {
-        const existing = (historyRef.current || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-15');
+        const existing = (historyRef.current || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-30');
         const histNext = [...existing, { date: slotDate, value: newTotal }].sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
         await saveHistory(histNext);
       }
@@ -1303,9 +1316,9 @@ export default function PortfolioApp() {
       return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0) * effRate;
     }, 0);
 
-    const slotDate = getTwiceMonthlySlotDate(rawToday);
+    const slotDate = getMonthlySlotDate(rawToday);
     if (slotDate) {
-      const existing = (history || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-15');
+      const existing = (history || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-30');
       const histNext = [...existing, { date: slotDate, value: newTotal }].sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
       saveHistory(histNext);
     }
