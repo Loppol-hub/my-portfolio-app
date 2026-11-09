@@ -23,18 +23,6 @@ const LEDGER_LABELS = { capital_add: 'เพิ่มทุน', capital_reduce:
 
 const genId = () => `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-const pruneTradeLogs = (logs) => {
-  if (!Array.isArray(logs)) return [];
-  const now = new Date();
-  const cutoff = new Date(now.getFullYear() - 2, now.getMonth(), now.getDate());
-  return logs.filter(log => {
-    if (!log || !log.date) return true;
-    const logDate = new Date(log.date);
-    if (isNaN(logDate.getTime())) return true;
-    return logDate >= cutoff;
-  });
-};
-
 const sanitizeAndPruneHistory = (histList) => {
   const map = {};
   (histList || []).forEach(item => {
@@ -312,10 +300,6 @@ export default function PortfolioApp() {
   const [tradeStartDate, setTradeStartDate] = useState('');
   const [tradeEndDate, setTradeEndDate] = useState('');
 
-  const [standaloneForm, setStandaloneForm] = useState({
-    assetName: '', assetType: 'th_stock', action: 'buy', quantity: '', price: '', currency: 'THB', tradeFx: '', fee: '', feeCurrency: 'THB', date: todayStr(), note: '', pnlAmount: '', pnlType: 'profit'
-  });
-
   const [expandedLotsId, setExpandedLotsId] = useState(null);
 
   const [sortModeByType, setSortModeByType] = useState({});
@@ -407,7 +391,7 @@ export default function PortfolioApp() {
       } catch (e) { /* no data */ }
       try {
         const rLogs = await window.storage.get('trade-logs', false);
-        if (rLogs && rLogs.value) logs = pruneTradeLogs(JSON.parse(rLogs.value));
+        if (rLogs && rLogs.value) logs = JSON.parse(rLogs.value);
       } catch (e) { /* no data */ }
       try {
         const r2 = await window.storage.get('portfolio-history', false);
@@ -463,9 +447,8 @@ export default function PortfolioApp() {
   };
 
   const saveTradeLogs = async (next) => {
-    const pruned = pruneTradeLogs(next);
-    setTradeLogs(pruned);
-    try { await window.storage.set('trade-logs', JSON.stringify(pruned), false); }
+    setTradeLogs(next);
+    try { await window.storage.set('trade-logs', JSON.stringify(next), false); }
     catch (e) { showToast('บันทึกประวัติการซื้อขายไม่สำเร็จ'); }
   };
 
@@ -1474,7 +1457,7 @@ export default function PortfolioApp() {
   const confirmImport = async () => {
     if (!pendingImport) return;
     await saveHoldings(Array.isArray(pendingImport.holdings) ? pendingImport.holdings : []);
-    await saveTradeLogs(Array.isArray(pendingImport.tradeLogs) ? pruneTradeLogs(pendingImport.tradeLogs) : []);
+    await saveTradeLogs(Array.isArray(pendingImport.tradeLogs) ? pendingImport.tradeLogs : []);
     await saveHistory(Array.isArray(pendingImport.history) ? sanitizeAndPruneHistory(pendingImport.history) : []);
     if (typeof pendingImport.fxRate === 'number' && pendingImport.fxRate > 0) {
       setFxRate(pendingImport.fxRate);
@@ -3147,166 +3130,13 @@ export default function PortfolioApp() {
         </div>
       )}
 
-      {/* Panel: บันทึกประวัติซื้อ/ขายแยกต่างหาก */}
-      {panel === 'standaloneTrade' && (
-        <div className="pf-overlay" onClick={() => setPanel('tradeModalOpen')}>
-          <div className="pf-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '380px' }}>
-            <div className="pf-panel-head">
-              <div className="pf-panel-title">บันทึกประวัติซื้อ/ขาย</div>
-              <button className="pf-icon-btn" onClick={() => setPanel('tradeModalOpen')} aria-label="ปิด"><X size={16} /></button>
-            </div>
-            <div className="pf-field">
-              <label className="pf-label">ชื่อสินทรัพย์</label>
-              <input className="pf-input" value={standaloneForm.assetName} onChange={e => setStandaloneForm({...standaloneForm, assetName: e.target.value})} placeholder="เช่น PTT, AAPL" />
-            </div>
-            <div className="pf-field">
-              <label className="pf-label">ประเภทรายการ</label>
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-                <button type="button" className={`pf-btn ${standaloneForm.action === 'buy' ? 'pf-btn-primary' : 'pf-btn-ghost'}`} style={{ flex: 1, padding: '8px', justifyContent: 'center' }} onClick={() => setStandaloneForm({...standaloneForm, action: 'buy'})}>ซื้อ</button>
-                <button type="button" className={`pf-btn ${standaloneForm.action === 'sell' ? 'pf-btn-primary' : 'pf-btn-ghost'}`} style={{ flex: 1, padding: '8px', justifyContent: 'center' }} onClick={() => setStandaloneForm({...standaloneForm, action: 'sell'})}>ขาย</button>
-              </div>
-            </div>
-            <div className="pf-field">
-              <label className="pf-label">หมวดหมู่</label>
-              <select className="pf-select" value={standaloneForm.assetType} onChange={e => {
-                const newType = e.target.value;
-                const defCurr = ['foreign_stock', 'gold', 'crypto'].includes(newType) ? 'USD' : 'THB';
-                setStandaloneForm({...standaloneForm, assetType: newType, currency: defCurr});
-              }}>
-                {ASSET_TYPES.filter(t => t && t.key !== 'cash').map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
-              </select>
-            </div>
-            <div className="pf-field">
-              <label className="pf-label">สกุลเงิน</label>
-              <div className="pf-currency-toggle">
-                <button type="button" className={standaloneForm.currency !== 'USD' ? 'pf-currency-active' : ''} onClick={() => setStandaloneForm({...standaloneForm, currency: 'THB'})}>บาท (THB)</button>
-                <button type="button" className={standaloneForm.currency === 'USD' ? 'pf-currency-active' : ''} onClick={() => setStandaloneForm({...standaloneForm, currency: 'USD'})}>ดอลลาร์ (USD)</button>
-              </div>
-            </div>
-            {standaloneForm.currency === 'USD' && (
-              <div className="pf-field">
-                <label className="pf-label">อัตราแลกเปลี่ยน (1 USD = ? บาท)</label>
-                <input className="pf-input pf-mono" inputMode="decimal" value={standaloneForm.tradeFx} onChange={e => setStandaloneForm({...standaloneForm, tradeFx: e.target.value})} placeholder={String(fxRate)} />
-              </div>
-            )}
-            <div className="pf-row2">
-              <div className="pf-field">
-                <label className="pf-label">จำนวน</label>
-                <input className="pf-input pf-mono" inputMode="decimal" value={standaloneForm.quantity} onChange={e => setStandaloneForm({...standaloneForm, quantity: e.target.value})} placeholder="0" />
-              </div>
-              <div className="pf-field">
-                <label className="pf-label">ราคาต่อหน่วย</label>
-                <input className="pf-input pf-mono" inputMode="decimal" value={standaloneForm.price} onChange={e => setStandaloneForm({...standaloneForm, price: e.target.value})} placeholder="0.00" />
-              </div>
-            </div>
-            <div className="pf-field">
-              <label className="pf-label">ค่าธรรมเนียม</label>
-              <input className="pf-input pf-mono" inputMode="decimal" value={standaloneForm.fee} onChange={e => setStandaloneForm({...standaloneForm, fee: e.target.value})} placeholder="0.00" />
-            </div>
-            {standaloneForm.action === 'sell' && (
-              <div className="pf-field">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                  <label className="pf-label" style={{ margin: 0 }}>ผลลัพธ์ (กำไร/ขาดทุน)</label>
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    <button type="button" className={standaloneForm.pnlType === 'profit' ? 'pf-year-pill-active' : 'pf-year-pill'} style={{ padding: '1px 6px', fontSize: '10px' }} onClick={() => setStandaloneForm({...standaloneForm, pnlType: 'profit'})}>กำไร</button>
-                    <button type="button" className={standaloneForm.pnlType === 'loss' ? 'pf-year-pill-active' : 'pf-year-pill'} style={{ padding: '1px 6px', fontSize: '10px' }} onClick={() => setStandaloneForm({...standaloneForm, pnlType: 'loss'})}>ขาดทุน</button>
-                  </div>
-                </div>
-                <input className="pf-input pf-mono" inputMode="decimal" value={standaloneForm.pnlAmount} onChange={e => setStandaloneForm({...standaloneForm, pnlAmount: e.target.value})} placeholder="0.00" />
-              </div>
-            )}
-            <div className="pf-field">
-              <label className="pf-label">วันที่</label>
-              <input className="pf-input pf-mono" type="date" value={standaloneForm.date} onChange={e => setStandaloneForm({...standaloneForm, date: e.target.value})} />
-            </div>
-            <div className="pf-field">
-              <label className="pf-label">หมายเหตุ</label>
-              <input className="pf-input" value={standaloneForm.note} onChange={e => setStandaloneForm({...standaloneForm, note: e.target.value})} placeholder="รายละเอียดเพิ่มเติม..." />
-            </div>
-            <div className="pf-panel-actions">
-              <button className="pf-btn pf-btn-ghost" onClick={() => setPanel('tradeModalOpen')}>ยกเลิก</button>
-              <button className="pf-btn pf-btn-primary" onClick={() => {
-                const q = parseFloat(standaloneForm.quantity);
-                const p = parseFloat(standaloneForm.price);
-                if (!standaloneForm.assetName.trim()) { showToast('กรุณากรอกชื่อสินทรัพย์'); return; }
-                if (isNaN(q) || q <= 0 || isNaN(p) || p < 0) { showToast('กรุณากรอกจำนวนและราคาให้ถูกต้อง'); return; }
-
-                const currency = standaloneForm.currency === 'USD' ? 'USD' : 'THB';
-                const customFx = standaloneForm.tradeFx && parseFloat(standaloneForm.tradeFx) > 0 ? parseFloat(standaloneForm.tradeFx) : fxRate;
-                const isUsdAsset = currency === 'USD';
-                const subtotal = q * p;
-                const feeVal = parseFloat(standaloneForm.fee) || 0;
-
-                let feeThb = 0;
-                let recordFeeForDisplay = 0;
-                if (feeVal > 0) {
-                  const isDirect = checkIsDirectFee(standaloneForm.assetType, 'stock');
-                  if (isDirect && isUsdAsset) {
-                    if (standaloneForm.feeCurrency === 'THB') {
-                      feeThb = feeVal;
-                      recordFeeForDisplay = feeVal;
-                    } else {
-                      feeThb = feeVal * customFx;
-                      recordFeeForDisplay = feeVal;
-                    }
-                  } else if (isDirect) {
-                    feeThb = feeVal;
-                    recordFeeForDisplay = feeVal;
-                  } else {
-                    feeThb = isUsdAsset ? ((subtotal * feeVal) / 100) * customFx : (subtotal * feeVal) / 100;
-                    recordFeeForDisplay = feeThb;
-                  }
-                }
-
-                let newLedger = [...ledger];
-                const feeEntryId = genId() + '_fee';
-                if (feeThb > 0) {
-                  newLedger.push({
-                    id: feeEntryId,
-                    type: 'fee',
-                    amount: feeThb,
-                    date: standaloneForm.date || todayStr(),
-                    note: `ค่าธรรมเนียม ${standaloneForm.action === 'buy' ? 'ซื้อ' : 'ขาย'} ${standaloneForm.assetName.trim()}`
-                  });
-                }
-
-                const newLog = {
-                  id: genId(),
-                  assetId: 'manual_' + genId(),
-                  assetName: standaloneForm.assetName.trim(),
-                  assetType: standaloneForm.assetType,
-                  action: standaloneForm.action,
-                  quantity: q,
-                  price: p,
-                  currency: currency,
-                  tradeFx: customFx,
-                  fee: recordFeeForDisplay,
-                  feeThbRecord: feeThb,
-                  ledgerFeeId: feeThb > 0 ? feeEntryId : null,
-                  date: standaloneForm.date || todayStr(),
-                  note: standaloneForm.note.trim(),
-                  manualPnlType: standaloneForm.action === 'sell' ? standaloneForm.pnlType : undefined,
-                  manualPnlAmount: standaloneForm.action === 'sell' ? parseFloat(standaloneForm.pnlAmount) || 0 : undefined
-                };
-
-                const nextLogs = pruneTradeLogs([newLog, ...tradeLogs]);
-                saveTradeLogs(nextLogs);
-                saveLedger(newLedger);
-                showToast('บันทึกประวัติสำเร็จ');
-                setPanel('tradeModalOpen');
-              }}>บันทึก</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Modal / Panel: ประวัติการซื้อขายทั้งหมด */}
       {tradeModalOpen && (
         <div className="pf-overlay" onClick={() => setTradeModalOpen(false)}>
           <div className="pf-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '460px' }}>
             <div className="pf-panel-head" style={{ marginBottom: '14px' }}>
               <div className="pf-panel-title">ประวัติการซื้อขายทั้งหมด</div>
-              <button className="pf-icon-btn" style={{ width: '32px', height: '32px' }} onClick={() => setTradeModalOpen(false) } aria-label="ปิด"><X size={16} /></button>
+              <button className="pf-icon-btn" style={{ width: '32px', height: '32px' }} onClick={() => setTradeModalOpen(false)} aria-label="ปิด"><X size={16} /></button>
             </div>
 
             <div style={{ position: 'relative', marginBottom: '10px' }}>
@@ -3335,7 +3165,7 @@ export default function PortfolioApp() {
               )}
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
               <button 
                 className="pf-btn pf-btn-ghost" 
                 style={{ fontSize: '12px', padding: '6px 14px', height: '34px', borderColor: 'var(--divider)' }}
@@ -3343,18 +3173,8 @@ export default function PortfolioApp() {
               >
                 {tradeFilterType === 'all' ? 'หมวดหมู่: ทั้งหมด' : ASSET_TYPES.find(t => t && t.key === tradeFilterType)?.label} ▾
               </button>
-              <button 
-                className="pf-btn pf-btn-primary" 
-                style={{ fontSize: '12px', padding: '6px 14px', height: '34px' }}
-                onClick={() => {
-                  setStandaloneForm({ assetName: '', assetType: 'th_stock', action: 'buy', quantity: '', price: '', currency: 'THB', tradeFx: '', fee: '', feeCurrency: 'THB', date: todayStr(), note: '', pnlAmount: '', pnlType: 'profit' });
-                  setPanel('standaloneTrade');
-                }}
-              >
-                <Plus size={14} /> บันทึก
-              </button>
               {showCatMenu && (
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', width: '100%', marginTop: '6px', justifyContent: 'center' }}>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
                   <button className={tradeFilterType === 'all' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => { setTradeFilterType('all'); setShowCatMenu(false); }} style={{ padding: '4px 10px', fontSize: '11px' }}>ทั้งหมด</button>
                   {ASSET_TYPES.filter(t => t && t.key !== 'cash').map((t) => (
                     <button key={t.key} className={tradeFilterType === t.key ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => { setTradeFilterType(t.key); setShowCatMenu(false); }} style={{ padding: '4px 10px', fontSize: '11px' }}>
@@ -3392,6 +3212,8 @@ export default function PortfolioApp() {
                   const showNote = tradeSearchQuery.trim().length > 0 && log.note;
                   const isUsdAsset = log.currency === 'USD' && log.instrumentType !== 'dr';
                   const logFx = (log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (log.tradeFx ? parseFloat(log.tradeFx) : fxRate) : 1;
+                  
+                  const isLatestForAsset = (tradeLogs || []).find(l => l && l.assetId === log.assetId)?.id === log.id;
 
                   const displayPrice = isUsdAsset ? (log.price * logFx) : log.price;
                   const displayFee = log.feeThbRecord !== undefined ? (parseFloat(log.feeThbRecord) || 0) : (log.fee !== undefined ? (parseFloat(log.fee) || 0) : 0);
@@ -3405,13 +3227,15 @@ export default function PortfolioApp() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span style={{ fontWeight: '600', fontFamily: 'Fraunces, serif' }}>{log.assetName}</span>
                           <span style={{ fontSize: '11px', padding: '1px 6px', borderRadius: '4px', background: isBuy ? 'rgba(52,211,153,0.15)' : 'rgba(252,165,165,0.15)', color: isBuy ? '#34d399' : '#fca5a5' }}>{isBuy ? 'ซื้อ' : 'ขาย'}</span>
-                          <button 
-                            onClick={() => setConfirmRevertTarget(log)}
-                            style={{ background: 'transparent', border: '1px solid var(--divider)', borderRadius: '4px', padding: '2px 6px', fontSize: '10px', color: 'var(--gold)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}
-                            title="คืนค่ารายการนี้"
-                          >
-                            <RotateCcw size={10} />
-                          </button>
+                          {isLatestForAsset && (
+                            <button 
+                              onClick={() => setConfirmRevertTarget(log)}
+                              style={{ background: 'transparent', border: '1px solid var(--divider)', borderRadius: '4px', padding: '2px 6px', fontSize: '10px', color: 'var(--gold)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}
+                              title="ลบรายการนี้"
+                            >
+                              <RotateCcw size={10} /> ลบ
+                            </button>
+                          )}
                         </div>
                         <span className="pf-mono" style={{ fontSize: '12px', color: 'var(--muted)' }}>{thaiDateAD(log.date)}</span>
                       </div>
