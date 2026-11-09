@@ -33,7 +33,7 @@ const sanitizeAndPruneHistory = (histList) => {
   return Object.keys(map)
     .sort()
     .filter(date => date >= '2026-11-30')
-    .slice(-36)
+    .slice(-72)
     .map(date => ({ date, value: map[date] }));
 };
 
@@ -236,18 +236,25 @@ const calcDaysAgo = (dateStr) => {
   return Math.max(0, diffDays);
 };
 
-const getMonthlySlotDate = (dateStr) => {
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return null;
-  const y = d.getFullYear();
-  const m = d.getMonth() + 1;
+const getBiMonthlySlotDate = () => {
+  const now = new Date();
+  if (now.getHours() < 23) return null; // ต้องเวลา 23.00 น. ขึ้นไป
+
+  const y = now.getFullYear();
+  const m = now.getMonth() + 1;
+  const day = now.getDate();
   const lastDay = new Date(y, m, 0).getDate();
   const mm = String(m).padStart(2, '0');
-  const dd = String(lastDay).padStart(2, '0');
-  const formattedCheck = `${y}-${mm}-${dd}`;
 
-  if (formattedCheck < '2026-11-30') return null;
-  return formattedCheck;
+  let slotDate = null;
+  if (day >= 15 && day < lastDay) {
+    slotDate = `${y}-${mm}-15`;
+  } else if (day >= lastDay) {
+    slotDate = `${y}-${mm}-${String(lastDay).padStart(2, '0')}`;
+  }
+
+  if (slotDate && slotDate < '2026-11-30') return null;
+  return slotDate;
 };
 
 const emptyForm = { 
@@ -366,7 +373,7 @@ export default function PortfolioApp() {
     const checkEvening = () => {
       const now = new Date();
       const todayKey = todayStr();
-      if (now.getHours() === 19 && eveningFiredRef.current !== todayKey) {
+      if (now.getHours() >= 23 && eveningFiredRef.current !== todayKey) {
         eveningFiredRef.current = todayKey;
         runAutoPriceUpdate();
       }
@@ -674,21 +681,23 @@ export default function PortfolioApp() {
     return dates.length ? dates[dates.length - 1] : null;
   }, [holdings]);
 
-  // ประวัติพอร์ตจริงรายเดือน (ย้อนหลัง 36 เดือน เริ่มตั้งแต่ พ.ย. 26)
+  // ประวัติพอร์ตจริงรายเดือน/ปักษ์ (ย้อนหลัง 36 เดือน * 2 = 72 จุดข้อมูล)
   const historyMonthly = useMemo(() => {
     const valid = (history || []).filter(h => h && h.date >= '2026-11-30').sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
-    const slice36 = valid.slice(-36);
-    if (slice36.length === 0) {
+    const slice72 = valid.slice(-72);
+    if (slice72.length === 0) {
       return [{ rawDate: '2026-11-30', date: 'พ.ย. 26', value: displayTotalValue }];
     }
-    return slice36.map(h => {
+    return slice72.map(h => {
       const [yyyy, mm, dd] = (h.date || '').split('-');
       const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
       const mName = months[parseInt(mm, 10) - 1] || '';
       const yShort = (yyyy || '').slice(-2);
+      const dayNum = parseInt(dd, 10);
+      const labelStr = dayNum === 15 ? `15 ${mName} ${yShort}` : `${mName} ${yShort}`;
       return {
         rawDate: h.date,
-        date: `${mName} ${yShort}`,
+        date: labelStr,
         value: h.value
       };
     });
@@ -1286,7 +1295,7 @@ export default function PortfolioApp() {
       }, 0) + cashAdjTotal) : 0;
       const totalAssetVal = newInvestedTotal + Math.max(0, currentComputedCash);
 
-      const slotDate = getMonthlySlotDate(rawToday);
+      const slotDate = getBiMonthlySlotDate();
       if (slotDate) {
         const existing = (historyRef.current || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-30');
         const histNext = [...existing, { date: slotDate, value: totalAssetVal }];
@@ -1335,7 +1344,7 @@ export default function PortfolioApp() {
     }, 0) + cashAdjTotal) : 0;
     const totalAssetVal = newInvestedTotal + Math.max(0, currentComputedCash);
 
-    const slotDate = getMonthlySlotDate(rawToday);
+    const slotDate = getBiMonthlySlotDate();
     if (slotDate) {
       const existing = (history || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-30');
       const histNext = [...existing, { date: slotDate, value: totalAssetVal }];
@@ -3212,8 +3221,6 @@ export default function PortfolioApp() {
                   const showNote = tradeSearchQuery.trim().length > 0 && log.note;
                   const isUsdAsset = log.currency === 'USD' && log.instrumentType !== 'dr';
                   const logFx = (log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (log.tradeFx ? parseFloat(log.tradeFx) : fxRate) : 1;
-                  
-                  const isLatestForAsset = (tradeLogs || []).find(l => l && l.assetId === log.assetId)?.id === log.id;
 
                   const displayPrice = isUsdAsset ? (log.price * logFx) : log.price;
                   const displayFee = log.feeThbRecord !== undefined ? (parseFloat(log.feeThbRecord) || 0) : (log.fee !== undefined ? (parseFloat(log.fee) || 0) : 0);
@@ -3227,15 +3234,13 @@ export default function PortfolioApp() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span style={{ fontWeight: '600', fontFamily: 'Fraunces, serif' }}>{log.assetName}</span>
                           <span style={{ fontSize: '11px', padding: '1px 6px', borderRadius: '4px', background: isBuy ? 'rgba(52,211,153,0.15)' : 'rgba(252,165,165,0.15)', color: isBuy ? '#34d399' : '#fca5a5' }}>{isBuy ? 'ซื้อ' : 'ขาย'}</span>
-                          {isLatestForAsset && (
-                            <button 
-                              onClick={() => setConfirmRevertTarget(log)}
-                              style={{ background: 'transparent', border: '1px solid var(--divider)', borderRadius: '4px', padding: '2px 6px', fontSize: '10px', color: 'var(--gold)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}
-                              title="ลบรายการนี้"
-                            >
-                              <RotateCcw size={10} /> ลบ
-                            </button>
-                          )}
+                          <button 
+                            onClick={() => setConfirmRevertTarget(log)}
+                            style={{ background: 'transparent', border: '1px solid var(--divider)', borderRadius: '4px', padding: '2px 6px', fontSize: '10px', color: 'var(--gold)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}
+                            title="คืนค่ารายการนี้"
+                          >
+                            <RotateCcw size={12} />
+                          </button>
                         </div>
                         <span className="pf-mono" style={{ fontSize: '12px', color: 'var(--muted)' }}>{thaiDateAD(log.date)}</span>
                       </div>
