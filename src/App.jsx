@@ -23,16 +23,47 @@ const LEDGER_LABELS = { capital_add: 'เพิ่มทุน', capital_reduce:
 
 const genId = () => `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-const pruneTradeLogs = (logs) => {
-  if (!Array.isArray(logs)) return [];
+const pruneAndSummarizeTradeLogs = (logs, currentSummary = { profit: 0, loss: 0, fee: 0 }) => {
+  if (!Array.isArray(logs)) return { pruned: [], summary: currentSummary };
   const now = new Date();
   const cutoff = new Date(now.getFullYear() - 2, now.getMonth(), now.getDate());
-  return logs.filter(log => {
+  
+  let addedProfit = 0;
+  let addedLoss = 0;
+  let addedFee = 0;
+
+  const pruned = logs.filter(log => {
     if (!log || !log.date) return true;
     const logDate = new Date(log.date);
     if (isNaN(logDate.getTime())) return true;
-    return logDate >= cutoff;
+    if (logDate < cutoff) {
+      if (log.action === 'sell') {
+        const rawAmt = log.manualPnlAmount !== undefined ? log.manualPnlAmount : (log.pnl !== undefined ? log.pnl : log.pnlThb);
+        const amt = parseFloat(rawAmt) || 0;
+        const isLoss = log.manualPnlType === 'loss' || (log.manualPnlType === undefined && amt < 0);
+        const absAmt = Math.abs(amt);
+        if (absAmt > 0) {
+          if (isLoss) addedLoss += absAmt;
+          else addedProfit += absAmt;
+        }
+      }
+      const feeVal = log.feeThbRecord !== undefined ? (parseFloat(log.feeThbRecord) || 0) : (log.fee !== undefined ? (parseFloat(log.fee) || 0) : 0);
+      if (feeVal > 0) {
+        addedFee += feeVal;
+      }
+      return false;
+    }
+    return true;
   });
+
+  return {
+    pruned,
+    summary: {
+      profit: currentSummary.profit + addedProfit,
+      loss: currentSummary.loss + addedLoss,
+      fee: currentSummary.fee + addedFee
+    }
+  };
 };
 
 const sanitizeAndPruneHistory = (histList) => {
@@ -296,6 +327,7 @@ export default function PortfolioApp() {
   const [holdings, setHoldings] = useState([]);
   const [tradeLogs, setTradeLogs] = useState([]);
   const [history, setHistory] = useState([]);
+  const [historicalSummary, setHistoricalSummary] = useState({ profit: 0, loss: 0, fee: 0 });
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [panel, setPanel] = useState(null);
@@ -408,13 +440,30 @@ export default function PortfolioApp() {
       let h = [];
       let logs = [];
       let hist = [];
+      let histSummary = { profit: 0, loss: 0, fee: 0 };
       try {
         const r = await window.storage.get('holdings', false);
         if (r && r.value) h = JSON.parse(r.value);
       } catch (e) { /* no data */ }
       try {
         const rLogs = await window.storage.get('trade-logs', false);
-        if (rLogs && rLogs.value) logs = pruneTradeLogs(JSON.parse(rLogs.value));
+        if (rLogs && rLogs.value) {
+          const parsed = JSON.parse(rLogs.value);
+          const res = pruneAndSummarizeTradeLogs(parsed);
+          logs = res.pruned;
+          histSummary = res.summary;
+        }
+      } catch (e) { /* no data */ }
+      try {
+        const rHist = await window.storage.get('historical-trade-summary', false);
+        if (rHist && rHist.value) {
+          const savedSummary = JSON.parse(rHist.value);
+          histSummary = {
+            profit: histSummary.profit + (savedSummary.profit || 0),
+            loss: histSummary.loss + (savedSummary.loss || 0),
+            fee: histSummary.fee + (savedSummary.fee || 0),
+          };
+        }
       } catch (e) { /* no data */ }
       try {
         const r2 = await window.storage.get('portfolio-history', false);
@@ -448,6 +497,7 @@ export default function PortfolioApp() {
       setHoldings(Array.isArray(h) ? h : []);
       setTradeLogs(Array.isArray(logs) ? logs : []);
       setHistory(Array.isArray(hist) ? hist : []);
+      setHistoricalSummary(histSummary);
       setBackendUrl(url);
       setBackendDraft(url);
       setFxRate(isNaN(fx) ? 36.5 : fx);
@@ -470,10 +520,15 @@ export default function PortfolioApp() {
   };
 
   const saveTradeLogs = async (next) => {
-    const pruned = pruneTradeLogs(next);
-    setTradeLogs(pruned);
-    try { await window.storage.set('trade-logs', JSON.stringify(pruned), false); }
-    catch (e) { showToast('บันทึกประวัติการซื้อขายไม่สำเร็จ'); }
+    const res = pruneAndSummarizeTradeLogs(next, historicalSummary);
+    setTradeLogs(res.pruned);
+    setHistoricalSummary(res.summary);
+    try {
+      await window.storage.set('trade-logs', JSON.stringify(res.pruned), false);
+      await window.storage.set('historical-trade-summary', JSON.stringify(res.summary), false);
+    } catch (e) {
+      showToast('บันทึกประวัติการซื้อขายไม่สำเร็จ');
+    }
   };
 
   const saveHistory = async (next) => {
@@ -538,7 +593,7 @@ export default function PortfolioApp() {
   const combinedLedger = useMemo(() => {
     let list = Array.isArray(ledger) ? ledger.filter(e => e) : [];
     (tradeLogs || []).forEach((log) => {
-      if (log && log.action === 'sell') {
+      if (log && log.action === 'sell' && !log.ledgerPnlId) {
         const rawAmt = log.manualPnlAmount !== undefined ? log.manualPnlAmount : (log.pnl !== undefined ? log.pnl : log.pnlThb);
         const amt = parseFloat(rawAmt) || 0;
         if (amt !== 0 || rawAmt !== undefined) {
@@ -556,8 +611,19 @@ export default function PortfolioApp() {
         }
       }
     });
+
+    if (historicalSummary.profit > 0) {
+      list.push({ id: 'hist_profit', type: 'profit', amount: historicalSummary.profit, date: '2026-11-30', note: 'สรุปกำไรจากประวัติเก่า (เกิน 2 ปี)' });
+    }
+    if (historicalSummary.loss > 0) {
+      list.push({ id: 'hist_loss', type: 'loss', amount: historicalSummary.loss, date: '2026-11-30', note: 'สรุปขาดทุนจากประวัติเก่า (เกิน 2 ปี)' });
+    }
+    if (historicalSummary.fee > 0) {
+      list.push({ id: 'hist_fee', type: 'fee', amount: historicalSummary.fee, date: '2026-11-30', note: 'สรุปค่าธรรมเนียมจากประวัติเก่า (เกิน 2 ปี)' });
+    }
+
     return list;
-  }, [ledger, tradeLogs]);
+  }, [ledger, tradeLogs, historicalSummary]);
 
   const performanceTotal = useMemo(() => {
     const profitSum = combinedLedger
@@ -1078,6 +1144,18 @@ export default function PortfolioApp() {
           });
         }
 
+        let pnlLedgerId = null;
+        if (manualPnlVal > 0) {
+          pnlLedgerId = genId() + '_pnl';
+          newLedgerEntries.push({
+            id: pnlLedgerId,
+            type: pnlType === 'loss' ? 'loss' : 'profit',
+            amount: manualPnlVal,
+            date: form.tradeDate || todayStr(),
+            note: `ขาย ${name}` + (form.note ? ` (${form.note})` : '')
+          });
+        }
+
         newLogs.unshift({
           id: genId(),
           assetId: target.id,
@@ -1092,6 +1170,7 @@ export default function PortfolioApp() {
           fee: recordSellFeeForDisplay,
           feeThbRecord: sellFeeThb,
           ledgerFeeId: shouldRecordSellFeeInLedger && sellFeeThb > 0 ? sellFeeEntryId : null,
+          ledgerPnlId: pnlLedgerId,
           manualPnlType: pnlType,
           manualPnlAmount: manualPnlVal,
           currency: currency,
@@ -1208,29 +1287,8 @@ export default function PortfolioApp() {
         lastUpdated: todayStr() 
       }];
 
-      const newLogs = [{
-        id: genId(),
-        assetId: newId,
-        assetName: name,
-        assetType: form.type,
-        instrumentType: instrumentType,
-        ticker: ticker,
-        industry: industry,
-        action: 'buy',
-        quantity: qty,
-        price: avg,
-        fee: recordFeeForDisplay,
-        feeThbRecord: feeThb,
-        ledgerFeeId: shouldRecordFeeInLedger && feeThb > 0 ? feeEntryId : null,
-        currency: currency,
-        tradeFx: customFx,
-        date: form.tradeDate || todayStr(),
-        note: (form.note || '').trim(),
-        totalCostThb: totalCostThb
-      }, ...(tradeLogs || [])];
-
+      // กฎข้อ 2: กด +เพิ่ม บันทึกสินทรัพย์แล้วไม่ต้องสร้าง log ซื้ออัตโนมัติในหน้าประวัติการซื้อขายทั้งหมด
       saveHoldings(nextHoldings);
-      saveTradeLogs(newLogs);
       saveLedger(newLedger);
       showToast('เพิ่มสินทรัพย์แล้ว');
     }
@@ -1244,9 +1302,14 @@ export default function PortfolioApp() {
 
   const executeRevertTrade = (log) => {
     if (!log) return;
+    let nextLedger = [...ledger];
     if (log.ledgerFeeId) {
-      saveLedger((ledger || []).filter(e => e && e.id !== log.ledgerFeeId));
+      nextLedger = nextLedger.filter(e => e && e.id !== log.ledgerFeeId);
     }
+    if (log.ledgerPnlId) {
+      nextLedger = nextLedger.filter(e => e && e.id !== log.ledgerPnlId);
+    }
+    saveLedger(nextLedger);
     const nextLogs = (tradeLogs || []).filter(l => l && l.id !== log.id);
     saveTradeLogs(nextLogs);
     setConfirmRevertTarget(null);
@@ -1481,7 +1544,7 @@ export default function PortfolioApp() {
   };
 
   const exportData = () => {
-    const payload = { app: 'portfolio-tracker', version: 2, exportedAt: new Date().toISOString(), holdings, tradeLogs, history, fxRate, backendUrl, initialCapital, ledger };
+    const payload = { app: 'portfolio-tracker', version: 2, exportedAt: new Date().toISOString(), holdings, tradeLogs, history, fxRate, backendUrl, initialCapital, ledger, historicalSummary };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1517,7 +1580,11 @@ export default function PortfolioApp() {
   const confirmImport = async () => {
     if (!pendingImport) return;
     await saveHoldings(Array.isArray(pendingImport.holdings) ? pendingImport.holdings : []);
-    await saveTradeLogs(Array.isArray(pendingImport.tradeLogs) ? pruneTradeLogs(pendingImport.tradeLogs) : []);
+    const resLogs = pruneAndSummarizeTradeLogs(pendingImport.tradeLogs || [], pendingImport.historicalSummary || { profit: 0, loss: 0, fee: 0 });
+    await saveTradeLogs(resLogs.pruned);
+    setHistoricalSummary(resLogs.summary);
+    try { await window.storage.set('historical-trade-summary', JSON.stringify(resLogs.summary), false); } catch (e) { /* ignore */ }
+
     await saveHistory(Array.isArray(pendingImport.history) ? sanitizeAndPruneHistory(pendingImport.history) : []);
     if (typeof pendingImport.fxRate === 'number' && pendingImport.fxRate > 0) {
       setFxRate(pendingImport.fxRate);
@@ -1580,6 +1647,8 @@ export default function PortfolioApp() {
 
   const clearAll = async () => {
     await saveHoldings([]); await saveTradeLogs([]); await saveHistory([]); await saveLedger([]);
+    setHistoricalSummary({ profit: 0, loss: 0, fee: 0 });
+    try { await window.storage.set('historical-trade-summary', JSON.stringify({ profit: 0, loss: 0, fee: 0 }), false); } catch (e) { /* ignore */ }
     setConfirmClear(false);
     showToast('ล้างข้อมูลทั้งหมดแล้ว');
   };
@@ -1617,8 +1686,8 @@ export default function PortfolioApp() {
       if (!log) return sum;
       const feeVal = log.feeThbRecord !== undefined ? (parseFloat(log.feeThbRecord) || 0) : (log.fee !== undefined ? (parseFloat(log.fee) || 0) : 0);
       return sum + feeVal;
-    }, 0);
-  }, [filteredTradeLogs]);
+    }, 0) + (historicalSummary.fee || 0);
+  }, [filteredTradeLogs, historicalSummary]);
 
   const searchFilteredAssetPnL = useMemo(() => {
     const q = tradeSearchQuery.trim().toLowerCase();
@@ -3135,7 +3204,7 @@ export default function PortfolioApp() {
                         <span className={`pf-mono pf-ledger-amount ${['capital_add', 'profit', 'dividend'].includes(e.type) || (e.type === 'rebalance' && e.amount >= 0) ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
                           {['capital_add', 'profit', 'dividend'].includes(e.type) || (e.type === 'rebalance' && e.amount >= 0) ? '+' : '-'}฿{fmt(Math.abs(e.amount), 2)}
                         </span>
-                        {e.type !== 'fee' && !e.id.toString().startsWith('log_pnl_') && (
+                        {e.type !== 'fee' && !e.id.toString().startsWith('log_pnl_') && !e.id.toString().startsWith('hist_') && (
                           <button style={{ background: 'transparent', border: '1px solid var(--gold)', borderRadius: '6px', cursor: 'pointer', padding: '4px', color: 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type] || e.type)} title="คืนค่ารายการ">
                             <RotateCcw size={14} />
                           </button>
@@ -3313,6 +3382,19 @@ export default function PortfolioApp() {
                 }
 
                 const pnlAmtVal = parseFloat(standaloneForm.pnlAmount) || 0;
+                const pnlType = standaloneForm.pnlType;
+                let pnlLedgerId = null;
+                if (pnlAmtVal > 0) {
+                  pnlLedgerId = genId() + '_pnl';
+                  newLedger.push({
+                    id: pnlLedgerId,
+                    type: pnlType === 'loss' ? 'loss' : 'profit',
+                    amount: pnlAmtVal,
+                    date: standaloneForm.date || todayStr(),
+                    note: `ขาย ${standaloneForm.assetName.trim()}` + (standaloneForm.note ? ` (${standaloneForm.note})` : '')
+                  });
+                }
+
                 const newLog = {
                   id: genId(),
                   assetId: 'manual_' + genId(),
@@ -3327,9 +3409,10 @@ export default function PortfolioApp() {
                   fee: recordFeeForDisplay,
                   feeThbRecord: feeThb,
                   ledgerFeeId: shouldRecordFeeInLedger && feeThb > 0 ? feeEntryId : null,
+                  ledgerPnlId: pnlLedgerId,
                   date: standaloneForm.date || todayStr(),
                   note: standaloneForm.note.trim(),
-                  manualPnlType: standaloneForm.pnlType,
+                  manualPnlType: pnlType,
                   manualPnlAmount: pnlAmtVal
                 };
 
