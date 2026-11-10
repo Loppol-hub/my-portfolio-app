@@ -559,10 +559,27 @@ export default function PortfolioApp() {
     return list;
   }, [ledger, tradeLogs]);
 
-  const performanceTotal = useMemo(() => (
-    combinedLedger.filter((e) => e && e.type === 'profit').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0)
-    - combinedLedger.filter((e) => e && (e.type === 'loss' || (e.type === 'fee' && !(e.note && (e.note.includes('หุ้นไทย') || e.note.includes('คริปโต') || e.note.includes('ttb') || e.note.includes('btc'))))).reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0)
-  ), [combinedLedger]);
+  const performanceTotal = useMemo(() => {
+    const profitSum = combinedLedger
+      .filter((e) => e && e.type === 'profit')
+      .reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0);
+
+    const lossAndFeeSum = combinedLedger
+      .filter((e) => {
+        if (!e) return false;
+        if (e.type === 'loss') return true;
+        if (e.type === 'fee') {
+          if (e.note && (e.note.includes('หุ้นไทย') || e.note.includes('คริปโต') || e.note.includes('ttb') || e.note.includes('btc') || e.note.includes('ขาย ptt'))) {
+            return false;
+          }
+          return true;
+        }
+        return false;
+      })
+      .reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0);
+
+    return profitSum - lossAndFeeSum;
+  }, [combinedLedger]);
 
   const rebalanceTotal = useMemo(() => (
     combinedLedger.filter((e) => e && e.type === 'rebalance').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0)
