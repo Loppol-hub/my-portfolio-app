@@ -569,7 +569,7 @@ export default function PortfolioApp() {
         if (!e) return false;
         if (e.type === 'loss') return true;
         if (e.type === 'fee') {
-          if (e.note && (e.note.includes('หุ้นไทย') || e.note.includes('คริปโต') || e.note.includes('ttb') || e.note.includes('btc') || e.note.includes('ขาย ptt'))) {
+          if (e.note && (e.note.includes('หุ้นไทย') || e.note.includes('คริปโต') || e.note.includes('ttb') || e.note.includes('btc'))) {
             return false;
           }
           return true;
@@ -625,7 +625,7 @@ export default function PortfolioApp() {
     let list = combinedLedger.slice().filter(e => {
       if (!e) return false;
       if (e.type === 'fee') {
-        if (e.note && (e.note.includes('หุ้นไทย') || e.note.includes('คริปโต') || e.note.includes('ttb') || e.note.includes('btc') || e.note.includes('ขาย ptt'))) {
+        if (e.note && (e.note.includes('หุ้นไทย') || e.note.includes('คริปโต') || e.note.includes('ttb') || e.note.includes('btc'))) {
           return false;
         }
       }
@@ -662,7 +662,7 @@ export default function PortfolioApp() {
     combinedLedger.forEach((e) => {
       if (e && (e?.date || '').slice(0, 4) === selectedYear) {
         if (e.type === 'fee') {
-          if (e.note && (e.note.includes('หุ้นไทย') || e.note.includes('คริปโต') || e.note.includes('ttb') || e.note.includes('btc') || e.note.includes('ขาย ptt'))) {
+          if (e.note && (e.note.includes('หุ้นไทย') || e.note.includes('คริปโต') || e.note.includes('ttb') || e.note.includes('btc'))) {
             return;
           }
         }
@@ -1615,10 +1615,6 @@ export default function PortfolioApp() {
   const totalFilteredFee = useMemo(() => {
     return filteredTradeLogs.reduce((sum, log) => {
       if (!log) return sum;
-      const t = log.assetType || 'th_stock';
-      const isThOrCrypto = t === 'th_stock' || t === 'crypto';
-      if (isThOrCrypto) return sum;
-
       const feeVal = log.feeThbRecord !== undefined ? (parseFloat(log.feeThbRecord) || 0) : (log.fee !== undefined ? (parseFloat(log.fee) || 0) : 0);
       return sum + feeVal;
     }, 0);
@@ -3420,7 +3416,7 @@ export default function PortfolioApp() {
             </div>
 
             <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--divider)', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '12px', color: 'var(--muted)' }}>ค่าธรรมเนียมรวม (เฉพาะหุ้นนอก/ทองคำ/ETF/กองทุน)</span>
+              <span style={{ fontSize: '12px', color: 'var(--muted)' }}>ค่าธรรมเนียมรวม (ทุกสินทรัพย์)</span>
               <span className="pf-mono" style={{ fontSize: '14px', fontWeight: '600', color: 'var(--gold)' }}>฿{fmt(totalFilteredFee, 2)}</span>
             </div>
 
