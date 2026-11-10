@@ -23,6 +23,18 @@ const LEDGER_LABELS = { capital_add: 'เพิ่มทุน', capital_reduce:
 
 const genId = () => `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
+const pruneTradeLogs = (logs) => {
+  if (!Array.isArray(logs)) return [];
+  const now = new Date();
+  const cutoff = new Date(now.getFullYear() - 2, now.getMonth(), now.getDate());
+  return logs.filter(log => {
+    if (!log || !log.date) return true;
+    const logDate = new Date(log.date);
+    if (isNaN(logDate.getTime())) return true;
+    return logDate >= cutoff;
+  });
+};
+
 const sanitizeAndPruneHistory = (histList) => {
   const map = {};
   (histList || []).forEach(item => {
@@ -238,7 +250,7 @@ const calcDaysAgo = (dateStr) => {
 
 const getBiMonthlySlotDate = () => {
   const now = new Date();
-  if (now.getHours() < 23) return null; // ต้องเวลา 23.00 น. ขึ้นไป
+  if (now.getHours() < 23) return null;
 
   const y = now.getFullYear();
   const m = now.getMonth() + 1;
@@ -398,7 +410,7 @@ export default function PortfolioApp() {
       } catch (e) { /* no data */ }
       try {
         const rLogs = await window.storage.get('trade-logs', false);
-        if (rLogs && rLogs.value) logs = JSON.parse(rLogs.value);
+        if (rLogs && rLogs.value) logs = pruneTradeLogs(JSON.parse(rLogs.value));
       } catch (e) { /* no data */ }
       try {
         const r2 = await window.storage.get('portfolio-history', false);
@@ -454,8 +466,9 @@ export default function PortfolioApp() {
   };
 
   const saveTradeLogs = async (next) => {
-    setTradeLogs(next);
-    try { await window.storage.set('trade-logs', JSON.stringify(next), false); }
+    const pruned = pruneTradeLogs(next);
+    setTradeLogs(pruned);
+    try { await window.storage.set('trade-logs', JSON.stringify(pruned), false); }
     catch (e) { showToast('บันทึกประวัติการซื้อขายไม่สำเร็จ'); }
   };
 
@@ -588,7 +601,16 @@ export default function PortfolioApp() {
   }, [tradeLogs]);
 
   const recentLedger = useMemo(() => {
-    let list = combinedLedger.slice().sort((a, b) => (b?.date || '').localeCompare(a?.date || '') || String(b?.id || '').localeCompare(String(a?.id || '')));
+    let list = combinedLedger.slice().filter(e => {
+      if (!e) return false;
+      if (e.type === 'fee') {
+        if (e.note && (e.note.includes('หุ้นไทย') || e.note.includes('คริปโต') || e.note.includes('ttb') || e.note.includes('btc'))) {
+          return false;
+        }
+      }
+      return true;
+    }).sort((a, b) => (b?.date || '').localeCompare(a?.date || '') || String(b?.id || '').localeCompare(String(a?.id || '')));
+
     const q = ledgerSearchQuery.trim().toLowerCase();
     if (q) {
       list = list.filter((e) => {
@@ -618,6 +640,11 @@ export default function PortfolioApp() {
     const d = { capital_add: 0, capital_reduce: 0, profit: 0, loss: 0, dividend: 0, rebalance: 0, fee: 0 };
     combinedLedger.forEach((e) => {
       if (e && (e?.date || '').slice(0, 4) === selectedYear) {
+        if (e.type === 'fee') {
+          if (e.note && (e.note.includes('หุ้นไทย') || e.note.includes('คริปโต') || e.note.includes('ttb') || e.note.includes('btc'))) {
+            return;
+          }
+        }
         const amt = parseFloat(e.amount) || 0;
         if (e.type === 'rebalance') {
           d.rebalance = (d.rebalance || 0) + amt;
@@ -1018,7 +1045,7 @@ export default function PortfolioApp() {
         }
 
         const sellFeeEntryId = genId() + '_sell_fee';
-        if (sellFeeThb > 0) {
+        if (excludeFeeFromCost && sellFeeThb > 0) {
           newLedgerEntries.push({
             id: sellFeeEntryId,
             type: 'fee',
@@ -1041,7 +1068,7 @@ export default function PortfolioApp() {
           price: sellPrice,
           fee: recordSellFeeForDisplay,
           feeThbRecord: sellFeeThb,
-          ledgerFeeId: sellFeeThb > 0 ? sellFeeEntryId : null,
+          ledgerFeeId: excludeFeeFromCost && sellFeeThb > 0 ? sellFeeEntryId : null,
           manualPnlType: pnlType,
           manualPnlAmount: manualPnlVal,
           currency: currency,
@@ -1466,7 +1493,7 @@ export default function PortfolioApp() {
   const confirmImport = async () => {
     if (!pendingImport) return;
     await saveHoldings(Array.isArray(pendingImport.holdings) ? pendingImport.holdings : []);
-    await saveTradeLogs(Array.isArray(pendingImport.tradeLogs) ? pendingImport.tradeLogs : []);
+    await saveTradeLogs(Array.isArray(pendingImport.tradeLogs) ? pruneTradeLogs(pendingImport.tradeLogs) : []);
     await saveHistory(Array.isArray(pendingImport.history) ? sanitizeAndPruneHistory(pendingImport.history) : []);
     if (typeof pendingImport.fxRate === 'number' && pendingImport.fxRate > 0) {
       setFxRate(pendingImport.fxRate);
@@ -1564,6 +1591,11 @@ export default function PortfolioApp() {
   const totalFilteredFee = useMemo(() => {
     return filteredTradeLogs.reduce((sum, log) => {
       if (!log) return sum;
+      const t = log.assetType || 'th_stock';
+      const inst = log.instrumentType || 'stock';
+      const isThOrCrypto = t === 'th_stock' || t === 'crypto';
+      if (isThOrCrypto) return sum;
+
       const feeVal = log.feeThbRecord !== undefined ? (parseFloat(log.feeThbRecord) || 0) : (log.fee !== undefined ? (parseFloat(log.fee) || 0) : 0);
       return sum + feeVal;
     }, 0);
