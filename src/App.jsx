@@ -520,7 +520,14 @@ export default function PortfolioApp() {
     (tradeLogs || []).forEach((log) => {
       if (log && log.action === 'sell' && log.pnl !== undefined) {
         const logFx = (log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (parseFloat(log.tradeFx) || fxRate) : 1;
-        const pnlThb = log.pnlThb !== undefined ? log.pnlThb : ((log.currency === 'USD' || log.assetType === 'foreign_stock') ? ((parseFloat(log.pnl) || 0) * logFx) : (parseFloat(log.pnl) || 0));
+        let pnlThb = log.pnlThb !== undefined ? log.pnlThb : ((log.currency === 'USD' || log.assetType === 'foreign_stock') ? ((parseFloat(log.pnl) || 0) * logFx) : (parseFloat(log.pnl) || 0));
+        
+        const effInst = getEffectiveInstrumentType(log.assetType, log.instrumentType);
+        const excludeFee = isFeeExcludedFromAssetCost(log.assetType, effInst);
+        if (excludeFee && log.feeThbRecord) {
+          pnlThb -= log.feeThbRecord;
+        }
+
         if (!isNaN(pnlThb) && Math.abs(pnlThb) > 0.001) {
           list.push({
             id: 'log_pnl_' + log.id,
@@ -549,6 +556,10 @@ export default function PortfolioApp() {
     performanceTotal + combinedLedger.filter((e) => e && e.type === 'dividend').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0) + rebalanceTotal
   ), [combinedLedger, performanceTotal, rebalanceTotal]);
 
+  const profitAdjTotal = useMemo(() => (
+    performanceTotal + combinedLedger.filter((e) => e && e.type === 'dividend').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0)
+  ), [combinedLedger, performanceTotal]);
+
   const totalCapital = initialCapital + capitalAdjTotal;
   const cashActive = initialCapital > 0 || combinedLedger.length > 0;
   const computedCash = cashActive ? (totalCapital - totalInvestedCost + cashAdjTotal) : 0;
@@ -570,7 +581,14 @@ export default function PortfolioApp() {
           t = 'foreign_stock';
         }
         const logFx = (log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (parseFloat(log.tradeFx) || fxRate) : 1;
-        const pnlThb = log.pnlThb !== undefined ? log.pnlThb : ((log.currency === 'USD' || t === 'foreign_stock') ? ((parseFloat(log.pnl) || 0) * logFx) : (parseFloat(log.pnl) || 0));
+        let pnlThb = log.pnlThb !== undefined ? log.pnlThb : ((log.currency === 'USD' || t === 'foreign_stock') ? ((parseFloat(log.pnl) || 0) * logFx) : (parseFloat(log.pnl) || 0));
+        
+        const effInst = getEffectiveInstrumentType(log.assetType, log.instrumentType);
+        const excludeFee = isFeeExcludedFromAssetCost(log.assetType, effInst);
+        if (excludeFee && log.feeThbRecord) {
+          pnlThb -= log.feeThbRecord;
+        }
+
         if (!isNaN(pnlThb)) {
           pnlMap[t] = (pnlMap[t] || 0) + pnlThb;
         }
@@ -654,19 +672,19 @@ export default function PortfolioApp() {
   }, [enriched, excludedTypes]);
 
   const heroProfitAmount = useMemo(() => {
-    return visibleInvestedGain + cashAdjTotal;
-  }, [visibleInvestedGain, cashAdjTotal]);
+    return visibleInvestedGain + profitAdjTotal;
+  }, [visibleInvestedGain, profitAdjTotal]);
 
   const heroProfitPct = useMemo(() => {
-    return visibleInvestedCost > 0 ? (heroProfitAmount / visibleInvestedCost) * 100 : (totalCapital > 0 ? (heroProfitAmount / totalCapital) * 100 : null);
-  }, [visibleInvestedGain, visibleInvestedCost, totalCapital, heroProfitAmount]);
+    const base = totalCapital > 0 ? totalCapital : visibleInvestedCost;
+    return base > 0 ? (heroProfitAmount / base) * 100 : null;
+  }, [heroProfitAmount, totalCapital, visibleInvestedCost]);
 
   const lastUpdated = useMemo(() => {
     const dates = holdings.map((h) => h?.lastUpdated).filter(Boolean).sort();
     return dates.length ? dates[dates.length - 1] : null;
   }, [holdings]);
 
-  // ประวัติพอร์ตจริงรายเดือนตามเงื่อนไข (กลางเดือน & สิ้นเดือน ตั้งแต่ 30 พ.ย. 26)
   const historyMonthly = useMemo(() => {
     const valid = (history || []).filter(h => h && h.date >= '2026-11-30').sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
     const slice72 = valid.slice(-72);
@@ -688,7 +706,6 @@ export default function PortfolioApp() {
     });
   }, [history, displayTotalValue]);
 
-  // ประวัติพอร์ตรายปี (แสดงเป็นปี ค.ศ. เช่น 2026, 2027, 2028)
   const historyYearly = useMemo(() => {
     const map = {};
     (history || []).filter(h => h && h.date >= '2026-11-30').forEach(h => {
@@ -1141,7 +1158,7 @@ export default function PortfolioApp() {
         const avg = isCash ? 1 : parseFloat(form.avgCost);
         const price = isCash ? 1 : parseFloat(form.currentPrice);
         if (isNaN(qty) || qty <= 0) { setFormError('จำนวนต้องเป็นตัวเลขมากกว่า 0'); return; }
-        if (!isCash && (isNaN(avg) || avg < 0)) { setFormError('ราคาต้นทุนไม่ถูกต้อง'); return; }
+        if (!isCash && (isNaN(avg) || avg < 0)) { setFormError('ราคาต้นทุน (ทุนเฉลี่ย) ไม่ถูกต้อง'); return; }
         if (!isCash && (isNaN(price) || price < 0)) { setFormError('ราคาปัจจุบันไม่ถูกต้อง'); return; }
         
         currentQty = qty;
@@ -1745,29 +1762,13 @@ export default function PortfolioApp() {
   const totalFilteredFee = useMemo(() => {
     return filteredTradeLogs.reduce((sum, log) => {
       if (!log) return sum;
-      const feeVal = log.fee !== undefined ? (parseFloat(log.fee) || 0) : 0;
-      return sum + feeVal;
+      const logFx = (log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (parseFloat(log.tradeFx) || fxRate) : 1;
+      const feeThb = log.feeThbRecord !== undefined && log.feeThbRecord !== null 
+        ? log.feeThbRecord 
+        : (log.isFeeThb ? (parseFloat(log.fee) || 0) : ((log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (parseFloat(log.fee) || 0) * logFx : (parseFloat(log.fee) || 0)));
+      return sum + feeThb;
     }, 0);
-  }, [filteredTradeLogs]);
-
-  const searchFilteredAssetPnL = useMemo(() => {
-    const q = tradeSearchQuery.trim().toLowerCase();
-    if (!q) return null;
-    const matchingLogs = (tradeLogs || []).filter((log) => log && (log.assetName || '').toLowerCase().includes(q));
-    if (matchingLogs.length === 0) return null;
-    let totalPnlThb = 0;
-    matchingLogs.forEach(l => {
-      if (!l) return;
-      const logFx = (l.currency === 'USD' && l.assetType !== 'th_stock' && l.instrumentType !== 'dr') ? (l.tradeFx ? parseFloat(l.tradeFx) : fxRate) : 1;
-      const pnlVal = l.pnlThb !== undefined ? l.pnlThb : (l.pnl || 0) * logFx;
-      totalPnlThb += pnlVal;
-    });
-    const assetName = matchingLogs[0]?.assetName || '';
-    return { name: assetName, pnl: totalPnlThb, count: matchingLogs.length };
-  }, [tradeLogs, fxRate, tradeSearchQuery]);
-
-  const isDirectFeeType = checkIsDirectFee(form.type, form.instrumentType);
-  const isFeeHiddenForType = ['foreign_stock', 'gold', 'crypto'].includes(form.type) || ['dr', 'etf'].includes(form.instrumentType);
+  }, [filteredTradeLogs, fxRate]);
 
   return (
     <div className="pf-root">
@@ -3396,8 +3397,16 @@ export default function PortfolioApp() {
                   const isLatestForAsset = (tradeLogs || []).find(l => l && l.assetId === log.assetId)?.id === log.id;
 
                   const displayPrice = isUsdAsset ? (log.price * logFx) : log.price;
-                  const displayFee = log.fee !== undefined ? (parseFloat(log.fee) || 0) : 0;
-                  const displayPnl = log.pnlThb !== undefined ? log.pnlThb : ((log.pnl !== undefined) ? (isUsdAsset ? (log.pnl * logFx) : log.pnl) : undefined);
+                  const displayFeeThb = log.feeThbRecord !== undefined && log.feeThbRecord !== null 
+                    ? log.feeThbRecord 
+                    : (log.isFeeThb ? (parseFloat(log.fee) || 0) : (isUsdAsset ? (parseFloat(log.fee) || 0) * logFx : (parseFloat(log.fee) || 0)));
+                  
+                  let displayPnl = log.pnlThb !== undefined ? log.pnlThb : ((log.pnl !== undefined) ? (isUsdAsset ? (log.pnl * logFx) : log.pnl) : undefined);
+                  const effInst = getEffectiveInstrumentType(log.assetType, log.instrumentType);
+                  const excludeFee = isFeeExcludedFromAssetCost(log.assetType, effInst);
+                  if (!isBuy && displayPnl !== undefined && excludeFee && log.feeThbRecord) {
+                    displayPnl -= log.feeThbRecord;
+                  }
 
                   return (
                     <div key={log.id} style={{ background: 'var(--surface-alt)', border: '1px solid var(--divider)', borderRadius: '10px', padding: '10px 12px', fontSize: '13px' }}>
@@ -3421,7 +3430,7 @@ export default function PortfolioApp() {
                         <span>จำนวน <b>{fmt(log.quantity, 2, log.assetType === 'crypto')}</b></span>
                         <span>ราคา <b>{isUsdAsset ? '$' : '฿'}{fmt(log.price, 2, log.assetType === 'crypto')}</b> {isUsdAsset && <span style={{ fontSize: '10px', opacity: 0.6 }}>(฿{fmt(displayPrice, 2)})</span>}</span>
                         {log.note && <span style={{ color: 'var(--muted)' }}>({log.note})</span>}
-                        {displayFee > 0 && <span>ค่าธรรมเนียม <b style={{ color: 'var(--gold)' }}>{log.currency === 'USD' && log.assetType === 'foreign_stock' ? '$' : '฿'}{fmt(displayFee, 2)}</b></span>}
+                        {displayFeeThb > 0 && <span>ค่าธรรมเนียม <b style={{ color: 'var(--gold)' }}>฿{fmt(displayFeeThb, 2)}</b></span>}
                       </div>
                       {!isBuy && displayPnl !== undefined && (
                         <div style={{ marginTop: '4px', paddingTop: '4px', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', fontSize: '12px' }} className="pf-mono">
