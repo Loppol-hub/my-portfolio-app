@@ -1141,23 +1141,16 @@ export default function PortfolioApp() {
         const avg = isCash ? 1 : parseFloat(form.avgCost);
         const price = isCash ? 1 : parseFloat(form.currentPrice);
         if (isNaN(qty) || qty <= 0) { setFormError('จำนวนต้องเป็นตัวเลขมากกว่า 0'); return; }
+        if (!isCash && (isNaN(avg) || avg < 0)) { setFormError('ราคาต้นทุนไม่ถูกต้อง'); return; }
+        if (!isCash && (isNaN(price) || price < 0)) { setFormError('ราคาปัจจุบันไม่ถูกต้อง'); return; }
         
         currentQty = qty;
         currentAvg = avg;
         currentPrice = price;
 
-        const origQty = parseFloat(target.quantity) || 0;
-        const origAvg = parseFloat(target.avgCost) || 0;
-
-        if (origQty > 0 && qty === origQty && avg === origAvg) {
-          currentTotalCostThb = target.totalCostThb !== undefined ? target.totalCostThb : (qty * avg * (target.currency === 'USD' && target.instrumentType !== 'dr' ? (target.createdFxRate || fxRate) : 1));
-        } else if (origQty > 0 && target.totalCostThb !== undefined) {
-          currentTotalCostThb = target.totalCostThb * (qty / origQty);
-        } else {
-          const customFx = form.tradeFx && parseFloat(form.tradeFx) > 0 ? parseFloat(form.tradeFx) : (target.createdFxRate || fxRate);
-          const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
-          currentTotalCostThb = isCash ? 0 : (qty * avg * (isUsdAsset ? customFx : 1));
-        }
+        const customFx = target.createdFxRate || fxRate;
+        const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
+        currentTotalCostThb = isCash ? 0 : (qty * avg * (isUsdAsset ? customFx : 1));
       }
 
       saveLedger(newLedgerEntries);
@@ -1456,7 +1449,6 @@ export default function PortfolioApp() {
         try { await window.storage.set('fx-usdthb', String(rate), false); } catch (e) { /* ignore */ }
       }
       
-      // ดึง holdingsRef.current ล่าสุดหลัง await เพื่อป้องกันข้อมูลทับซ้อนกรณีผู้ใช้แก้ไขระหว่างรอ fetch
       const latestHoldings = holdingsRef.current;
       const nextHoldings = (latestHoldings || []).map((h) => {
         if (!h || priceById[h.id] === undefined) return h;
@@ -1468,15 +1460,26 @@ export default function PortfolioApp() {
 
       const slotDate = getBiMonthlySlotDate();
       if (slotDate) {
-        const newTotal = nextHoldings.reduce((s, h) => {
-          if (!h) return s;
+        const investedVal = nextHoldings.reduce((s, h) => {
+          if (!h || h.type === 'cash') return s;
           const currency = h.currency === 'USD' ? 'USD' : 'THB';
           const isDr = h.instrumentType === 'dr';
           const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h.type, rate) : 1;
           return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0) * effRate;
         }, 0);
+
+        const investedCostForCash = nextHoldings.filter(h => h && h.type !== 'cash').reduce((s, h) => {
+          const cur = h.currency === 'USD' ? 'USD' : 'THB';
+          const dr = h.instrumentType === 'dr';
+          const fr = (cur === 'USD' && !dr) ? (h.createdFxRate || rate) : 1;
+          return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.avgCost) || 0) * fr;
+        }, 0);
+
+        const currentComputedCash = cashActive ? (totalCapital - investedCostForCash + cashAdjTotal) : 0;
+        const totalAssetVal = investedVal + Math.max(0, currentComputedCash);
+
         const existing = (historyRef.current || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-30');
-        const histNext = sanitizeAndPruneHistory([...existing, { date: slotDate, value: newTotal }]);
+        const histNext = sanitizeAndPruneHistory([...existing, { date: slotDate, value: totalAssetVal }]);
         await saveHistory(histNext);
       }
       setFetchIssues(failedNames);
@@ -1506,19 +1509,29 @@ export default function PortfolioApp() {
       }
     }
 
-    const slotDate = getBiMonthlySlotDate();
-    if (slotDate) {
-      const newTotal = next.reduce((s, h) => {
-        if (!h) return s;
-        const currency = h.currency === 'USD' ? 'USD' : 'THB';
-        const isDr = h.instrumentType === 'dr';
-        const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h.type, rate) : 1;
-        return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0) * effRate;
-      }, 0);
-      const existing = (history || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-30');
-      const histNext = sanitizeAndPruneHistory([...existing, { date: slotDate, value: newTotal }]);
-      saveHistory(histNext);
-    }
+    const slotDate = getBiMonthlySlotDate() || todayStr();
+    const investedVal = next.reduce((s, h) => {
+      if (!h || h.type === 'cash') return s;
+      const currency = h.currency === 'USD' ? 'USD' : 'THB';
+      const isDr = h.instrumentType === 'dr';
+      const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h.type, rate) : 1;
+      return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0) * effRate;
+    }, 0);
+
+    const investedCostForCash = next.filter(h => h && h.type !== 'cash').reduce((s, h) => {
+      const cur = h.currency === 'USD' ? 'USD' : 'THB';
+      const dr = h.instrumentType === 'dr';
+      const fr = (cur === 'USD' && !dr) ? (h.createdFxRate || rate) : 1;
+      return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.avgCost) || 0) * fr;
+    }, 0);
+
+    const currentComputedCash = cashActive ? (totalCapital - investedCostForCash + cashAdjTotal) : 0;
+    const totalAssetVal = investedVal + Math.max(0, currentComputedCash);
+
+    const existing = (history || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-30');
+    const histNext = sanitizeAndPruneHistory([...existing, { date: slotDate, value: totalAssetVal }]);
+    saveHistory(histNext);
+
     showToast(`ดึงราคาสำเร็จ จำนวน ${Object.keys(updateDraft).length} ตัว`);
     closePanel();
   };
