@@ -37,6 +37,41 @@ const isFeeExcludedFromAssetCost = (type, instrumentType) => {
   return true;
 };
 
+const sanitizeAndPruneHistory = (histList) => {
+  const map = {};
+  (histList || []).forEach(item => {
+    if (item && item.date && typeof item.value === 'number') {
+      map[item.date] = item.value;
+    }
+  });
+  return Object.keys(map)
+    .sort()
+    .filter(date => date >= '2026-11-30')
+    .slice(-72)
+    .map(date => ({ date, value: map[date] }));
+};
+
+const getBiMonthlySlotDate = () => {
+  const now = new Date();
+  if (now.getHours() < 23) return null;
+
+  const y = now.getFullYear();
+  const m = now.getMonth() + 1;
+  const day = now.getDate();
+  const lastDay = new Date(y, m, 0).getDate();
+  const mm = String(m).padStart(2, '0');
+
+  let slotDate = null;
+  if (day >= 15 && day < lastDay) {
+    slotDate = `${y}-${mm}-15`;
+  } else if (day >= lastDay) {
+    slotDate = `${y}-${mm}-${String(lastDay).padStart(2, '0')}`;
+  }
+
+  if (slotDate && slotDate < '2026-11-30') return null;
+  return slotDate;
+};
+
 function hexToHsl(hex) {
   const c = (hex || '').replace('#', '');
   if (c.length < 6) return { h: 0, s: 0, l: 50 };
@@ -364,7 +399,7 @@ export default function PortfolioApp() {
       } catch (e) { /* no data */ }
       try {
         const r2 = await window.storage.get('portfolio-history', false);
-        if (r2 && r2.value) hist = JSON.parse(r2.value);
+        if (r2 && r2.value) hist = sanitizeAndPruneHistory(JSON.parse(r2.value));
       } catch (e) { /* no data */ }
       let url = '';
       try {
@@ -422,8 +457,9 @@ export default function PortfolioApp() {
   };
 
   const saveHistory = async (next) => {
-    setHistory(next);
-    try { await window.storage.set('portfolio-history', JSON.stringify(next), false); }
+    const pruned = sanitizeAndPruneHistory(next);
+    setHistory(pruned);
+    try { await window.storage.set('portfolio-history', JSON.stringify(pruned), false); }
     catch (e) { showToast('บันทึกประวัติไม่สำเร็จ'); }
   };
 
@@ -630,31 +666,34 @@ export default function PortfolioApp() {
     return dates.length ? dates[dates.length - 1] : null;
   }, [holdings]);
 
-  // ประวัติพอร์ตจริงจาก Storage หรือสร้างจากประวัติรายวัน
-  const historyList = useMemo(() => {
-    const raw = (history || []).filter(h => h && h.date && typeof h.value === 'number').sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
-    if (raw.length === 0) {
-      const today = todayStr();
-      return [{ rawDate: today, date: thaiDateAD(today).slice(0, 5), value: displayTotalValue }];
+  // ประวัติพอร์ตจริงรายเดือนตามเงื่อนไข (กลางเดือน & สิ้นเดือน ตั้งแต่ 30 พ.ย. 26)
+  const historyMonthly = useMemo(() => {
+    const valid = (history || []).filter(h => h && h.date >= '2026-11-30').sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
+    const slice72 = valid.slice(-72);
+    if (slice72.length === 0) {
+      return [{ rawDate: '2026-11-30', date: 'พ.ย.26', value: displayTotalValue }];
     }
-    return raw.map(h => {
-      const parts = String(h.date).split('-');
-      const dateFormatted = parts.length === 3 ? `${parts[2]}/${parts[1]}` : h.date;
+    return slice72.map(h => {
+      const [yyyy, mm, dd] = (h.date || '').split('-');
+      const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+      const mName = months[parseInt(mm, 10) - 1] || '';
+      const yShort = (yyyy || '').slice(-2);
+      const dayNum = parseInt(dd, 10);
+      const labelStr = dayNum === 15 ? `15 ${mName}${yShort}` : `${mName}${yShort}`;
       return {
         rawDate: h.date,
-        date: dateFormatted,
+        date: labelStr,
         value: h.value
       };
     });
   }, [history, displayTotalValue]);
 
+  // ประวัติพอร์ตรายปี (แสดงเป็นปี ค.ศ. เช่น 2026, 2027, 2028)
   const historyYearly = useMemo(() => {
     const map = {};
-    (history || []).forEach(h => {
-      if (h && h.date) {
-        const yr = String(h.date).slice(0, 4);
-        map[yr] = h.value; // เก็บค่าล่าสุดของปีนั้นๆ
-      }
+    (history || []).filter(h => h && h.date >= '2026-11-30').forEach(h => {
+      const yr = (h.date || '').slice(0, 4);
+      if (yr) map[yr] = h.value;
     });
     const years = Object.keys(map).sort();
     if (years.length === 0) {
@@ -669,18 +708,18 @@ export default function PortfolioApp() {
 
   const chartDataTotal = useMemo(() => {
     const isYearMode = graphModeTotal === 'year';
-    const dataSrc = isYearMode ? historyYearly : historyList;
+    const dataSrc = isYearMode ? historyYearly : historyMonthly;
     return dataSrc.map(h => ({ date: h.date, value: h.value, principal: totalCapital }));
-  }, [historyList, historyYearly, graphModeTotal, totalCapital]);
+  }, [historyMonthly, historyYearly, graphModeTotal, totalCapital]);
 
   const chartDataGainCard = useMemo(() => {
     const currentValForGainChart = totalInvestedCost + totalGain;
     const isYearMode = graphModeGain === 'year';
-    const dataSrc = isYearMode ? historyYearly : historyList;
+    const dataSrc = isYearMode ? historyYearly : historyMonthly;
     const latestVal = dataSrc[dataSrc.length - 1]?.value || currentValForGainChart;
     const ratio = latestVal > 0 ? currentValForGainChart / latestVal : 1;
     return dataSrc.map(h => ({ date: h.date, gain: h.value * ratio, cost: totalInvestedCost }));
-  }, [historyList, historyYearly, totalInvestedCost, totalGain, graphModeGain]);
+  }, [historyMonthly, historyYearly, totalInvestedCost, totalGain, graphModeGain]);
 
   const dividendYears = useMemo(() => {
     const y = new Date().getFullYear();
@@ -734,22 +773,22 @@ export default function PortfolioApp() {
     const thCost = thHoldings.reduce((s, h) => s + (h?.costValue || 0), 0);
     const thVal = thHoldings.reduce((s, h) => s + (h?.marketValue || 0), 0);
     const isYearMode = graphModeTh === 'year';
-    const dataSrc = isYearMode ? historyYearly : historyList;
+    const dataSrc = isYearMode ? historyYearly : historyMonthly;
     const latestVal = dataSrc[dataSrc.length - 1]?.value || (thVal || 1);
     const ratio = latestVal > 0 ? thVal / latestVal : 1;
     return dataSrc.map(h => ({ date: h.date, gain: h.value * ratio, cost: thCost }));
-  }, [historyList, historyYearly, graphModeTh, enriched]);
+  }, [historyMonthly, historyYearly, graphModeTh, enriched]);
 
   const chartDataUs = useMemo(() => {
     const usHoldings = enriched.filter((h) => h && h.type === 'foreign_stock');
     const usCost = usHoldings.reduce((s, h) => s + (h?.costValue || 0), 0);
     const usVal = usHoldings.reduce((s, h) => s + (h?.marketValue || 0), 0);
     const isYearMode = graphModeUs === 'year';
-    const dataSrc = isYearMode ? historyYearly : historyList;
+    const dataSrc = isYearMode ? historyYearly : historyMonthly;
     const latestVal = dataSrc[dataSrc.length - 1]?.value || (usVal || 1);
     const ratio = latestVal > 0 ? usVal / latestVal : 1;
     return dataSrc.map(h => ({ date: h.date, gain: h.value * ratio, cost: usCost }));
-  }, [historyList, historyYearly, graphModeUs, enriched]);
+  }, [historyMonthly, historyYearly, graphModeUs, enriched]);
 
   const openAdd = () => { 
     setForm({ 
@@ -1160,7 +1199,9 @@ export default function PortfolioApp() {
       let feeAmount = 0;
       let feeThb = 0;
       let recordFeeForDisplay = 0;
-      if (!isCash) {
+      const isFeeHiddenForType = ['foreign_stock', 'gold', 'crypto'].includes(form.type) || ['dr', 'etf'].includes(instrumentType);
+
+      if (!isCash && !isFeeHiddenForType) {
         if (isDirectFee) {
           if (isUsdAsset) {
             if (form.feeCurrency === 'THB') {
@@ -1190,7 +1231,7 @@ export default function PortfolioApp() {
 
       let newLedger = [...ledger];
       const feeEntryId = Date.now().toString() + '_fee';
-      if (!isCash && excludeFeeFromCost && feeThb > 0) {
+      if (!isCash && excludeFeeFromCost && feeThb > 0 && !isFeeHiddenForType) {
         newLedger.push({
           id: feeEntryId,
           type: 'fee',
@@ -1230,7 +1271,7 @@ export default function PortfolioApp() {
         price: avg,
         fee: recordFeeForDisplay,
         feeThbRecord: feeThb,
-        ledgerFeeId: excludeFeeFromCost && feeThb > 0 ? feeEntryId : null,
+        ledgerFeeId: excludeFeeFromCost && feeThb > 0 && !isFeeHiddenForType ? feeEntryId : null,
         currency: currency,
         tradeFx: customFx,
         date: form.tradeDate || todayStr(),
@@ -1413,14 +1454,14 @@ export default function PortfolioApp() {
         setFxDraft(String(rate));
         try { await window.storage.set('fx-usdthb', String(rate), false); } catch (e) { /* ignore */ }
       }
-      const today = todayStr();
       const nextHoldings = (currentHoldings || []).map((h) => {
         if (!h || priceById[h.id] === undefined) return h;
         let updatedPrice = priceById[h.id];
         if (h.type === 'crypto' && h.currency === 'THB') { updatedPrice = updatedPrice * rate; }
-        return { ...h, currentPrice: updatedPrice, lastUpdated: today };
+        return { ...h, currentPrice: updatedPrice, lastUpdated: todayStr() };
       });
       await saveHoldings(nextHoldings);
+
       const newTotal = nextHoldings.reduce((s, h) => {
         if (!h) return s;
         const currency = h.currency === 'USD' ? 'USD' : 'THB';
@@ -1428,8 +1469,13 @@ export default function PortfolioApp() {
         const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h.type, rate) : 1;
         return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0) * effRate;
       }, 0);
-      const histNext = [...(historyRef.current || []).filter((p) => p && p.date !== today), { date: today, value: newTotal }].sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
-      await saveHistory(histNext);
+
+      const slotDate = getBiMonthlySlotDate();
+      if (slotDate) {
+        const existing = (historyRef.current || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-30');
+        const histNext = sanitizeAndPruneHistory([...existing, { date: slotDate, value: newTotal }]);
+        await saveHistory(histNext);
+      }
       setFetchIssues(failedNames);
 
       const okCount = Object.keys(priceById).length;
@@ -1438,12 +1484,11 @@ export default function PortfolioApp() {
   };
 
   const submitUpdatePrices = async () => {
-    const today = todayStr();
     const next = (holdings || []).map((h) => {
       if (!h) return h;
       const v = parseFloat(updateDraft[h.id]);
       if (isNaN(v) || v < 0) return h;
-      return { ...h, currentPrice: v, lastUpdated: today };
+      return { ...h, currentPrice: v, lastUpdated: todayStr() };
     });
     saveHoldings(next);
 
@@ -1465,8 +1510,14 @@ export default function PortfolioApp() {
       const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h.type, rate) : 1;
       return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0) * effRate;
     }, 0);
-    const histNext = [...(history || []).filter((p) => p && p.date !== today), { date: today, value: newTotal }].sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
-    saveHistory(histNext);
+
+    const slotDate = getBiMonthlySlotDate();
+    if (slotDate) {
+      const existing = (history || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-30');
+      const histNext = sanitizeAndPruneHistory([...existing, { date: slotDate, value: newTotal }]);
+      saveHistory(histNext);
+    }
+
     showToast(`ดึงราคาสำเร็จ จำนวน ${Object.keys(updateDraft).length} ตัว`);
     closePanel();
   };
@@ -1583,7 +1634,7 @@ export default function PortfolioApp() {
     if (!pendingImport) return;
     await saveHoldings(Array.isArray(pendingImport.holdings) ? pendingImport.holdings : []);
     if (Array.isArray(pendingImport.tradeLogs)) await saveTradeLogs(pendingImport.tradeLogs);
-    await saveHistory(Array.isArray(pendingImport.history) ? pendingImport.history : []);
+    await saveHistory(Array.isArray(pendingImport.history) ? sanitizeAndPruneHistory(pendingImport.history) : []);
     if (typeof pendingImport.fxRate === 'number' && pendingImport.fxRate > 0) {
       setFxRate(pendingImport.fxRate);
       try { await window.storage.set('fx-usdthb', String(pendingImport.fxRate), false); } catch (e) { /* ignore */ }
@@ -1702,6 +1753,7 @@ export default function PortfolioApp() {
   }, [tradeLogs, fxRate, tradeSearchQuery]);
 
   const isDirectFeeType = checkIsDirectFee(form.type, form.instrumentType);
+  const isFeeHiddenForType = ['foreign_stock', 'gold', 'crypto'].includes(form.type) || ['dr', 'etf'].includes(form.instrumentType);
 
   return (
     <div className="pf-root">
@@ -2960,24 +3012,26 @@ export default function PortfolioApp() {
 
                 {!editingId && (
                   <>
-                    <div className="pf-row2">
-                      <div className="pf-field">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                          <label className="pf-label" style={{ margin: 0 }}>ค่าธรรมเนียม {isDirectFeeType ? '' : '(%)'}</label>
-                          {isDirectFeeType && (
-                            <div style={{ display: 'flex', gap: '4px' }}>
-                              <button type="button" className={form.feeCurrency !== 'USD' ? 'pf-year-pill-active' : 'pf-year-pill'} style={{ padding: '1px 6px', fontSize: '10px' }} onClick={() => setForm({ ...form, feeCurrency: 'THB' })}>บาท</button>
-                              <button type="button" className={form.feeCurrency === 'USD' ? 'pf-year-pill-active' : 'pf-year-pill'} style={{ padding: '1px 6px', fontSize: '10px' }} onClick={() => setForm({ ...form, feeCurrency: 'USD' })}>USD</button>
-                            </div>
-                          )}
+                    {!isFeeHiddenForType && (
+                      <div className="pf-row2">
+                        <div className="pf-field">
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                            <label className="pf-label" style={{ margin: 0 }}>ค่าธรรมเนียม {isDirectFeeType ? '' : '(%)'}</label>
+                            {isDirectFeeType && (
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <button type="button" className={form.feeCurrency !== 'USD' ? 'pf-year-pill-active' : 'pf-year-pill'} style={{ padding: '1px 6px', fontSize: '10px' }} onClick={() => setForm({ ...form, feeCurrency: 'THB' })}>บาท</button>
+                                <button type="button" className={form.feeCurrency === 'USD' ? 'pf-year-pill-active' : 'pf-year-pill'} style={{ padding: '1px 6px', fontSize: '10px' }} onClick={() => setForm({ ...form, feeCurrency: 'USD' })}>USD</button>
+                              </div>
+                            )}
+                          </div>
+                          <input className="pf-input pf-mono" inputMode="decimal" value={form.feePct} onChange={(e) => setForm({ ...form, feePct: e.target.value })} placeholder="0" />
                         </div>
-                        <input className="pf-input pf-mono" inputMode="decimal" value={form.feePct} onChange={(e) => setForm({ ...form, feePct: e.target.value })} placeholder="0" />
+                        <div className="pf-field">
+                          <label className="pf-label">วันที่ทำรายการ</label>
+                          <input className="pf-input pf-mono" type="date" value={form.tradeDate} onChange={(e) => setForm({ ...form, tradeDate: e.target.value })} />
+                        </div>
                       </div>
-                      <div className="pf-field">
-                        <label className="pf-label">วันที่ทำรายการ</label>
-                        <input className="pf-input pf-mono" type="date" value={form.tradeDate} onChange={(e) => setForm({ ...form, tradeDate: e.target.value })} />
-                      </div>
-                    </div>
+                    )}
                     <div className="pf-field">
                       <label className="pf-label">หมายเหตุการซื้อ</label>
                       <input className="pf-input" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="เช่น ซื้อครั้งแรก" />
