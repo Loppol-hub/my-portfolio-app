@@ -241,19 +241,6 @@ const getDynamicDomain = (currentVal, baseVal) => {
   return [Math.floor(min / 5000) * 5000, Math.ceil(max / 5000) * 5000];
 };
 
-const getMonthlyAxisData = () => {
-  const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-  const now = new Date();
-  const currentMonthIdx = now.getMonth();
-  const currentYearShort = String(now.getFullYear()).slice(-2);
-  const result = [];
-  for (let i = 0; i < 12; i++) {
-    const idx = (currentMonthIdx - 11 + i + 12) % 12;
-    result.push({ date: `${months[idx]} ${currentYearShort}` });
-  }
-  return result;
-};
-
 export default function PortfolioApp() {
   const [activeTab, setActiveTab] = useState(3);
   const [holdings, setHoldings] = useState([]);
@@ -348,7 +335,7 @@ export default function PortfolioApp() {
     const checkEvening = () => {
       const now = new Date();
       const todayKey = todayStr();
-      if (now.getHours() === 19 && eveningFiredRef.current !== todayKey) {
+      if (now.getHours() >= 23 && eveningFiredRef.current !== todayKey) {
         eveningFiredRef.current = todayKey;
         runAutoPriceUpdate();
       }
@@ -489,7 +476,6 @@ export default function PortfolioApp() {
   const totalInvestedCost = useMemo(() => enriched.filter((h) => h?.type !== 'cash').reduce((s, h) => s + (h?.costValue || 0), 0), [enriched]);
 
   const capitalAddTotal = useMemo(() => (ledger || []).filter((e) => e && e.type === 'capital_add').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0), [ledger]);
-  // ปรับให้ ทุนเริ่มต้นไม่ถูกหักด้วยค่าธรรมเนียม (คิดเฉพาะ capital_reduce เท่านั้น)
   const capitalReduceTotal = useMemo(() => (ledger || []).filter((e) => e && e.type === 'capital_reduce').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0), [ledger]);
   const capitalAdjTotal = useMemo(() => capitalAddTotal - capitalReduceTotal, [capitalAddTotal, capitalReduceTotal]);
 
@@ -513,7 +499,6 @@ export default function PortfolioApp() {
     return list;
   }, [ledger, tradeLogs, fxRate]);
 
-  // นำค่าธรรมเนียมมารวมคำนวณหักออกจากผลประกอบการรวม (Performance)
   const totalFees = useMemo(() => (ledger || []).filter(e => e && e.type === 'fee').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0), [ledger]);
   const performanceTotal = useMemo(() => (
     combinedLedger.filter((e) => e && e.type === 'profit').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0)
@@ -645,20 +630,57 @@ export default function PortfolioApp() {
     return dates.length ? dates[dates.length - 1] : null;
   }, [holdings]);
 
-  const monthlyList = useMemo(() => getMonthlyAxisData(), []);
+  // ประวัติพอร์ตจริงจาก Storage หรือสร้างจากประวัติรายวัน
+  const historyList = useMemo(() => {
+    const raw = (history || []).filter(h => h && h.date && typeof h.value === 'number').sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
+    if (raw.length === 0) {
+      const today = todayStr();
+      return [{ rawDate: today, date: thaiDateAD(today).slice(0, 5), value: displayTotalValue }];
+    }
+    return raw.map(h => {
+      const parts = String(h.date).split('-');
+      const dateFormatted = parts.length === 3 ? `${parts[2]}/${parts[1]}` : h.date;
+      return {
+        rawDate: h.date,
+        date: dateFormatted,
+        value: h.value
+      };
+    });
+  }, [history, displayTotalValue]);
+
+  const historyYearly = useMemo(() => {
+    const map = {};
+    (history || []).forEach(h => {
+      if (h && h.date) {
+        const yr = String(h.date).slice(0, 4);
+        map[yr] = h.value; // เก็บค่าล่าสุดของปีนั้นๆ
+      }
+    });
+    const years = Object.keys(map).sort();
+    if (years.length === 0) {
+      const currentYr = String(new Date().getFullYear());
+      return [{ date: currentYr, value: displayTotalValue }];
+    }
+    return years.map(yr => ({
+      date: yr,
+      value: map[yr]
+    }));
+  }, [history, displayTotalValue]);
 
   const chartDataTotal = useMemo(() => {
-    const base = monthlyList.map((p) => ({ date: p.date, value: displayTotalValue, principal: totalCapital }));
-    if (graphModeTotal === 'year') return base.filter((p) => p.date.includes(String(graphYearTotal).slice(-2)));
-    return base;
-  }, [monthlyList, graphModeTotal, graphYearTotal, displayTotalValue, totalCapital]);
+    const isYearMode = graphModeTotal === 'year';
+    const dataSrc = isYearMode ? historyYearly : historyList;
+    return dataSrc.map(h => ({ date: h.date, value: h.value, principal: totalCapital }));
+  }, [historyList, historyYearly, graphModeTotal, totalCapital]);
 
   const chartDataGainCard = useMemo(() => {
     const currentValForGainChart = totalInvestedCost + totalGain;
-    const base = monthlyList.map((p) => ({ date: p.date, gain: currentValForGainChart, cost: totalInvestedCost }));
-    if (graphModeGain === 'year') return base.filter((p) => p.date.includes(String(graphYearGain).slice(-2)));
-    return base;
-  }, [monthlyList, graphModeGain, graphYearGain, totalInvestedCost, totalGain]);
+    const isYearMode = graphModeGain === 'year';
+    const dataSrc = isYearMode ? historyYearly : historyList;
+    const latestVal = dataSrc[dataSrc.length - 1]?.value || currentValForGainChart;
+    const ratio = latestVal > 0 ? currentValForGainChart / latestVal : 1;
+    return dataSrc.map(h => ({ date: h.date, gain: h.value * ratio, cost: totalInvestedCost }));
+  }, [historyList, historyYearly, totalInvestedCost, totalGain, graphModeGain]);
 
   const dividendYears = useMemo(() => {
     const y = new Date().getFullYear();
@@ -711,19 +733,23 @@ export default function PortfolioApp() {
     const thHoldings = enriched.filter((h) => h && h.type === 'th_stock');
     const thCost = thHoldings.reduce((s, h) => s + (h?.costValue || 0), 0);
     const thVal = thHoldings.reduce((s, h) => s + (h?.marketValue || 0), 0);
-    const base = monthlyList.map((p) => ({ date: p.date, gain: thVal, cost: thCost }));
-    if (graphModeTh === 'year') return base.filter((p) => p.date.includes(String(graphYearTh).slice(-2)));
-    return base;
-  }, [monthlyList, graphModeTh, graphYearTh, enriched]);
+    const isYearMode = graphModeTh === 'year';
+    const dataSrc = isYearMode ? historyYearly : historyList;
+    const latestVal = dataSrc[dataSrc.length - 1]?.value || (thVal || 1);
+    const ratio = latestVal > 0 ? thVal / latestVal : 1;
+    return dataSrc.map(h => ({ date: h.date, gain: h.value * ratio, cost: thCost }));
+  }, [historyList, historyYearly, graphModeTh, enriched]);
 
   const chartDataUs = useMemo(() => {
     const usHoldings = enriched.filter((h) => h && h.type === 'foreign_stock');
     const usCost = usHoldings.reduce((s, h) => s + (h?.costValue || 0), 0);
     const usVal = usHoldings.reduce((s, h) => s + (h?.marketValue || 0), 0);
-    const base = monthlyList.map((p) => ({ date: p.date, gain: usVal, cost: usCost }));
-    if (graphModeUs === 'year') return base.filter((p) => p.date.includes(String(graphYearUs).slice(-2)));
-    return base;
-  }, [monthlyList, graphModeUs, graphYearUs, enriched]);
+    const isYearMode = graphModeUs === 'year';
+    const dataSrc = isYearMode ? historyYearly : historyList;
+    const latestVal = dataSrc[dataSrc.length - 1]?.value || (usVal || 1);
+    const ratio = latestVal > 0 ? usVal / latestVal : 1;
+    return dataSrc.map(h => ({ date: h.date, gain: h.value * ratio, cost: usCost }));
+  }, [historyList, historyYearly, graphModeUs, enriched]);
 
   const openAdd = () => { 
     setForm({ 
@@ -2302,7 +2328,7 @@ export default function PortfolioApp() {
                                       <div key={idx} style={{ background: 'var(--surface-alt)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '6px 8px', fontSize: '11.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="pf-mono">
                                         <span style={{ color: 'var(--gold)', minWidth: '85px' }}>{thaiDateAD(lot?.date)} <span style={{ color: 'var(--muted)', fontSize: '10px' }}>({lot?.days || 0}ว)</span></span>
                                         <span style={{ textAlign: 'center', flex: 1 }}><b>{fmt(lot?.qty, 2, isCrypto)}</b></span>
-                                        <span style={{ textAlign: 'right', flex: 1 }}><b>{lot?.currency === 'USD' && h.instrumentType !== 'dr' ? '$' : '฿'}{fmt(lot?.price, 2)}</b></span>
+                                        <span style={{ textAlign: 'right', flex: 1 }}><b>{lot?.isUsd ? '$' : '฿'}{fmt(lot?.price, 2)}</b></span>
                                         <span className={(lot?.gainPct || 0) >= 0 ? 'pf-chip-pos' : 'pf-chip-neg'} style={{ fontWeight: '600', textAlign: 'right', minWidth: '70px' }}>
                                           {(lot?.gainPct || 0) >= 0 ? '+' : ''}{fmt(lot?.gainPct, 2)}%
                                         </span>
