@@ -804,8 +804,9 @@ export default function PortfolioApp() {
     setPanel('form'); 
   };
 
-  const openEdit = (h) => {
-    if (!h) return;
+  const openEdit = (item) => {
+    if (!item) return;
+    const h = (holdings || []).find(x => x && x.id === item.id) || item;
     setForm({ 
       name: h.name || '', 
       ticker: h.ticker || '', 
@@ -1454,7 +1455,10 @@ export default function PortfolioApp() {
         setFxDraft(String(rate));
         try { await window.storage.set('fx-usdthb', String(rate), false); } catch (e) { /* ignore */ }
       }
-      const nextHoldings = (currentHoldings || []).map((h) => {
+      
+      // ดึง holdingsRef.current ล่าสุดหลัง await เพื่อป้องกันข้อมูลทับซ้อนกรณีผู้ใช้แก้ไขระหว่างรอ fetch
+      const latestHoldings = holdingsRef.current;
+      const nextHoldings = (latestHoldings || []).map((h) => {
         if (!h || priceById[h.id] === undefined) return h;
         let updatedPrice = priceById[h.id];
         if (h.type === 'crypto' && h.currency === 'THB') { updatedPrice = updatedPrice * rate; }
@@ -1462,16 +1466,15 @@ export default function PortfolioApp() {
       });
       await saveHoldings(nextHoldings);
 
-      const newTotal = nextHoldings.reduce((s, h) => {
-        if (!h) return s;
-        const currency = h.currency === 'USD' ? 'USD' : 'THB';
-        const isDr = h.instrumentType === 'dr';
-        const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h.type, rate) : 1;
-        return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0) * effRate;
-      }, 0);
-
       const slotDate = getBiMonthlySlotDate();
       if (slotDate) {
+        const newTotal = nextHoldings.reduce((s, h) => {
+          if (!h) return s;
+          const currency = h.currency === 'USD' ? 'USD' : 'THB';
+          const isDr = h.instrumentType === 'dr';
+          const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h.type, rate) : 1;
+          return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0) * effRate;
+        }, 0);
         const existing = (historyRef.current || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-30');
         const histNext = sanitizeAndPruneHistory([...existing, { date: slotDate, value: newTotal }]);
         await saveHistory(histNext);
@@ -1503,21 +1506,19 @@ export default function PortfolioApp() {
       }
     }
 
-    const newTotal = next.reduce((s, h) => {
-      if (!h) return s;
-      const currency = h.currency === 'USD' ? 'USD' : 'THB';
-      const isDr = h.instrumentType === 'dr';
-      const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h.type, rate) : 1;
-      return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0) * effRate;
-    }, 0);
-
     const slotDate = getBiMonthlySlotDate();
     if (slotDate) {
+      const newTotal = next.reduce((s, h) => {
+        if (!h) return s;
+        const currency = h.currency === 'USD' ? 'USD' : 'THB';
+        const isDr = h.instrumentType === 'dr';
+        const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h.type, rate) : 1;
+        return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0) * effRate;
+      }, 0);
       const existing = (history || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-30');
       const histNext = sanitizeAndPruneHistory([...existing, { date: slotDate, value: newTotal }]);
       saveHistory(histNext);
     }
-
     showToast(`ดึงราคาสำเร็จ จำนวน ${Object.keys(updateDraft).length} ตัว`);
     closePanel();
   };
