@@ -25,9 +25,10 @@ const getEffectiveInstrumentType = (type, instType) => {
   return (type === 'th_stock' || type === 'foreign_stock') ? (instType || 'stock') : 'stock';
 };
 
+// แก้ไขข้อ 9: กำหนดประเภทที่คิดค่าธรรมเนียมเข้าเลดเจอร์ (หุ้นนอก, ทองคำ, DR, ETF)
 const checkIsDirectFee = (type, instType) => {
   const effInst = getEffectiveInstrumentType(type, instType);
-  return ['foreign_stock', 'gold', 'crypto', 'fund'].includes(type) || ['dr', 'etf'].includes(effInst);
+  return ['foreign_stock', 'gold'].includes(type) || ['dr', 'etf'].includes(effInst);
 };
 
 const isFeeExcludedFromAssetCost = (type, instrumentType) => {
@@ -561,13 +562,14 @@ export default function PortfolioApp() {
   ), [combinedLedger, performanceTotal]);
 
   const totalCapital = initialCapital + capitalAdjTotal;
-  const cashActive = initialCapital > 0 || combinedLedger.length > 0;
-  const computedCash = cashActive ? (totalCapital - totalInvestedCost + cashAdjTotal) : 0;
+  
+  // แก้ไขข้อ 10: ให้ cashActive เป็นจริงเสมอหรือคำนวณเงินสดได้อิสระ ไม่ดักด้วย initialCapital > 0 เพื่อป้องกันเงินสดหายยามทุนเริ่มต้นเป็น 0
+  const computedCash = (totalCapital - totalInvestedCost + cashAdjTotal);
 
   const cashRatio = useMemo(() => {
     const invVal = totalInvestedValue;
     if (invVal <= 0) return 0;
-    return (Math.max(0, computedCash) / invVal) * 100;
+    return (computedCash / invVal) * 100;
   }, [totalInvestedValue, computedCash]);
 
   const totalRealizedPnL = performanceTotal;
@@ -653,12 +655,10 @@ export default function PortfolioApp() {
     const map = {};
     enriched.forEach((h) => { if (h && h.type !== 'cash') map[h.type] = (map[h.type] || 0) + (h.marketValue || 0); });
     const list = ASSET_TYPES.filter((t) => t && t.key !== 'cash').map((t) => ({ ...t, value: map[t.key] || 0 })).filter((t) => t.value > 0);
-    if (cashActive && computedCash > 0) {
-      const cashType = ASSET_TYPES.find((t) => t && t.key === 'cash');
-      list.push({ ...cashType, value: computedCash });
-    }
+    const cashType = ASSET_TYPES.find((t) => t && t.key === 'cash');
+    list.push({ ...cashType, value: computedCash });
     return list.sort((a, b) => b.value - a.value);
-  }, [enriched, cashActive, computedCash]);
+  }, [enriched, computedCash]);
 
   const displayByType = useMemo(() => byType.filter((t) => t && !excludedTypes[t.key]), [byType, excludedTypes]);
   const displayTotalValue = useMemo(() => displayByType.reduce((s, t) => s + (t?.value || 0), 0), [displayByType]);
@@ -1210,7 +1210,7 @@ export default function PortfolioApp() {
       let feeAmount = 0;
       let feeThb = 0;
       let recordFeeForDisplay = 0;
-      const isFeeHiddenForType = ['foreign_stock', 'gold', 'crypto'].includes(form.type) || ['dr', 'etf'].includes(instrumentType);
+      const isFeeHiddenForType = form.type === 'crypto';
 
       if (!isCash && !isFeeHiddenForType) {
         if (isDirectFee) {
@@ -1492,8 +1492,8 @@ export default function PortfolioApp() {
           return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.avgCost) || 0) * fr;
         }, 0);
 
-        const currentComputedCash = cashActive ? (totalCapital - investedCostForCash + cashAdjTotal) : 0;
-        const totalAssetVal = investedVal + Math.max(0, currentComputedCash);
+        const currentComputedCash = totalCapital - investedCostForCash + cashAdjTotal;
+        const totalAssetVal = investedVal + currentComputedCash;
 
         const existing = (historyRef.current || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-30');
         const histNext = sanitizeAndPruneHistory([...existing, { date: slotDate, value: totalAssetVal }]);
@@ -1542,8 +1542,8 @@ export default function PortfolioApp() {
       return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.avgCost) || 0) * fr;
     }, 0);
 
-    const currentComputedCash = cashActive ? (totalCapital - investedCostForCash + cashAdjTotal) : 0;
-    const totalAssetVal = investedVal + Math.max(0, currentComputedCash);
+    const currentComputedCash = totalCapital - investedCostForCash + cashAdjTotal;
+    const totalAssetVal = investedVal + currentComputedCash;
 
     const existing = (history || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-30');
     const histNext = sanitizeAndPruneHistory([...existing, { date: slotDate, value: totalAssetVal }]);
@@ -1661,26 +1661,29 @@ export default function PortfolioApp() {
     reader.readAsText(file);
   };
 
+  // แก้ไขข้อ 11: Import ข้อมูลครบถ้วนและกำหนดค่าเริ่มต้นให้ฟิลด์ที่หายไป
   const confirmImport = async () => {
     if (!pendingImport) return;
     await saveHoldings(Array.isArray(pendingImport.holdings) ? pendingImport.holdings : []);
-    if (Array.isArray(pendingImport.tradeLogs)) await saveTradeLogs(pendingImport.tradeLogs);
+    await saveTradeLogs(Array.isArray(pendingImport.tradeLogs) ? pendingImport.tradeLogs : []);
     await saveHistory(Array.isArray(pendingImport.history) ? sanitizeAndPruneHistory(pendingImport.history) : []);
-    if (typeof pendingImport.fxRate === 'number' && pendingImport.fxRate > 0) {
-      setFxRate(pendingImport.fxRate);
-      try { await window.storage.set('fx-usdthb', String(pendingImport.fxRate), false); } catch (e) { /* ignore */ }
-    }
-    if (typeof pendingImport.backendUrl === 'string') {
-      setBackendUrl(pendingImport.backendUrl);
-      setBackendDraft(pendingImport.backendUrl);
-      try { await window.storage.set('backend-url', pendingImport.backendUrl, false); } catch (e) { /* ignore */ }
-    }
-    if (typeof pendingImport.initialCapital === 'number' && pendingImport.initialCapital >= 0) {
-      setInitialCapital(pendingImport.initialCapital);
-      setInitialCapitalDraft(pendingImport.initialCapital > 0 ? String(pendingImport.initialCapital) : '');
-      try { await window.storage.set('initial-capital', String(pendingImport.initialCapital), false); } catch (e) { /* ignore */ }
-    }
-    if (Array.isArray(pendingImport.ledger)) { await saveLedger(pendingImport.ledger); }
+    
+    const fx = typeof pendingImport.fxRate === 'number' && pendingImport.fxRate > 0 ? pendingImport.fxRate : 36.5;
+    setFxRate(fx);
+    setFxDraft(String(fx));
+    try { await window.storage.set('fx-usdthb', String(fx), false); } catch (e) { /* ignore */ }
+
+    const url = typeof pendingImport.backendUrl === 'string' ? pendingImport.backendUrl : '';
+    setBackendUrl(url);
+    setBackendDraft(url);
+    try { await window.storage.set('backend-url', url, false); } catch (e) { /* ignore */ }
+
+    const capital = typeof pendingImport.initialCapital === 'number' && pendingImport.initialCapital >= 0 ? pendingImport.initialCapital : 0;
+    setInitialCapital(capital);
+    setInitialCapitalDraft(capital > 0 ? String(capital) : '');
+    try { await window.storage.set('initial-capital', String(capital), false); } catch (e) { /* ignore */ }
+
+    await saveLedger(Array.isArray(pendingImport.ledger) ? pendingImport.ledger : []);
     setPendingImport(null);
     showToast('นำเข้าข้อมูลสำเร็จ');
   };
@@ -1725,8 +1728,15 @@ export default function PortfolioApp() {
     });
   };
 
+  // แก้ไขข้อ 11: ล้างข้อมูลหมดจดรวมถึงทุนเริ่มต้นสะสม
   const clearAll = async () => {
-    await saveHoldings([]); await saveTradeLogs([]); await saveHistory([]); await saveLedger([]);
+    await saveHoldings([]); 
+    await saveTradeLogs([]); 
+    await saveHistory([]); 
+    await saveLedger([]);
+    setInitialCapital(0);
+    setInitialCapitalDraft('');
+    try { await window.storage.set('initial-capital', '0', false); } catch (e) { /* ignore */ }
     setConfirmClear(false);
     showToast('ล้างข้อมูลทั้งหมดแล้ว');
   };
@@ -1769,6 +1779,31 @@ export default function PortfolioApp() {
       return sum + feeThb;
     }, 0);
   }, [filteredTradeLogs, fxRate]);
+
+  const searchFilteredAssetPnL = useMemo(() => {
+    const q = tradeSearchQuery.trim().toLowerCase();
+    if (!q) return null;
+    const matchingLogs = (tradeLogs || []).filter((log) => log && (log.assetName || '').toLowerCase().includes(q));
+    if (matchingLogs.length === 0) return null;
+    let totalPnlThb = 0;
+    matchingLogs.forEach(l => {
+      if (!l) return;
+      const logFx = (l.currency === 'USD' && l.assetType !== 'th_stock' && l.instrumentType !== 'dr') ? (l.tradeFx ? parseFloat(l.tradeFx) : fxRate) : 1;
+      let pnlVal = l.pnlThb !== undefined ? l.pnlThb : (l.pnl || 0) * logFx;
+      const effInst = getEffectiveInstrumentType(l.assetType, l.instrumentType);
+      const excludeFee = isFeeExcludedFromAssetCost(l.assetType, effInst);
+      if (excludeFee && l.feeThbRecord) {
+        pnlVal -= l.feeThbRecord;
+      }
+      totalPnlThb += pnlVal;
+    });
+    const assetName = matchingLogs[0]?.assetName || '';
+    return { name: assetName, pnl: totalPnlThb, count: matchingLogs.length };
+  }, [tradeLogs, fxRate, tradeSearchQuery]);
+
+  const isDirectFeeType = checkIsDirectFee(form.type, form.instrumentType);
+  // แก้ไขข้อ 9: แสดงช่องค่าธรรมเนียมสำหรับ หุ้นนอก, ทองคำ, DR, ETF และหุ้นไทย (ซ่อนเฉพาะคริปโตตามโจทย์)
+  const isFeeHiddenForType = form.type === 'crypto';
 
   return (
     <div className="pf-root">
