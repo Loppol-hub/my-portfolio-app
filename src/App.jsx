@@ -1179,37 +1179,21 @@ export default function PortfolioApp() {
           note: form.note.trim()
         });
       } else {
-        const qty = parseFloat(form.quantity);
-        const avg = isCash ? 1 : parseFloat(form.avgCost);
-        const price = isCash ? 1 : parseFloat(form.currentPrice);
-        if (isNaN(qty) || qty <= 0) { setFormError('จำนวนต้องเป็นตัวเลขมากกว่า 0'); return; }
-        if (!isCash && (isNaN(avg) || avg < 0)) { setFormError('ราคาต้นทุนไม่ถูกต้อง'); return; }
-        if (!isCash && (isNaN(price) || price < 0)) { setFormError('ราคาปัจจุบันไม่ถูกต้อง'); return; }
-        
-        currentQty = qty;
-        currentAvg = avg;
-        currentPrice = price;
-
-        const customFx = form.tradeFx && parseFloat(form.tradeFx) > 0 ? parseFloat(form.tradeFx) : (target.createdFxRate || fxRate);
-        const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
-        currentTotalCostThb = isCash ? 0 : (qty * avg * (isUsdAsset ? customFx : 1));
+        // กรณีเลือก "แก้ไขข้อมูล" (tradeAction === 'none')
+        // ไม่แตะต้องฐานข้อมูลด้านล่าง ปล่อยค่าคงเดิมหรืออัปเดตชื่อ/หมวดหมู่
       }
 
       saveLedger(newLedgerEntries);
       saveTradeLogs(newLogs);
 
+      // ไม่อัปเดตทับจำนวนหรือราคาต้นทุน/ปัจจุบันด้านล่าง ถ้าอยู่ในโหมดซื้อ/ขายเพิ่มหรือขายออก
       const next = holdings.map((h) => h && h.id === editingId ? { 
         ...h, 
         name, 
         ticker, 
         type: form.type, 
-        quantity: currentQty, 
-        avgCost: Number(currentAvg), 
-        currentPrice: currentPrice, 
-        currency, 
         industry, 
         instrumentType,
-        totalCostThb: currentTotalCostThb 
       } : h);
       saveHoldings(next);
       showToast('บันทึกข้อมูลเรียบร้อย');
@@ -1229,7 +1213,9 @@ export default function PortfolioApp() {
       let feeAmount = 0;
       let feeThb = 0;
       let recordFeeForDisplay = 0;
-      if (!isCash) {
+      const isFeeHiddenForType = ['foreign_stock', 'gold', 'crypto'].includes(form.type) || ['dr', 'etf'].includes(instrumentType);
+
+      if (!isCash && !isFeeHiddenForType) {
         if (isDirectFee) {
           if (isUsdAsset) {
             if (form.feeCurrency === 'THB') {
@@ -1259,7 +1245,7 @@ export default function PortfolioApp() {
 
       let newLedger = [...ledger];
       const feeEntryId = genId() + '_fee';
-      const shouldRecordFeeInLedger = !isCash && excludeFeeFromCost && form.type !== 'th_stock' && form.type !== 'crypto';
+      const shouldRecordFeeInLedger = !isCash && excludeFeeFromCost && form.type !== 'th_stock' && form.type !== 'crypto' && !isFeeHiddenForType;
       if (shouldRecordFeeInLedger && feeThb > 0) {
         newLedger.push({
           id: feeEntryId,
@@ -1287,7 +1273,6 @@ export default function PortfolioApp() {
         lastUpdated: todayStr() 
       }];
 
-      // กฎข้อ 2: กด +เพิ่ม บันทึกสินทรัพย์แล้วไม่ต้องสร้าง log ซื้ออัตโนมัติในหน้าประวัติการซื้อขายทั้งหมด
       saveHoldings(nextHoldings);
       saveLedger(newLedger);
       showToast('เพิ่มสินทรัพย์แล้ว');
@@ -1544,7 +1529,7 @@ export default function PortfolioApp() {
   };
 
   const exportData = () => {
-    const payload = { app: 'portfolio-tracker', version: 2, exportedAt: new Date().toISOString(), holdings, tradeLogs, history, fxRate, backendUrl, initialCapital, ledger, historicalSummary };
+    const payload = { app: 'portfolio-tracker', version: 2, exportedAt: new Date().toISOString(), holdings, tradeLogs, history, fxRate, backendUrl, initialCapital, ledger };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1580,11 +1565,7 @@ export default function PortfolioApp() {
   const confirmImport = async () => {
     if (!pendingImport) return;
     await saveHoldings(Array.isArray(pendingImport.holdings) ? pendingImport.holdings : []);
-    const resLogs = pruneAndSummarizeTradeLogs(pendingImport.tradeLogs || [], pendingImport.historicalSummary || { profit: 0, loss: 0, fee: 0 });
-    await saveTradeLogs(resLogs.pruned);
-    setHistoricalSummary(resLogs.summary);
-    try { await window.storage.set('historical-trade-summary', JSON.stringify(resLogs.summary), false); } catch (e) { /* ignore */ }
-
+    await saveTradeLogs(Array.isArray(pendingImport.tradeLogs) ? pruneTradeLogs(pendingImport.tradeLogs) : []);
     await saveHistory(Array.isArray(pendingImport.history) ? sanitizeAndPruneHistory(pendingImport.history) : []);
     if (typeof pendingImport.fxRate === 'number' && pendingImport.fxRate > 0) {
       setFxRate(pendingImport.fxRate);
@@ -1647,8 +1628,6 @@ export default function PortfolioApp() {
 
   const clearAll = async () => {
     await saveHoldings([]); await saveTradeLogs([]); await saveHistory([]); await saveLedger([]);
-    setHistoricalSummary({ profit: 0, loss: 0, fee: 0 });
-    try { await window.storage.set('historical-trade-summary', JSON.stringify({ profit: 0, loss: 0, fee: 0 }), false); } catch (e) { /* ignore */ }
     setConfirmClear(false);
     showToast('ล้างข้อมูลทั้งหมดแล้ว');
   };
@@ -1709,6 +1688,7 @@ export default function PortfolioApp() {
   }, [tradeLogs, tradeSearchQuery]);
 
   const isDirectFeeType = checkIsDirectFee(form.type, form.instrumentType);
+  const isFeeHiddenForType = ['foreign_stock', 'gold', 'crypto'].includes(form.type) || ['dr', 'etf'].includes(form.instrumentType);
 
   return (
     <div className="pf-root">
@@ -2960,41 +2940,43 @@ export default function PortfolioApp() {
               </div>
             ) : (
               <>
-                <div className="pf-row2">
-                  <div className="pf-field">
-                    <label className="pf-label">จำนวน</label>
-                    <input className="pf-input pf-mono" inputMode="decimal" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} placeholder="0" />
-                  </div>
-                  <div className="pf-field">
-                    <label className="pf-label">ราคาต่อหน่วย</label>
-                    <input className="pf-input pf-mono" inputMode="decimal" value={form.avgCost} onChange={(e) => setForm({ ...form, avgCost: e.target.value })} placeholder="0.00" />
-                  </div>
-                </div>
-                <div className="pf-field">
-                  <label className="pf-label">ราคาปัจจุบัน</label>
-                  <input className="pf-input pf-mono" inputMode="decimal" value={form.currentPrice} onChange={(e) => setForm({ ...form, currentPrice: e.target.value })} placeholder="0.00" />
-                </div>
-
                 {!editingId && (
                   <>
                     <div className="pf-row2">
                       <div className="pf-field">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                          <label className="pf-label" style={{ margin: 0 }}>ค่าธรรมเนียม {isDirectFeeType ? '' : '(%)'}</label>
-                          {isDirectFeeType && (
-                            <div style={{ display: 'flex', gap: '4px' }}>
-                              <button type="button" className={form.feeCurrency !== 'USD' ? 'pf-year-pill-active' : 'pf-year-pill'} style={{ padding: '1px 6px', fontSize: '10px' }} onClick={() => setForm({ ...form, feeCurrency: 'THB' })}>บาท</button>
-                              <button type="button" className={form.feeCurrency === 'USD' ? 'pf-year-pill-active' : 'pf-year-pill'} style={{ padding: '1px 6px', fontSize: '10px' }} onClick={() => setForm({ ...form, feeCurrency: 'USD' })}>USD</button>
-                            </div>
-                          )}
-                        </div>
-                        <input className="pf-input pf-mono" inputMode="decimal" value={form.feePct} onChange={(e) => setForm({ ...form, feePct: e.target.value })} placeholder="0" />
+                        <label className="pf-label">จำนวน</label>
+                        <input className="pf-input pf-mono" inputMode="decimal" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} placeholder="0" />
                       </div>
                       <div className="pf-field">
-                        <label className="pf-label">วันที่ทำรายการ</label>
-                        <input className="pf-input pf-mono" type="date" value={form.tradeDate} onChange={(e) => setForm({ ...form, tradeDate: e.target.value })} />
+                        <label className="pf-label">ราคาต่อหน่วย</label>
+                        <input className="pf-input pf-mono" inputMode="decimal" value={form.avgCost} onChange={(e) => setForm({ ...form, avgCost: e.target.value })} placeholder="0.00" />
                       </div>
                     </div>
+                    <div className="pf-field">
+                      <label className="pf-label">ราคาปัจจุบัน</label>
+                      <input className="pf-input pf-mono" inputMode="decimal" value={form.currentPrice} onChange={(e) => setForm({ ...form, currentPrice: e.target.value })} placeholder="0.00" />
+                    </div>
+
+                    {!isFeeHiddenForType && (
+                      <div className="pf-row2">
+                        <div className="pf-field">
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                            <label className="pf-label" style={{ margin: 0 }}>ค่าธรรมเนียม {isDirectFeeType ? '' : '(%)'}</label>
+                            {isDirectFeeType && (
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <button type="button" className={form.feeCurrency !== 'USD' ? 'pf-year-pill-active' : 'pf-year-pill'} style={{ padding: '1px 6px', fontSize: '10px' }} onClick={() => setForm({ ...form, feeCurrency: 'THB' })}>บาท</button>
+                                <button type="button" className={form.feeCurrency === 'USD' ? 'pf-year-pill-active' : 'pf-year-pill'} style={{ padding: '1px 6px', fontSize: '10px' }} onClick={() => setForm({ ...form, feeCurrency: 'USD' })}>USD</button>
+                              </div>
+                            )}
+                          </div>
+                          <input className="pf-input pf-mono" inputMode="decimal" value={form.feePct} onChange={(e) => setForm({ ...form, feePct: e.target.value })} placeholder="0" />
+                        </div>
+                        <div className="pf-field">
+                          <label className="pf-label">วันที่ทำรายการ</label>
+                          <input className="pf-input pf-mono" type="date" value={form.tradeDate} onChange={(e) => setForm({ ...form, tradeDate: e.target.value })} />
+                        </div>
+                      </div>
+                    )}
                     <div className="pf-field">
                       <label className="pf-label">หมายเหตุการซื้อ</label>
                       <input className="pf-input" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="เช่น ซื้อครั้งแรก" />
@@ -3204,7 +3186,7 @@ export default function PortfolioApp() {
                         <span className={`pf-mono pf-ledger-amount ${['capital_add', 'profit', 'dividend'].includes(e.type) || (e.type === 'rebalance' && e.amount >= 0) ? 'pf-chip-pos' : 'pf-chip-neg'}`}>
                           {['capital_add', 'profit', 'dividend'].includes(e.type) || (e.type === 'rebalance' && e.amount >= 0) ? '+' : '-'}฿{fmt(Math.abs(e.amount), 2)}
                         </span>
-                        {e.type !== 'fee' && !e.id.toString().startsWith('log_pnl_') && !e.id.toString().startsWith('hist_') && (
+                        {e.type !== 'fee' && !e.id.toString().startsWith('log_pnl_') && (
                           <button style={{ background: 'transparent', border: '1px solid var(--gold)', borderRadius: '6px', cursor: 'pointer', padding: '4px', color: 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => requestDelete('ledger', e.id, LEDGER_LABELS[e.type] || e.type)} title="คืนค่ารายการ">
                             <RotateCcw size={14} />
                           </button>
