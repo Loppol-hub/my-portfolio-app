@@ -1478,6 +1478,67 @@ export default function PortfolioApp() {
     closePanel();
   };
 
+  const exportData = () => {
+    const payload = { app: 'portfolio-tracker', version: 2, exportedAt: new Date().toISOString(), holdings, tradeLogs, history, yearlyHistory, fxRate, backendUrl, initialCapital, ledger };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `portfolio-backup-${todayStr()}.json`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('ส่งออกไฟล์สำรองข้อมูลแล้ว');
+  };
+
+  const triggerImport = () => {
+    setImportError('');
+    if (fileInputRef.current) fileInputRef.current.click();
+  };
+
+  const handleImportFile = (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        if (!Array.isArray(data.holdings)) throw new Error('รูปแบบไฟล์ไม่ถูกต้อง');
+        setPendingImport(data);
+        setImportError('');
+      } catch (err) {
+        setImportError('อ่านไฟล์ไม่สำเร็จ');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const confirmImport = async () => {
+    if (!pendingImport) return;
+    await saveHoldings(Array.isArray(pendingImport.holdings) ? pendingImport.holdings : []);
+    await saveTradeLogs(Array.isArray(pendingImport.tradeLogs) ? pendingImport.tradeLogs : []);
+    await saveHistory(Array.isArray(pendingImport.history) ? sanitizeAndPruneHistory(pendingImport.history) : []);
+    await saveYearlyHistory(Array.isArray(pendingImport.yearlyHistory) ? sanitizeAndPruneYearlyHistory(pendingImport.yearlyHistory) : []);
+    
+    const fx = typeof pendingImport.fxRate === 'number' && pendingImport.fxRate > 0 ? pendingImport.fxRate : 36.5;
+    setFxRate(fx);
+    setFxDraft(String(fx));
+    try { await window.storage.set('fx-usdthb', String(fx), false); } catch (e) { /* ignore */ }
+
+    const url = typeof pendingImport.backendUrl === 'string' ? pendingImport.backendUrl : '';
+    setBackendUrl(url);
+    setBackendDraft(url);
+    try { await window.storage.set('backend-url', url, false); } catch (e) { /* ignore */ }
+
+    const capital = typeof pendingImport.initialCapital === 'number' && pendingImport.initialCapital >= 0 ? pendingImport.initialCapital : 0;
+    setInitialCapital(capital);
+    setInitialCapitalDraft(capital > 0 ? String(capital) : '');
+    try { await window.storage.set('initial-capital', String(capital), false); } catch (e) { /* ignore */ }
+
+    await saveLedger(Array.isArray(pendingImport.ledger) ? pendingImport.ledger : []);
+    setPendingImport(null);
+    showToast('นำเข้าข้อมูลสำเร็จ');
+  };
+
   return (
     <div className="pf-root">
       <style>{`
