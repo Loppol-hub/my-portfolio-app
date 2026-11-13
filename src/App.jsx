@@ -888,34 +888,6 @@ export default function PortfolioApp() {
     }));
   };
 
-  const getAssetLots = (assetId, currentQty, currentPrice, assetCurrency, assetType, instrumentType) => {
-    try {
-      const targetHolding = (holdings || []).find(h => h && h.id === assetId);
-      if (!targetHolding) return [];
-      const hQty = parseFloat(targetHolding.quantity) || 0;
-      const hCostThb = targetHolding.totalCostThb !== undefined && targetHolding.totalCostThb !== null 
-        ? targetHolding.totalCostThb 
-        : (hQty * (parseFloat(targetHolding.avgCost) || 0) * (targetHolding.currency === 'USD' && targetHolding.instrumentType !== 'dr' ? (targetHolding.createdFxRate || fxRate) : 1));
-      
-      const isDr = instrumentType === 'dr';
-      const isUsd = assetCurrency === 'USD' && !isDr;
-      
-      return [{
-        date: targetHolding.lastUpdated || todayStr(),
-        qty: hQty,
-        price: targetHolding.avgCost,
-        currency: targetHolding.currency,
-        tradeFx: targetHolding.createdFxRate || fxRate,
-        instrumentType: targetHolding.instrumentType,
-        days: calcDaysAgo(targetHolding.lastUpdated || todayStr()),
-        gainPct: hCostThb > 0 ? ((hQty * currentPrice * (isUsd ? getEffectiveRate(assetType, fxRate) : 1) - hCostThb) / hCostThb) * 100 : 0,
-        isUsd
-      }];
-    } catch (e) {
-      return [];
-    }
-  };
-
   const submitForm = () => {
     const isCash = form.type === 'cash';
     const name = (form.name || '').trim();
