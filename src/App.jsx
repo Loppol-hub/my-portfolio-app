@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Pencil, Trash2, RefreshCw, X, TrendingUp, TrendingDown, Inbox, Zap, Wallet, ChevronRight, ArrowUpDown, PlusCircle, MinusCircle, Gift, Sliders, Home, LayoutGrid, BarChart3, Settings, Search, History, RotateCcw, Calendar, ChevronRight as ChevronRightIcon } from 'lucide-react';
+import { Plus, Pencil, Trash2, RefreshCw, X, TrendingUp, TrendingDown, Inbox, Zap, Wallet, ChevronRight, ArrowUpDown, PlusCircle, MinusCircle, Gift, Sliders, Home, LayoutGrid, BarChart3, Settings, Search, History, Calendar, ChevronRight as ChevronRightIcon } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, LabelList } from 'recharts';
 
 const ASSET_TYPES = [
@@ -25,7 +25,6 @@ const getEffectiveInstrumentType = (type, instType) => {
   return (type === 'th_stock' || type === 'foreign_stock') ? (instType || 'stock') : 'stock';
 };
 
-// แก้ไขข้อ 9: กำหนดประเภทที่คิดค่าธรรมเนียมเข้าเลดเจอร์ (หุ้นนอก, ทองคำ, DR, ETF)
 const checkIsDirectFee = (type, instType) => {
   const effInst = getEffectiveInstrumentType(type, instType);
   return ['foreign_stock', 'gold'].includes(type) || ['dr', 'etf'].includes(effInst);
@@ -292,7 +291,11 @@ export default function PortfolioApp() {
   const [toast, setToast] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmDeleteTarget, setConfirmDeleteTarget] = useState(null);
-  const [confirmRevertTarget, setConfirmRevertTarget] = useState(null);
+  
+  // State สำหรับแก้ไขประวัติซื้อขาย (Edit Log)
+  const [editingLog, setEditingLog] = useState(null);
+  const [tradeLogForm, setTradeLogForm] = useState({ quantity: '', price: '', fee: '', date: todayStr(), note: '' });
+
   const [pendingImport, setPendingImport] = useState(null);
   const [importError, setImportError] = useState('');
   const fileInputRef = useRef(null);
@@ -562,8 +565,6 @@ export default function PortfolioApp() {
   ), [combinedLedger, performanceTotal]);
 
   const totalCapital = initialCapital + capitalAdjTotal;
-  
-  // แก้ไขข้อ 10: ให้ cashActive เป็นจริงเสมอหรือคำนวณเงินสดได้อิสระ ไม่ดักด้วย initialCapital > 0 เพื่อป้องกันเงินสดหายยามทุนเริ่มต้นเป็น 0
   const computedCash = (totalCapital - totalInvestedCost + cashAdjTotal);
 
   const cashRatio = useMemo(() => {
@@ -848,7 +849,7 @@ export default function PortfolioApp() {
     setPanel('form');
   };
 
-  const closePanel = () => { setPanel(null); setEditingId(null); setUpdateDraft({}); setLedgerSearchQuery(''); };
+  const closePanel = () => { setPanel(null); setEditingId(null); setUpdateDraft({}); setLedgerSearchQuery(''); setEditingLog(null); };
   
   const onFormTypeChange = (type) => {
     setForm((f) => ({ 
@@ -861,98 +862,27 @@ export default function PortfolioApp() {
 
   const getAssetLots = (assetId, currentQty, currentPrice, assetCurrency, assetType, instrumentType) => {
     try {
-      const logs = (tradeLogs || []).filter(l => l && l.assetId === assetId).sort((a, b) => {
-        const dateComp = (a?.date || '').localeCompare(b?.date || '');
-        if (dateComp !== 0) return dateComp;
-        return String(a?.id || '').localeCompare(String(b?.id || ''));
-      });
-      let lots = [];
-      logs.forEach(l => {
-        if (l && l.action === 'buy') {
-          lots.push({ date: l.date, qty: l.quantity, price: l.price, currency: l.currency, tradeFx: l.tradeFx, instrumentType: l.instrumentType, totalCostThb: l.totalCostThb });
-        } else if (l && l.action === 'sell') {
-          let remSell = l.quantity;
-          while (remSell > 0 && lots.length > 0) {
-            if (lots[0].qty <= remSell + 1e-8) {
-              remSell -= lots[0].qty;
-              lots.shift();
-            } else {
-              const oldQty = lots[0].qty;
-              lots[0].qty -= remSell;
-              if (lots[0].totalCostThb !== undefined && lots[0].totalCostThb !== null && oldQty > 0) {
-                lots[0].totalCostThb *= (lots[0].qty / oldQty);
-              }
-              remSell = 0;
-            }
-          }
-        }
-      });
-      if (lots.length === 0) {
-        const targetHolding = holdings.find(h => h && h.id === assetId);
-        if (targetHolding) {
-          lots.push({
-            date: targetHolding.lastUpdated || todayStr(),
-            qty: targetHolding.quantity,
-            price: targetHolding.avgCost,
-            currency: targetHolding.currency,
-            tradeFx: targetHolding.createdFxRate || fxRate,
-            instrumentType: targetHolding.instrumentType,
-            totalCostThb: targetHolding.totalCostThb
-          });
-        }
-      }
-
       const targetHolding = holdings.find(h => h && h.id === assetId);
-      if (targetHolding) {
-        const hQty = parseFloat(targetHolding.quantity) || 0;
-        const hCostThb = targetHolding.totalCostThb !== undefined && targetHolding.totalCostThb !== null 
-          ? targetHolding.totalCostThb 
-          : (hQty * (parseFloat(targetHolding.avgCost) || 0) * (targetHolding.currency === 'USD' && targetHolding.instrumentType !== 'dr' ? (targetHolding.createdFxRate || fxRate) : 1));
-        
-        const currentTotalLotQty = lots.reduce((s, l) => s + (l.qty || 0), 0);
-        if (currentTotalLotQty > 0 && Math.abs(currentTotalLotQty - hQty) > 1e-8) {
-          const diff = hQty - currentTotalLotQty;
-          lots[lots.length - 1].qty += diff;
-          if (lots[lots.length - 1].qty < 0) lots[lots.length - 1].qty = 0;
-        } else if (lots.length === 0 && hQty > 0) {
-          lots.push({
-            date: targetHolding.lastUpdated || todayStr(),
-            qty: hQty,
-            price: targetHolding.avgCost,
-            currency: targetHolding.currency,
-            tradeFx: targetHolding.createdFxRate || fxRate,
-            instrumentType: targetHolding.instrumentType,
-            totalCostThb: hCostThb
-          });
-        }
-
-        const rawLotsCost = lots.reduce((s, l) => s + (l.totalCostThb !== undefined ? l.totalCostThb : (l.qty * (l.price || 0) * (l.currency === 'USD' && l.instrumentType !== 'dr' ? (l.tradeFx || fxRate) : 1))), 0);
-        if (rawLotsCost > 0 && hCostThb > 0) {
-          lots.forEach(l => {
-            const baseCost = l.totalCostThb !== undefined ? l.totalCostThb : (l.qty * (l.price || 0) * (l.currency === 'USD' && l.instrumentType !== 'dr' ? (l.tradeFx || fxRate) : 1));
-            l.totalCostThb = baseCost * (hCostThb / rawLotsCost);
-          });
-        } else if (hCostThb > 0 && lots.length === 1) {
-          lots[0].totalCostThb = hCostThb;
-        }
-      }
-
+      if (!targetHolding) return [];
+      const hQty = parseFloat(targetHolding.quantity) || 0;
+      const hCostThb = targetHolding.totalCostThb !== undefined && targetHolding.totalCostThb !== null 
+        ? targetHolding.totalCostThb 
+        : (hQty * (parseFloat(targetHolding.avgCost) || 0) * (targetHolding.currency === 'USD' && targetHolding.instrumentType !== 'dr' ? (targetHolding.createdFxRate || fxRate) : 1));
+      
       const isDr = instrumentType === 'dr';
       const isUsd = assetCurrency === 'USD' && !isDr;
-      return lots.map(lot => {
-        const days = calcDaysAgo(lot?.date);
-        const lotCurPrice = currentPrice;
-        const lotQty = lot?.qty || 0;
-
-        const lotIsUsd = lot?.currency === 'USD' && lot?.instrumentType !== 'dr';
-        const lotValThb = lotQty * lotCurPrice * (isUsd ? getEffectiveRate(assetType, fxRate) : 1);
-        const lotCostThb = lot?.totalCostThb !== undefined ? lot.totalCostThb : (lotQty * (lot?.price || 0) * (lotIsUsd ? (lot?.tradeFx || fxRate) : 1));
-
-        const lotGain = lotValThb - lotCostThb;
-        const lotGainPct = lotCostThb > 0 ? (lotGain / lotCostThb) * 100 : 0;
-
-        return { ...lot, days, gainPct: lotGainPct, isUsd: lotIsUsd };
-      });
+      
+      return [{
+        date: targetHolding.lastUpdated || todayStr(),
+        qty: hQty,
+        price: targetHolding.avgCost,
+        currency: targetHolding.currency,
+        tradeFx: targetHolding.createdFxRate || fxRate,
+        instrumentType: targetHolding.instrumentType,
+        days: calcDaysAgo(targetHolding.lastUpdated || todayStr()),
+        gainPct: hCostThb > 0 ? ((hQty * currentPrice * (isUsd ? getEffectiveRate(assetType, fxRate) : 1) - hCostThb) / hCostThb) * 100 : 0,
+        isUsd
+      }];
     } catch (e) {
       return [];
     }
@@ -1024,10 +954,6 @@ export default function PortfolioApp() {
         const addTotalCostThb = excludeFeeFromCost ? subtotalThb : (subtotalThb + feeThb);
         const addAvgCostImpact = excludeFeeFromCost ? subtotal : (subtotal + feeAmount);
 
-        const prevQty = currentQty;
-        const prevAvgCost = currentAvg;
-        const prevTotalCostThb = currentTotalCostThb;
-
         const newQty = currentQty + addQty;
         const totalCostBefore = currentQty * currentAvg;
         const newAvg = newQty > 0 ? (totalCostBefore + addAvgCostImpact) / newQty : 0;
@@ -1065,9 +991,6 @@ export default function PortfolioApp() {
           tradeFx: customFx,
           date: form.tradeDate || todayStr(),
           note: (form.note || '').trim(),
-          prevQty: prevQty,
-          prevAvgCost: prevAvgCost,
-          prevTotalCostThb: prevTotalCostThb,
           totalCostThb: addTotalCostThb
         });
       } else if (form.tradeAction === 'sell') {
@@ -1117,10 +1040,6 @@ export default function PortfolioApp() {
 
         const pnlAssetCurrency = isUsdAsset && customFx > 0 ? netPnlThb / customFx : netPnlThb;
 
-        const prevQty = currentQty;
-        const prevAvgCost = currentAvg;
-        const prevTotalCostThb = currentTotalCostThb;
-
         currentQty = currentQty - sellQty;
         if (currentQty <= 1e-8) currentQty = 0;
 
@@ -1148,9 +1067,6 @@ export default function PortfolioApp() {
           tradeFx: customFx,
           date: form.tradeDate || todayStr(),
           note: form.note.trim(),
-          prevQty: prevQty,
-          prevAvgCost: prevAvgCost,
-          prevTotalCostThb: prevTotalCostThb,
           totalCostThb: costThbSold
         });
       } else {
@@ -1287,9 +1203,6 @@ export default function PortfolioApp() {
         tradeFx: customFx,
         date: form.tradeDate || todayStr(),
         note: (form.note || '').trim(),
-        prevQty: 0,
-        prevAvgCost: 0,
-        prevTotalCostThb: 0,
         totalCostThb: totalCostThb
       }, ...(tradeLogs || [])];
 
@@ -1306,94 +1219,87 @@ export default function PortfolioApp() {
     showToast('ลบรายการแล้ว');
   };
 
-  const executeRevertTrade = (log) => {
-    if (!log) return;
-    const target = holdings.find(h => h && h.id === log.assetId);
-
-    const resolvedTicker = log.ticker || (tradeLogs || []).find(l => l && l.assetId === log.assetId && l.ticker)?.ticker || '';
-    const resolvedIndustry = log.industry || (tradeLogs || []).find(l => l && l.assetId === log.assetId && l.industry)?.industry || '';
-
-    if (log.prevQty !== undefined && log.prevAvgCost !== undefined) {
-      const restoredTotalCostThb = log.prevTotalCostThb !== undefined 
-        ? log.prevTotalCostThb 
-        : (log.prevQty * log.prevAvgCost * (log.currency === 'USD' && log.instrumentType !== 'dr' ? (target?.createdFxRate || fxRate) : 1));
-
-      if (log.prevQty <= 1e-8) {
-        saveHoldings(holdings.filter(h => h && h.id !== log.assetId));
-      } else {
-        if (target) {
-          saveHoldings(holdings.map(h => h && h.id === log.assetId ? { 
-            ...h, 
-            quantity: log.prevQty, 
-            avgCost: log.prevAvgCost, 
-            totalCostThb: restoredTotalCostThb,
-            ticker: h.ticker || resolvedTicker,
-            industry: h.industry || resolvedIndustry
-          } : h));
-        } else {
-          const restoredHolding = {
-            id: log.assetId,
-            name: log.assetName || 'สินทรัพย์',
-            type: log.assetType || 'th_stock',
-            ticker: resolvedTicker,
-            industry: resolvedIndustry,
-            quantity: log.prevQty,
-            avgCost: log.prevAvgCost,
-            currentPrice: log.price || 0,
-            currency: log.currency || 'THB',
-            instrumentType: log.instrumentType || 'stock',
-            totalCostThb: restoredTotalCostThb,
-            createdFxRate: log.tradeFx || fxRate,
-            lastUpdated: todayStr()
-          };
-          saveHoldings([...holdings, restoredHolding]);
-        }
-      }
-    } else {
-      if (log.action === 'buy' && target) {
-        const nextQty = target.quantity - log.quantity;
-        if (nextQty <= 1e-8) {
-          saveHoldings(holdings.filter(h => h.id !== log.assetId));
-        } else {
-          saveHoldings(holdings.map(h => h.id === log.assetId ? { ...h, quantity: nextQty } : h));
-        }
-      } else if (log.action === 'sell') {
-        const sellQty = parseFloat(log.quantity) || 0;
-        if (target) {
-          saveHoldings(holdings.map(h => h.id === log.assetId ? { 
-            ...h, 
-            quantity: h.quantity + sellQty,
-            ticker: h.ticker || resolvedTicker,
-            industry: h.industry || resolvedIndustry
-          } : h));
-        } else {
-          const restoredHolding = {
-            id: log.assetId || Date.now().toString(),
-            name: log.assetName || 'สินทรัพย์',
-            type: log.assetType || 'th_stock',
-            ticker: resolvedTicker,
-            industry: resolvedIndustry,
-            quantity: sellQty,
-            avgCost: log.price || 0,
-            currentPrice: log.price || 0,
-            currency: log.currency || 'THB',
-            instrumentType: log.instrumentType || 'stock',
-            lastUpdated: todayStr()
-          };
-          saveHoldings([...holdings, restoredHolding]);
-        }
-      }
+  // ฟังก์ชันลบประวัติซื้อขาย (Trade Log) อย่างอิสระ
+  const executeDeleteTradeLog = (logId) => {
+    const targetLog = (tradeLogs || []).find(l => l && l.id === logId);
+    if (targetLog && targetLog.ledgerFeeId) {
+      saveLedger((ledger || []).filter(e => e && e.id !== targetLog.ledgerFeeId));
     }
-
-    if (log.ledgerFeeId) {
-      saveLedger((ledger || []).filter(e => e && e.id !== log.ledgerFeeId));
-    }
-
-    const nextLogs = (tradeLogs || []).filter(l => l && l.id !== log.id);
+    const nextLogs = (tradeLogs || []).filter(l => l && l.id !== logId);
     saveTradeLogs(nextLogs);
+    setConfirmDeleteTarget(null);
+    showToast('ลบประวัติซื้อขายสำเร็จ');
+  };
 
-    setConfirmRevertTarget(null);
-    showToast(`คืนค่ารายการสำเร็จ`);
+  // ฟังก์ชันบันทึกการแก้ไขประวัติซื้อขาย (Edit Log)
+  const submitEditLog = () => {
+    if (!editingLog) return;
+    const qty = parseFloat(tradeLogForm.quantity);
+    const price = parseFloat(tradeLogForm.price);
+    const feeVal = parseFloat(tradeLogForm.fee) || 0;
+    if (isNaN(qty) || qty <= 0 || isNaN(price) || price < 0) {
+      showToast('กรอกจำนวนและราคาให้ถูกต้อง');
+      return;
+    }
+
+    const isUsdAsset = editingLog.currency === 'USD' && editingLog.instrumentType !== 'dr';
+    const logFx = isUsdAsset ? (parseFloat(editingLog.tradeFx) || fxRate) : 1;
+    
+    let updatedPnl = editingLog.pnl;
+    let updatedPnlThb = editingLog.pnlThb;
+    let updatedFeeThbRecord = editingLog.feeThbRecord;
+
+    if (editingLog.action === 'sell') {
+      const costThbSold = editingLog.totalCostThb || 0;
+      const saleThb = qty * price * (isUsdAsset ? logFx : 1);
+      const effInst = getEffectiveInstrumentType(editingLog.assetType, editingLog.instrumentType);
+      const excludeFee = isFeeExcludedFromAssetCost(editingLog.assetType, effInst);
+      
+      let feeThb = 0;
+      if (editingLog.assetType === 'th_stock' && effInst === 'stock') {
+        feeThb = (saleThb * feeVal) / 100;
+      } else if (checkIsDirectFee(editingLog.assetType, effInst)) {
+        feeThb = editingLog.currency === 'USD' ? (feeVal * logFx) : feeVal;
+      } else {
+        feeThb = (saleThb * feeVal) / 100;
+      }
+
+      updatedFeeThbRecord = feeThb;
+      if (excludeFee) {
+        updatedPnlThb = saleThb - costThbSold;
+      } else {
+        updatedPnlThb = saleThb - costThbSold - feeThb;
+      }
+      updatedPnl = isUsdAsset && logFx > 0 ? updatedPnlThb / logFx : updatedPnlThb;
+    } else {
+      const subtotal = qty * price;
+      const subtotalThb = isUsdAsset ? subtotal * logFx : subtotal;
+      const effInst = getEffectiveInstrumentType(editingLog.assetType, editingLog.instrumentType);
+      const isDirect = checkIsDirectFee(editingLog.assetType, effInst);
+      let feeThb = 0;
+      if (isDirect) {
+        feeThb = editingLog.currency === 'USD' ? feeVal * logFx : feeVal;
+      } else {
+        feeThb = isUsdAsset ? ((subtotal * feeVal) / 100) * logFx : (subtotal * feeVal) / 100;
+      }
+      updatedFeeThbRecord = feeThb;
+    }
+
+    const nextLogs = tradeLogs.map(l => l && l.id === editingLog.id ? {
+      ...l,
+      quantity: qty,
+      price: price,
+      fee: feeVal,
+      feeThbRecord: updatedFeeThbRecord,
+      pnl: updatedPnl,
+      pnlThb: updatedPnlThb,
+      date: tradeLogForm.date,
+      note: tradeLogForm.note.trim()
+    } : l);
+
+    saveTradeLogs(nextLogs);
+    setEditingLog(null);
+    showToast('แก้ไขประวัติซื้อขายสำเร็จ');
   };
 
   const requestDelete = (type, id, label) => setConfirmDeleteTarget({ type, id, label });
@@ -1402,6 +1308,7 @@ export default function PortfolioApp() {
     if (!confirmDeleteTarget) return;
     if (confirmDeleteTarget.type === 'holding') deleteHolding(confirmDeleteTarget.id);
     else if (confirmDeleteTarget.type === 'ledger') deleteLedgerEntry(confirmDeleteTarget.id);
+    else if (confirmDeleteTarget.type === 'tradelog') executeDeleteTradeLog(confirmDeleteTarget.id);
     setConfirmDeleteTarget(null);
   };
 
@@ -1661,7 +1568,6 @@ export default function PortfolioApp() {
     reader.readAsText(file);
   };
 
-  // แก้ไขข้อ 11: Import ข้อมูลครบถ้วนและกำหนดค่าเริ่มต้นให้ฟิลด์ที่หายไป
   const confirmImport = async () => {
     if (!pendingImport) return;
     await saveHoldings(Array.isArray(pendingImport.holdings) ? pendingImport.holdings : []);
@@ -1728,7 +1634,6 @@ export default function PortfolioApp() {
     });
   };
 
-  // แก้ไขข้อ 11: ล้างข้อมูลหมดจดรวมถึงทุนเริ่มต้นสะสม
   const clearAll = async () => {
     await saveHoldings([]); 
     await saveTradeLogs([]); 
@@ -1779,31 +1684,6 @@ export default function PortfolioApp() {
       return sum + feeThb;
     }, 0);
   }, [filteredTradeLogs, fxRate]);
-
-  const searchFilteredAssetPnL = useMemo(() => {
-    const q = tradeSearchQuery.trim().toLowerCase();
-    if (!q) return null;
-    const matchingLogs = (tradeLogs || []).filter((log) => log && (log.assetName || '').toLowerCase().includes(q));
-    if (matchingLogs.length === 0) return null;
-    let totalPnlThb = 0;
-    matchingLogs.forEach(l => {
-      if (!l) return;
-      const logFx = (l.currency === 'USD' && l.assetType !== 'th_stock' && l.instrumentType !== 'dr') ? (l.tradeFx ? parseFloat(l.tradeFx) : fxRate) : 1;
-      let pnlVal = l.pnlThb !== undefined ? l.pnlThb : (l.pnl || 0) * logFx;
-      const effInst = getEffectiveInstrumentType(l.assetType, l.instrumentType);
-      const excludeFee = isFeeExcludedFromAssetCost(l.assetType, effInst);
-      if (excludeFee && l.feeThbRecord) {
-        pnlVal -= l.feeThbRecord;
-      }
-      totalPnlThb += pnlVal;
-    });
-    const assetName = matchingLogs[0]?.assetName || '';
-    return { name: assetName, pnl: totalPnlThb, count: matchingLogs.length };
-  }, [tradeLogs, fxRate, tradeSearchQuery]);
-
-  const isDirectFeeType = checkIsDirectFee(form.type, form.instrumentType);
-  // แก้ไขข้อ 9: แสดงช่องค่าธรรมเนียมสำหรับ หุ้นนอก, ทองคำ, DR, ETF และหุ้นไทย (ซ่อนเฉพาะคริปโตตามโจทย์)
-  const isFeeHiddenForType = form.type === 'crypto';
 
   return (
     <div className="pf-root">
@@ -1902,6 +1782,7 @@ export default function PortfolioApp() {
         .pf-row-name-text { font-family: 'Fraunces', serif; font-weight: 600; font-size: 15.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .pf-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
         .pf-row-actions button { background: transparent; border: none; color: var(--muted); cursor: pointer; padding: 4px; border-radius: 6px; position: relative; z-index: 15; }
+        .pf-row-actions button:hover { color: var(--text); }
         .pf-row-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px; font-size: 12.5px; color: var(--muted); }
         .pf-row-meta b { color: var(--text); font-weight: 500; }
         .pf-ledger-amount { font-weight: 700; }
@@ -1924,7 +1805,6 @@ export default function PortfolioApp() {
         .pf-currency-toggle { display: flex; gap: 8px; }
         .pf-currency-toggle button { flex: 1; background: var(--surface); border: 1px solid var(--divider); color: var(--muted); border-radius: 10px; padding: 9px 8px; font-size: 13.5px; cursor: pointer; position: relative; z-index: 50; }
         .pf-currency-toggle button.pf-currency-active { background: var(--gold); color: #1A1400; border-color: var(--gold); font-weight: 600; }
-        .pf-currency-hint { color: var(--muted); font-size: 11.5px; margin-top: 6px; line-height: 1.5; }
         .pf-error { color: var(--neg); font-size: 12.5px; margin-bottom: 10px; }
         .pf-panel-actions { display: flex; gap: 10px; margin-top: 18px; }
         .pf-panel-actions .pf-btn { flex: 1; justify-content: center; }
@@ -2200,7 +2080,8 @@ export default function PortfolioApp() {
                                     </span>
                                   </div>
                                   <div className="pf-row-actions" onClick={(e) => e.stopPropagation()}>
-                                    <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
+                                    <button aria-label="แก้ไข" onClick={() => openEdit(h)} title="แก้ไขสินทรัพย์"><Pencil size={15} /></button>
+                                    <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)} title="ลบสินทรัพย์"><Trash2 size={15} /></button>
                                   </div>
                                 </div>
                                 <div className="pf-row-meta pf-mono">
@@ -2397,7 +2278,8 @@ export default function PortfolioApp() {
                                     </span>
                                   </div>
                                   <div className="pf-row-actions" onClick={(e) => e.stopPropagation()}>
-                                    <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
+                                    <button aria-label="แก้ไข" onClick={() => openEdit(h)} title="แก้ไขสินทรัพย์"><Pencil size={15} /></button>
+                                    <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)} title="ลบสินทรัพย์"><Trash2 size={15} /></button>
                                   </div>
                                 </div>
                                 <div className="pf-row-meta pf-mono">
@@ -2804,7 +2686,8 @@ export default function PortfolioApp() {
                                       <span className="pf-row-name-text">{h.name}</span>
                                     </div>
                                     <div className="pf-row-actions" onClick={(e) => e.stopPropagation()}>
-                                      <button aria-label="แก้ไข" onClick={() => openEdit(h)}><Pencil size={15} /></button>
+                                      <button aria-label="แก้ไข" onClick={() => openEdit(h)} title="แก้ไขสินทรัพย์"><Pencil size={15} /></button>
+                                      <button aria-label="ลบ" onClick={() => requestDelete('holding', h.id, h.name)} title="ลบสินทรัพย์"><Trash2 size={15} /></button>
                                     </div>
                                   </div>
                                   <div className="pf-row-meta pf-mono">
@@ -3428,8 +3311,6 @@ export default function PortfolioApp() {
                   const showNote = tradeSearchQuery.trim().length > 0 && log.note;
                   const isUsdAsset = log.currency === 'USD' && log.instrumentType !== 'dr';
                   const logFx = (log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (log.tradeFx ? parseFloat(log.tradeFx) : fxRate) : 1;
-                  
-                  const isLatestForAsset = (tradeLogs || []).find(l => l && l.assetId === log.assetId)?.id === log.id;
 
                   const displayPrice = isUsdAsset ? (log.price * logFx) : log.price;
                   const displayFeeThb = log.feeThbRecord !== undefined && log.feeThbRecord !== null 
@@ -3449,17 +3330,21 @@ export default function PortfolioApp() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span style={{ fontWeight: '600', fontFamily: 'Fraunces, serif' }}>{log.assetName}</span>
                           <span style={{ fontSize: '11px', padding: '1px 6px', borderRadius: '4px', background: isBuy ? 'rgba(52,211,153,0.15)' : 'rgba(252,165,165,0.15)', color: isBuy ? '#34d399' : '#fca5a5' }}>{isBuy ? 'ซื้อ' : 'ขาย'}</span>
-                          {isLatestForAsset && (
-                            <button 
-                              onClick={() => setConfirmRevertTarget(log)}
-                              style={{ background: 'transparent', border: '1px solid var(--divider)', borderRadius: '4px', padding: '2px 6px', fontSize: '10px', color: 'var(--gold)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}
-                              title="คืนค่ารายการล่าสุดนี้"
-                            >
-                              <RotateCcw size={10} /> คืนค่า
-                            </button>
-                          )}
                         </div>
-                        <span className="pf-mono" style={{ fontSize: '12px', color: 'var(--muted)' }}>{thaiDateAD(log.date)}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span className="pf-mono" style={{ fontSize: '12px', color: 'var(--muted)' }}>{thaiDateAD(log.date)}</span>
+                          <button style={{ background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: '2px' }} onClick={() => {
+                            setEditingLog(log);
+                            setTradeLogForm({
+                              quantity: String(log.quantity || ''),
+                              price: String(log.price || ''),
+                              fee: String(log.fee || ''),
+                              date: log.date || todayStr(),
+                              note: log.note || ''
+                            });
+                          }} title="แก้ไขประวัติ"><Pencil size={14} /></button>
+                          <button style={{ background: 'transparent', border: 'none', color: 'var(--neg)', cursor: 'pointer', padding: '2px' }} onClick={() => requestDelete('tradelog', log.id, log.assetName)} title="ลบประวัติ"><Trash2 size={14} /></button>
+                        </div>
                       </div>
                       <div className="pf-row-meta pf-mono" style={{ margin: 0, fontSize: '12px' }}>
                         <span>จำนวน <b>{fmt(log.quantity, 2, log.assetType === 'crypto')}</b></span>
@@ -3485,16 +3370,37 @@ export default function PortfolioApp() {
         </div>
       )}
 
-      {confirmRevertTarget && (
-        <div className="pf-modal-overlay" onClick={() => setConfirmRevertTarget(null)}>
-          <div className="pf-confirm-modal" onClick={(e) => e.stopPropagation()}>
-            <div style={{ marginBottom: 12, fontSize: 15, fontWeight: '600' }}>ยืนยันการคืนค่ารายการ?</div>
-            <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--muted)' }}>
-              ต้องการคืนค่ารายการล่าสุด "{confirmRevertTarget.assetName}" ({confirmRevertTarget.action === 'buy' ? 'ซื้อ' : 'ขาย'}) ใช่หรือไม่? ระบบจะปรับจำนวนหุ้นและยอดเงินกลับสู่สถานะเดิม
+      {/* Modal: แก้ไขประวัติซื้อขาย (Edit Log Modal) */}
+      {editingLog && (
+        <div className="pf-modal-overlay" onClick={() => setEditingLog(null)}>
+          <div className="pf-confirm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '380px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <div style={{ fontSize: '16px', fontWeight: '600', fontFamily: 'Fraunces, serif' }}>แก้ไขประวัติ: {editingLog.assetName}</div>
+              <button className="pf-icon-btn" style={{ width: '30px', height: '30px' }} onClick={() => setEditingLog(null)} aria-label="ปิด"><X size={14} /></button>
             </div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button className="pf-btn pf-btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setConfirmRevertTarget(null)}>ยกเลิก</button>
-              <button className="pf-btn pf-btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => executeRevertTrade(confirmRevertTarget)}>ยืนยันคืนค่า</button>
+            <div className="pf-field">
+              <label className="pf-label">จำนวน</label>
+              <input className="pf-input pf-mono" inputMode="decimal" value={tradeLogForm.quantity} onChange={(e) => setTradeLogForm({ ...tradeLogForm, quantity: e.target.value })} placeholder="0" />
+            </div>
+            <div className="pf-field">
+              <label className="pf-label">ราคาต่อหน่วย</label>
+              <input className="pf-input pf-mono" inputMode="decimal" value={tradeLogForm.price} onChange={(e) => setTradeLogForm({ ...tradeLogForm, price: e.target.value })} placeholder="0.00" />
+            </div>
+            <div className="pf-field">
+              <label className="pf-label">ค่าธรรมเนียม</label>
+              <input className="pf-input pf-mono" inputMode="decimal" value={tradeLogForm.fee} onChange={(e) => setTradeLogForm({ ...tradeLogForm, fee: e.target.value })} placeholder="0" />
+            </div>
+            <div className="pf-field">
+              <label className="pf-label">วันที่</label>
+              <input className="pf-input pf-mono" type="date" value={tradeLogForm.date} onChange={(e) => setTradeLogForm({ ...tradeLogForm, date: e.target.value })} />
+            </div>
+            <div className="pf-field" style={{ marginBottom: '16px' }}>
+              <label className="pf-label">หมายเหตุ</label>
+              <input className="pf-input" value={tradeLogForm.note} onChange={(e) => setTradeLogForm({ ...tradeLogForm, note: e.target.value })} placeholder="หมายเหตุ..." />
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button className="pf-btn pf-btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setEditingLog(null)}>ยกเลิก</button>
+              <button className="pf-btn pf-btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={submitEditLog}>บันทึก</button>
             </div>
           </div>
         </div>
