@@ -1363,12 +1363,11 @@ export default function PortfolioApp() {
     let updatedPnl = editingLog.pnl;
     let updatedPnlThb = editingLog.pnlThb;
     
-    // ห้ามคำนวณค่าธรรมเนียมใหม่โดยพละการ! ใช้ค่าเดิมทันทีถ้าไม่ได้เปลี่ยน
-    let updatedFee = (!isNaN(inputFee) && inputFee !== editingLog.fee) ? inputFee : (editingLog.fee || 0);
+    // ล็อกค่าเดิม 100% ถ้าไม่ได้แก้ช่องค่าธรรมเนียม ให้ใช้ค่าเดิมเป๊ะๆ โดยห้ามคำนวณซ้ำ
+    let updatedFee = !isNaN(inputFee) ? inputFee : (editingLog.fee || 0);
     let updatedFeeThbRecord = editingLog.feeThbRecord || 0;
 
     if (!isNaN(inputFee) && inputFee !== editingLog.fee) {
-      // ถ้ามีการกรอกเปลี่ยนค่าธรรมเนียมใหม่จริงๆ ค่อยคำนวณตามที่กรอก
       const subtotal = qty * price * (isUsdAsset ? logFx : 1);
       const effInst = getEffectiveInstrumentType(editingLog.assetType, editingLog.instrumentType);
       if (editingLog.action === 'sell' && editingLog.assetType === 'th_stock' && effInst === 'stock') {
