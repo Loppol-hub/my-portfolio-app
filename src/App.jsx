@@ -1539,6 +1539,122 @@ export default function PortfolioApp() {
     showToast('นำเข้าข้อมูลสำเร็จ');
   };
 
+  const clearAll = async () => {
+    await saveHoldings([]); 
+    await saveTradeLogs([]); 
+    await saveHistory([]); 
+    await saveYearlyHistory([]);
+    await saveLedger([]);
+    setInitialCapital(0);
+    setInitialCapitalDraft('');
+    try { await window.storage.set('initial-capital', '0', false); } catch (e) { /* ignore */ }
+    setConfirmClear(false);
+    showToast('ล้างข้อมูลทั้งหมดแล้ว');
+  };
+
+  const openLedgerForm = (type) => {
+    setLedgerType(type); setLedgerAmount(''); setLedgerSign('+'); setLedgerNote(''); setLedgerDate(todayStr()); setLedgerError(''); setPanel('ledger');
+  };
+
+  const submitLedger = () => {
+    const rawVal = ledgerAmount.trim();
+    let amt = parseFloat(rawVal);
+
+    if (ledgerType === 'rebalance') {
+      if (isNaN(amt)) { setLedgerError('กรอกจำนวนเงินให้ถูกต้อง'); return; }
+      const finalAmt = ledgerSign === '-' ? -Math.abs(amt) : Math.abs(amt);
+      const entry = { id: Date.now().toString(), type: 'rebalance', amount: finalAmt, date: ledgerDate || todayStr(), note: ledgerNote.trim() || 'รีบาลานซ์เงินสด' };
+      saveLedger([...ledger, entry]);
+      showToast('บันทึกรีบาลานซ์สำเร็จ');
+      setPanel('cashManage');
+      return;
+    }
+
+    if (isNaN(amt) || amt <= 0) { setLedgerError('กรอกจำนวนเงินให้มากกว่า 0'); return; }
+
+    const entry = { id: Date.now().toString(), type: ledgerType, amount: amt, date: ledgerDate || todayStr(), note: ledgerNote.trim() };
+    if (ledgerType === 'dividend') entry.invested = totalInvestedCost;
+    saveLedger([...ledger, entry]);
+    showToast('บันทึกรายการสำเร็จ');
+    setPanel('cashManage');
+  };
+
+  const deleteLedgerEntry = (id) => {
+    saveLedger((ledger || []).filter((e) => e && e.id !== id));
+    showToast('ลบรายการแล้ว');
+  };
+
+  const toggleTypeInclusion = (typeKey) => {
+    setExcludedTypes((prev) => {
+      const next = { ...prev, [typeKey]: !prev[typeKey] };
+      window.storage.set('excluded-types', JSON.stringify(next), false).catch(() => {});
+      return next;
+    });
+  };
+
+  const filteredTradeLogs = useMemo(() => {
+    let list = Array.isArray(tradeLogs) ? [...tradeLogs] : [];
+    if (tradeFilterType !== 'all') {
+      list = list.filter((log) => {
+        if (!log) return false;
+        let t = log.assetType || 'th_stock';
+        if (t === 'th_stock' && log.instrumentType === 'dr') {
+          t = 'foreign_stock';
+        }
+        return t === tradeFilterType;
+      });
+    }
+    if (tradeStartDate) {
+      list = list.filter((log) => log && (log.date || '') >= tradeStartDate);
+    }
+    if (tradeEndDate) {
+      list = list.filter((log) => log && (log.date || '') <= tradeEndDate);
+    }
+    const q = tradeSearchQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter((log) => {
+        if (!log) return false;
+        return (log.assetName || '').toLowerCase().includes(q) || (log.note || '').toLowerCase().includes(q);
+      });
+    }
+    return list;
+  }, [tradeLogs, tradeFilterType, tradeStartDate, tradeEndDate, tradeSearchQuery]);
+
+  const totalFilteredFee = useMemo(() => {
+    return filteredTradeLogs.reduce((sum, log) => {
+      if (!log) return sum;
+      const logFx = (log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (parseFloat(log.tradeFx) || fxRate) : 1;
+      const feeThb = log.feeThbRecord !== undefined && log.feeThbRecord !== null 
+        ? log.feeThbRecord 
+        : (log.isFeeThb ? (parseFloat(log.fee) || 0) : ((log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (parseFloat(log.fee) || 0) * logFx : (parseFloat(log.fee) || 0)));
+      return sum + feeThb;
+    }, 0);
+  }, [filteredTradeLogs, fxRate]);
+
+  const searchFilteredAssetPnL = useMemo(() => {
+    const q = tradeSearchQuery.trim().toLowerCase();
+    if (!q) return null;
+    const matchingLogs = (tradeLogs || []).filter((log) => log && (log.assetName || '').toLowerCase().includes(q));
+    if (matchingLogs.length === 0) return null;
+    let totalPnlThb = 0;
+    matchingLogs.forEach(l => {
+      if (!l) return;
+      const logFx = (l.currency === 'USD' && l.assetType !== 'th_stock' && l.instrumentType !== 'dr') ? (l.tradeFx ? parseFloat(l.tradeFx) : fxRate) : 1;
+      let pnlVal = l.pnlThb !== undefined ? l.pnlThb : (l.pnl || 0) * logFx;
+      const effInst = getEffectiveInstrumentType(l.assetType, l.instrumentType);
+      const excludeFee = isFeeExcludedFromAssetCost(l.assetType, effInst);
+      if (excludeFee && l.feeThbRecord) {
+        pnlVal -= l.feeThbRecord;
+      }
+      totalPnlThb += pnlVal;
+    });
+    const assetName = matchingLogs[0]?.assetName || '';
+    return { name: assetName, pnl: totalPnlThb, count: matchingLogs.length };
+  }, [tradeLogs, fxRate, tradeSearchQuery]);
+
+  const isDirectFeeType = checkIsDirectFee(form.type, form.instrumentType);
+  const isFeeHiddenForType = form.type === 'crypto';
+
   return (
     <div className="pf-root">
       <style>{`
