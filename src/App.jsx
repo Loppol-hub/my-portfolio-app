@@ -323,7 +323,7 @@ export default function PortfolioApp() {
   const [confirmDeleteTarget, setConfirmDeleteTarget] = useState(null);
   
   const [editingLog, setEditingLog] = useState(null);
-  const [tradeLogForm, setTradeLogForm] = useState({ quantity: '', price: '', fee: '', date: todayStr(), note: '' });
+  const [tradeLogForm, setTradeLogForm] = useState({ quantity: '', price: '', fee: '', pnl: '', date: todayStr(), note: '' });
 
   const [pendingImport, setPendingImport] = useState(null);
   const [importError, setImportError] = useState('');
@@ -1263,6 +1263,7 @@ export default function PortfolioApp() {
     const qty = parseFloat(tradeLogForm.quantity);
     const price = parseFloat(tradeLogForm.price);
     const feeVal = parseFloat(tradeLogForm.fee) || 0;
+    const inputPnl = parseFloat(tradeLogForm.pnl);
     if (isNaN(qty) || qty <= 0 || isNaN(price) || price < 0) {
       showToast('กรอกจำนวนและราคาให้ถูกต้อง');
       return;
@@ -1291,12 +1292,18 @@ export default function PortfolioApp() {
       }
 
       updatedFeeThbRecord = feeThb;
-      if (excludeFee) {
-        updatedPnlThb = saleThb - costThbSold;
+      
+      if (!isNaN(inputPnl)) {
+        updatedPnlThb = inputPnl;
+        updatedPnl = isUsdAsset && logFx > 0 ? inputPnl / logFx : inputPnl;
       } else {
-        updatedPnlThb = saleThb - costThbSold - feeThb;
+        if (excludeFee) {
+          updatedPnlThb = saleThb - costThbSold;
+        } else {
+          updatedPnlThb = saleThb - costThbSold - feeThb;
+        }
+        updatedPnl = isUsdAsset && logFx > 0 ? updatedPnlThb / logFx : updatedPnlThb;
       }
-      updatedPnl = isUsdAsset && logFx > 0 ? updatedPnlThb / logFx : updatedPnlThb;
     } else {
       const subtotal = qty * price;
       const subtotalThb = isUsdAsset ? subtotal * logFx : subtotal;
@@ -1497,88 +1504,6 @@ export default function PortfolioApp() {
 
     showToast(`ดึงราคาสำเร็จ จำนวน ${Object.keys(updateDraft).length} ตัว`);
     closePanel();
-  };
-
-  const saveBackendUrl = async () => {
-    const url = backendDraft.trim();
-    const fx = parseFloat(fxDraft);
-    setBackendUrl(url);
-    try { await window.storage.set('backend-url', url, false); } catch (e) { /* ignore */ }
-    if (!isNaN(fx) && fx > 0) {
-      setFxRate(fx);
-      try { await window.storage.set('fx-usdthb', String(fx), false); } catch (e) { /* ignore */ }
-    }
-    showToast('บันทึกการตั้งค่าแล้ว');
-    closePanel();
-  };
-
-  const saveInitialCapital = async () => {
-    const capital = parseFloat(initialCapitalDraft);
-    const nextCapital = !isNaN(capital) && capital >= 0 ? capital : 0;
-    setInitialCapital(nextCapital);
-    try { await window.storage.set('initial-capital', String(nextCapital), false); } catch (e) { /* ignore */ }
-    showToast('บันทึกทุนเริ่มต้นแล้ว');
-  };
-
-  const exportData = () => {
-    const payload = { app: 'portfolio-tracker', version: 2, exportedAt: new Date().toISOString(), holdings, tradeLogs, history, yearlyHistory, fxRate, backendUrl, initialCapital, ledger };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `portfolio-backup-${todayStr()}.json`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast('ส่งออกไฟล์สำรองข้อมูลแล้ว');
-  };
-
-  const triggerImport = () => {
-    setImportError('');
-    if (fileInputRef.current) fileInputRef.current.click();
-  };
-
-  const handleImportFile = (e) => {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = '';
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const data = JSON.parse(reader.result);
-        if (!Array.isArray(data.holdings)) throw new Error('รูปแบบไฟล์ไม่ถูกต้อง');
-        setPendingImport(data);
-        setImportError('');
-      } catch (err) {
-        setImportError('อ่านไฟล์ไม่สำเร็จ');
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const confirmImport = async () => {
-    if (!pendingImport) return;
-    await saveHoldings(Array.isArray(pendingImport.holdings) ? pendingImport.holdings : []);
-    await saveTradeLogs(Array.isArray(pendingImport.tradeLogs) ? pendingImport.tradeLogs : []);
-    await saveHistory(Array.isArray(pendingImport.history) ? sanitizeAndPruneHistory(pendingImport.history) : []);
-    await saveYearlyHistory(Array.isArray(pendingImport.yearlyHistory) ? sanitizeAndPruneYearlyHistory(pendingImport.yearlyHistory) : []);
-    
-    const fx = typeof pendingImport.fxRate === 'number' && pendingImport.fxRate > 0 ? pendingImport.fxRate : 36.5;
-    setFxRate(fx);
-    setFxDraft(String(fx));
-    try { await window.storage.set('fx-usdthb', String(fx), false); } catch (e) { /* ignore */ }
-
-    const url = typeof pendingImport.backendUrl === 'string' ? pendingImport.backendUrl : '';
-    setBackendUrl(url);
-    setBackendDraft(url);
-    try { await window.storage.set('backend-url', url, false); } catch (e) { /* ignore */ }
-
-    const capital = typeof pendingImport.initialCapital === 'number' && pendingImport.initialCapital >= 0 ? pendingImport.initialCapital : 0;
-    setInitialCapital(capital);
-    setInitialCapitalDraft(capital > 0 ? String(capital) : '');
-    try { await window.storage.set('initial-capital', String(capital), false); } catch (e) { /* ignore */ }
-
-    await saveLedger(Array.isArray(pendingImport.ledger) ? pendingImport.ledger : []);
-    setPendingImport(null);
-    showToast('นำเข้าข้อมูลสำเร็จ');
   };
 
   return (
@@ -2733,7 +2658,6 @@ export default function PortfolioApp() {
               </div>
             )}
 
-            {/* แสดงฟิลด์รายละเอียดสินทรัพย์หลักเฉพาะเมื่อเลือกโหมด 'แก้ไขข้อมูล' (tradeAction === 'none') เท่านั้น ตามข้อ 2 */}
             {form.tradeAction === 'none' && (
               <>
                 <div className="pf-field">
@@ -2838,7 +2762,6 @@ export default function PortfolioApp() {
 
             <div className="pf-panel-actions">
               <button className="pf-btn pf-btn-ghost" onClick={closePanel}>ยกเลิก</button>
-              {/* เปลี่ยนชื่อปุ่มเป็น 'บันทึก' เฉพาะตอนทำรายการซื้อเพิ่ม/ขายออก ตามข้อ 2 */}
               <button className="pf-btn pf-btn-primary" onClick={submitForm}>
                 {editingId && form.tradeAction !== 'none' ? 'บันทึก' : (editingId ? 'บันทึกการแก้ไข' : 'เพิ่มสินทรัพย์')}
               </button>
@@ -3200,10 +3123,14 @@ export default function PortfolioApp() {
                           <span className="pf-mono" style={{ fontSize: '12px', color: 'var(--muted)' }}>{thaiDateAD(log.date)}</span>
                           <button style={{ background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: '2px' }} onClick={() => {
                             setEditingLog(log);
+                            const currentUsd = log.currency === 'USD' && log.instrumentType !== 'dr';
+                            const currentFx = currentUsd ? (log.tradeFx ? parseFloat(log.tradeFx) : fxRate) : 1;
+                            const defaultPnl = log.pnlThb !== undefined ? log.pnlThb : (log.pnl !== undefined ? log.pnl * currentFx : '');
                             setTradeLogForm({
                               quantity: String(log.quantity || ''),
                               price: String(log.price || ''),
                               fee: String(log.fee || ''),
+                              pnl: String(defaultPnl !== '' ? defaultPnl : ''),
                               date: log.date || todayStr(),
                               note: log.note || ''
                             });
@@ -3255,6 +3182,12 @@ export default function PortfolioApp() {
               <label className="pf-label">ค่าธรรมเนียม</label>
               <input className="pf-input pf-mono" inputMode="decimal" value={tradeLogForm.fee} onChange={(e) => setTradeLogForm({ ...tradeLogForm, fee: e.target.value })} placeholder="0" />
             </div>
+            {editingLog.action === 'sell' && (
+              <div className="pf-field">
+                <label className="pf-label">กำไร/ขาดทุนสุทธิ (บาท)</label>
+                <input className="pf-input pf-mono" inputMode="decimal" value={tradeLogForm.pnl} onChange={(e) => setTradeLogForm({ ...tradeLogForm, pnl: e.target.value })} placeholder="0.00" />
+              </div>
+            )}
             <div className="pf-field">
               <label className="pf-label">วันที่</label>
               <input className="pf-input pf-mono" type="date" value={tradeLogForm.date} onChange={(e) => setTradeLogForm({ ...tradeLogForm, date: e.target.value })} />
