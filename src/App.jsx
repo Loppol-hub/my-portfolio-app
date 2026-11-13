@@ -38,8 +38,9 @@ const isFeeExcludedFromAssetCost = (type, instrumentType) => {
 };
 
 const sanitizeAndPruneHistory = (histList) => {
+  if (!Array.isArray(histList)) return [];
   const map = {};
-  (histList || []).forEach(item => {
+  histList.forEach(item => {
     if (item && item.date && typeof item.value === 'number') {
       map[item.date] = item.value;
     }
@@ -51,10 +52,10 @@ const sanitizeAndPruneHistory = (histList) => {
     .map(date => ({ date, value: map[date] }));
 };
 
-// ฟังก์ชันจัดระเบียบประวัติรายปี (เก็บสูงสุด 10 ปี)
 const sanitizeAndPruneYearlyHistory = (histList) => {
+  if (!Array.isArray(histList)) return [];
   const map = {};
-  (histList || []).forEach(item => {
+  histList.forEach(item => {
     if (item && item.date && typeof item.value === 'number') {
       const yr = String(item.date).slice(0, 4);
       map[yr] = item.value;
@@ -87,7 +88,6 @@ const getBiMonthlySlotDate = () => {
   return slotDate;
 };
 
-// ตรวจสอบวันสิ้นปี (31 ธ.ค. เวลา 23:00 น. ขึ้นไป) สำหรับบันทึกกราฟรายปีอิสระ
 const getYearEndSlotDate = () => {
   const now = new Date();
   const y = now.getFullYear();
@@ -154,7 +154,8 @@ function darken(hex, amt) {
 }
 
 function ExplodedPie3D({ data, rx = 88, depth = 20, explode = 7 }) {
-  const total = (data || []).reduce((s, d) => s + (d?.value || 0), 0);
+  const safeData = Array.isArray(data) ? data : [];
+  const total = safeData.reduce((s, d) => s + (d?.value || 0), 0);
   const ry = rx * 0.55;
   const pad = explode + 12;
   const width = rx * 2 + pad * 2;
@@ -162,7 +163,7 @@ function ExplodedPie3D({ data, rx = 88, depth = 20, explode = 7 }) {
   const cx = rx + pad;
   const cy = ry + pad;
 
-  if (isNaN(total) || total <= 0 || !Array.isArray(data) || data.length === 0) {
+  if (isNaN(total) || total <= 0 || safeData.length === 0) {
     return <div className="pf-pie-empty" style={{ width, height }} />;
   }
 
@@ -170,7 +171,7 @@ function ExplodedPie3D({ data, rx = 88, depth = 20, explode = 7 }) {
   const botPt = (theta, ox, oy) => { const p = topPt(theta, ox, oy); return { x: p.x, y: p.y + depth }; };
 
   let cursor = 0;
-  const slices = data.map((d) => {
+  const slices = safeData.map((d) => {
     const val = Number(d?.value) || 0;
     const frac = total > 0 ? val / total : 0;
     const a0 = cursor;
@@ -322,7 +323,7 @@ export default function PortfolioApp() {
   const [confirmDeleteTarget, setConfirmDeleteTarget] = useState(null);
   
   const [editingLog, setEditingLog] = useState(null);
-  const [tradeLogForm, setTradeLogForm] = useState({ quantity: '', price: '', fee: '', date: todayStr(), note: '' });
+  const [tradeLogForm, setTradeLogForm] = useState({ quantity: '', price: '', fee: '', pnl: '', date: todayStr(), note: '' });
 
   const [pendingImport, setPendingImport] = useState(null);
   const [importError, setImportError] = useState('');
@@ -481,14 +482,16 @@ export default function PortfolioApp() {
   };
 
   const saveHoldings = async (next) => {
-    setHoldings(next);
-    try { await window.storage.set('holdings', JSON.stringify(next), false); }
+    const arr = Array.isArray(next) ? next : [];
+    setHoldings(arr);
+    try { await window.storage.set('holdings', JSON.stringify(arr), false); }
     catch (e) { showToast('บันทึกไม่สำเร็จ'); }
   };
 
   const saveTradeLogs = async (next) => {
-    setTradeLogs(next);
-    try { await window.storage.set('trade-logs', JSON.stringify(next), false); }
+    const arr = Array.isArray(next) ? next : [];
+    setTradeLogs(arr);
+    try { await window.storage.set('trade-logs', JSON.stringify(arr), false); }
     catch (e) { showToast('บันทึกประวัติการซื้อขายไม่สำเร็จ'); }
   };
 
@@ -507,49 +510,53 @@ export default function PortfolioApp() {
   };
 
   const saveLedger = async (next) => {
-    setLedger(next);
-    try { await window.storage.set('cash-ledger', JSON.stringify(next), false); } catch (e) { /* ignore */ }
+    const arr = Array.isArray(next) ? next : [];
+    setLedger(arr);
+    try { await window.storage.set('cash-ledger', JSON.stringify(arr), false); } catch (e) { /* ignore */ }
   };
 
   const getEffectiveRate = (type, rate) => {
     return parseFloat(rate) || 36.5;
   };
 
-  const enriched = useMemo(() => (holdings || []).map((h) => {
-    const qty = parseFloat(h?.quantity) || 0;
-    const avg = parseFloat(h?.avgCost) || 0;
-    const price = parseFloat(h?.currentPrice) || 0;
-    const currency = h?.currency === 'USD' ? 'USD' : 'THB';
-    const isDr = h?.instrumentType === 'dr';
+  const enriched = useMemo(() => {
+    const safeHoldings = Array.isArray(holdings) ? holdings : [];
+    return safeHoldings.map((h) => {
+      const qty = parseFloat(h?.quantity) || 0;
+      const avg = parseFloat(h?.avgCost) || 0;
+      const price = parseFloat(h?.currentPrice) || 0;
+      const currency = h?.currency === 'USD' ? 'USD' : 'THB';
+      const isDr = h?.instrumentType === 'dr';
 
-    const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h?.type, fxRate) : 1;
-    const marketValue = qty * price * effRate;
+      const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h?.type, fxRate) : 1;
+      const marketValue = qty * price * effRate;
 
-    const fixedRate = (currency === 'USD' && !isDr) ? (h?.createdFxRate || fxRate) : 1;
-    const costValue = h?.totalCostThb !== undefined && h.totalCostThb !== null 
-      ? h.totalCostThb 
-      : (qty * avg * fixedRate);
+      const fixedRate = (currency === 'USD' && !isDr) ? (h?.createdFxRate || fxRate) : 1;
+      const costValue = h?.totalCostThb !== undefined && h.totalCostThb !== null 
+        ? h.totalCostThb 
+        : (qty * avg * fixedRate);
 
-    const gain = marketValue - costValue;
-    const gainPct = costValue > 0 ? (gain / costValue) * 100 : 0;
+      const gain = marketValue - costValue;
+      const gainPct = costValue > 0 ? (gain / costValue) * 100 : 0;
 
-    let effectiveType = h?.type;
-    if (effectiveType === 'th_stock' && h?.instrumentType === 'dr') {
-      effectiveType = 'foreign_stock';
-    }
-    return { 
-      ...h, 
-      type: effectiveType, 
-      qty: isNaN(qty) ? 0 : qty, 
-      avg: isNaN(avg) ? 0 : avg, 
-      price: isNaN(price) ? 0 : price, 
-      currency, 
-      marketValue: isNaN(marketValue) ? 0 : marketValue, 
-      costValue: isNaN(costValue) ? 0 : costValue, 
-      gain: isNaN(gain) ? 0 : gain, 
-      gainPct: isNaN(gainPct) ? 0 : gainPct 
-    };
-  }), [holdings, fxRate]);
+      let effectiveType = h?.type;
+      if (effectiveType === 'th_stock' && h?.instrumentType === 'dr') {
+        effectiveType = 'foreign_stock';
+      }
+      return { 
+        ...h, 
+        type: effectiveType, 
+        qty: isNaN(qty) ? 0 : qty, 
+        avg: isNaN(avg) ? 0 : avg, 
+        price: isNaN(price) ? 0 : price, 
+        currency, 
+        marketValue: isNaN(marketValue) ? 0 : marketValue, 
+        costValue: isNaN(costValue) ? 0 : costValue, 
+        gain: isNaN(gain) ? 0 : gain, 
+        gainPct: isNaN(gainPct) ? 0 : gainPct 
+      };
+    });
+  }, [holdings, fxRate]);
 
   const totalInvestedValue = useMemo(() => enriched.filter((h) => h?.type !== 'cash').reduce((s, h) => s + (h?.marketValue || 0), 0), [enriched]);
   const totalInvestedCost = useMemo(() => enriched.filter((h) => h?.type !== 'cash').reduce((s, h) => s + (h?.costValue || 0), 0), [enriched]);
@@ -721,7 +728,7 @@ export default function PortfolioApp() {
   }, [heroProfitAmount, totalCapital, visibleInvestedCost]);
 
   const lastUpdated = useMemo(() => {
-    const dates = holdings.map((h) => h?.lastUpdated).filter(Boolean).sort();
+    const dates = (holdings || []).map((h) => h?.lastUpdated).filter(Boolean).sort();
     return dates.length ? dates[dates.length - 1] : null;
   }, [holdings]);
 
@@ -746,7 +753,6 @@ export default function PortfolioApp() {
     });
   }, [history, displayTotalValue]);
 
-  // ประวัติรายปีอิสระ (แสดงสูงสุด 10 ปี จาก yearlyHistory)
   const historyYearlyIndependent = useMemo(() => {
     const valid = (yearlyHistory || []).filter(h => h && h.date >= '2026-11-30').sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
     if (valid.length === 0) {
@@ -794,7 +800,6 @@ export default function PortfolioApp() {
     });
   }, [dividendYears, combinedLedger, totalInvestedCost]);
 
-  // ตัดปุ่ม toggle ออก ให้แสดงผลเป็นรายปีถาวรตามข้อ 1
   const dividendChartData = useMemo(() => {
     return dividendByYear;
   }, [dividendByYear]);
@@ -885,7 +890,7 @@ export default function PortfolioApp() {
 
   const getAssetLots = (assetId, currentQty, currentPrice, assetCurrency, assetType, instrumentType) => {
     try {
-      const targetHolding = holdings.find(h => h && h.id === assetId);
+      const targetHolding = (holdings || []).find(h => h && h.id === assetId);
       if (!targetHolding) return [];
       const hQty = parseFloat(targetHolding.quantity) || 0;
       const hCostThb = targetHolding.totalCostThb !== undefined && targetHolding.totalCostThb !== null 
@@ -911,6 +916,40 @@ export default function PortfolioApp() {
     }
   };
 
+  const fetchFxRateValue = async () => {
+    const url = backendUrlRef.current;
+    if (!url) return null;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: [{ id: '__fx__', ticker: 'USDTHB', market: 'fx' }] }),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const fxResult = (data.results || []).find((r) => r && r.id === '__fx__');
+      if (fxResult && typeof fxResult.price === 'number') {
+        return fxResult.price;
+      }
+    } catch (e) { /* ignore */ }
+    return null;
+  };
+
+  const fetchFxRate = async () => {
+    if (!backendUrl) { showToast('ยังไม่ได้ตั้งค่า Backend URL'); return; }
+    setFetchingFx(true);
+    const price = await fetchFxRateValue();
+    if (price) {
+      setFxDraft(String(price));
+      setFxRate(price);
+      try { await window.storage.set('fx-usdthb', String(price), false); } catch (e) { /* ignore */ }
+      showToast(`ดึงอัตราแลกเปลี่ยนแล้ว: 1 USD ≈ ฿${fmt(price, 2)}`);
+    } else {
+      showToast('เชื่อมต่อ Backend ไม่สำเร็จ');
+    }
+    setFetchingFx(false);
+  };
+
   const submitForm = () => {
     const isCash = form.type === 'cash';
     const name = (form.name || '').trim();
@@ -925,7 +964,7 @@ export default function PortfolioApp() {
     const excludeFeeFromCost = isFeeExcludedFromAssetCost(form.type, instrumentType);
 
     if (editingId) {
-      const target = holdings.find((h) => h && h.id === editingId);
+      const target = (holdings || []).find((h) => h && h.id === editingId);
       if (!target) return;
 
       let currentQty = parseFloat(target.quantity) || 0;
@@ -945,7 +984,7 @@ export default function PortfolioApp() {
           return;
         }
         const subtotal = addQty * addPrice;
-        const customFx = form.tradeFx && parseFloat(form.tradeFx) > 0 ? parseFloat(form.tradeFx) : fxRate;
+        const customFx = fxRate;
         const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
 
         let feeAmount = 0;
@@ -1025,7 +1064,7 @@ export default function PortfolioApp() {
           return;
         }
 
-        const customFx = form.tradeFx && parseFloat(form.tradeFx) > 0 ? parseFloat(form.tradeFx) : fxRate;
+        const customFx = fxRate;
         const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
         const saleThb = sellQty * sellPrice * (isUsdAsset ? customFx : 1);
         
@@ -1114,10 +1153,10 @@ export default function PortfolioApp() {
 
       let next;
       if (form.tradeAction === 'sell' && currentQty <= 1e-8) {
-        next = holdings.filter((h) => h && h.id !== editingId);
+        next = (holdings || []).filter((h) => h && h.id !== editingId);
         showToast('ขายหมดและลบสินทรัพย์ออกจากพอร์ตแล้ว');
       } else {
-        next = holdings.map((h) => h && h.id === editingId ? { 
+        next = (holdings || []).map((h) => h && h.id === editingId ? { 
           ...h, 
           name, 
           ticker, 
@@ -1192,7 +1231,7 @@ export default function PortfolioApp() {
       }
 
       const newId = Date.now().toString();
-      const nextHoldings = [...holdings, { 
+      const nextHoldings = [...(holdings || []), { 
         id: newId, 
         name, 
         ticker, 
@@ -1258,6 +1297,7 @@ export default function PortfolioApp() {
     const qty = parseFloat(tradeLogForm.quantity);
     const price = parseFloat(tradeLogForm.price);
     const feeVal = parseFloat(tradeLogForm.fee) || 0;
+    const inputPnl = parseFloat(tradeLogForm.pnl);
     if (isNaN(qty) || qty <= 0 || isNaN(price) || price < 0) {
       showToast('กรอกจำนวนและราคาให้ถูกต้อง');
       return;
@@ -1286,12 +1326,18 @@ export default function PortfolioApp() {
       }
 
       updatedFeeThbRecord = feeThb;
-      if (excludeFee) {
-        updatedPnlThb = saleThb - costThbSold;
+
+      if (!isNaN(inputPnl)) {
+        updatedPnlThb = inputPnl;
+        updatedPnl = isUsdAsset && logFx > 0 ? inputPnl / logFx : inputPnl;
       } else {
-        updatedPnlThb = saleThb - costThbSold - feeThb;
+        if (excludeFee) {
+          updatedPnlThb = saleThb - costThbSold;
+        } else {
+          updatedPnlThb = saleThb - costThbSold - feeThb;
+        }
+        updatedPnl = isUsdAsset && logFx > 0 ? updatedPnlThb / logFx : updatedPnlThb;
       }
-      updatedPnl = isUsdAsset && logFx > 0 ? updatedPnlThb / logFx : updatedPnlThb;
     } else {
       const subtotal = qty * price;
       const subtotalThb = isUsdAsset ? subtotal * logFx : subtotal;
@@ -1306,7 +1352,7 @@ export default function PortfolioApp() {
       updatedFeeThbRecord = feeThb;
     }
 
-    const nextLogs = tradeLogs.map(l => l && l.id === editingLog.id ? {
+    const nextLogs = (tradeLogs || []).map(l => l && l.id === editingLog.id ? {
       ...l,
       quantity: qty,
       price: price,
@@ -1322,430 +1368,6 @@ export default function PortfolioApp() {
     setEditingLog(null);
     showToast('แก้ไขประวัติซื้อขายสำเร็จ');
   };
-
-  const requestDelete = (type, id, label) => setConfirmDeleteTarget({ type, id, label });
-
-  const performDelete = () => {
-    if (!confirmDeleteTarget) return;
-    if (confirmDeleteTarget.type === 'holding') deleteHolding(confirmDeleteTarget.id);
-    else if (confirmDeleteTarget.type === 'ledger') deleteLedgerEntry(confirmDeleteTarget.id);
-    else if (confirmDeleteTarget.type === 'tradelog') executeDeleteTradeLog(confirmDeleteTarget.id);
-    setConfirmDeleteTarget(null);
-  };
-
-  const openUpdatePrices = () => {
-    const draft = {};
-    (holdings || []).filter((h) => h && h.type !== 'cash').forEach((h) => { draft[h.id] = String(h.currentPrice); });
-    setUpdateDraft(draft);
-    setPanel('update');
-  };
-
-  const runAutoPriceUpdate = async () => {
-    const url = backendUrlRef.current;
-    if (!url) return;
-    const currentHoldings = holdingsRef.current;
-    const eligible = (currentHoldings || []).filter((h) => h && typeInfo(h.type).market && h.ticker);
-    if (eligible.length === 0) return;
-    try {
-      const items = eligible.map((h) => ({ id: h.id, ticker: h.ticker, market: typeInfo(h.type).market }));
-      items.push({ id: '__fx__', ticker: 'USDTHB', market: 'fx' });
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items }),
-      });
-      if (!res.ok) throw new Error('bad response');
-      const data = await res.json();
-      const results = data.results || [];
-      const priceById = {};
-      const failedNames = [];
-      results.forEach((r) => {
-        if (!r) return;
-        if (r.id === '__fx__') return;
-        if (typeof r.price === 'number') priceById[r.id] = r.price;
-        else {
-          const h = eligible.find((x) => x && x.id === r.id);
-          failedNames.push(h ? h.name : r.id);
-        }
-      });
-      const fxResult = results.find((r) => r && r.id === '__fx__');
-      let rate = fxRateRef.current;
-      if (fxResult && typeof fxResult.price === 'number') {
-        rate = fxResult.price;
-        setFxRate(rate);
-        setFxDraft(String(rate));
-        try { await window.storage.set('fx-usdthb', String(rate), false); } catch (e) { /* ignore */ }
-      }
-      
-      const latestHoldings = holdingsRef.current;
-      const nextHoldings = (latestHoldings || []).map((h) => {
-        if (!h || priceById[h.id] === undefined) return h;
-        let updatedPrice = priceById[h.id];
-        if (h.type === 'crypto' && h.currency === 'THB') { updatedPrice = updatedPrice * rate; }
-        return { ...h, currentPrice: updatedPrice, lastUpdated: todayStr() };
-      });
-      await saveHoldings(nextHoldings);
-
-      // บันทึกประวัติรายเดือนปกติ
-      const slotDate = getBiMonthlySlotDate();
-      if (slotDate) {
-        const investedVal = nextHoldings.reduce((s, h) => {
-          if (!h || h.type === 'cash') return s;
-          const currency = h.currency === 'USD' ? 'USD' : 'THB';
-          const isDr = h.instrumentType === 'dr';
-          const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h.type, rate) : 1;
-          return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0) * effRate;
-        }, 0);
-
-        const investedCostForCash = nextHoldings.filter(h => h && h.type !== 'cash').reduce((s, h) => {
-          const cur = h.currency === 'USD' ? 'USD' : 'THB';
-          const dr = h.instrumentType === 'dr';
-          const fr = (cur === 'USD' && !dr) ? (h.createdFxRate || rate) : 1;
-          return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.avgCost) || 0) * fr;
-        }, 0);
-
-        const currentComputedCash = totalCapital - investedCostForCash + cashAdjTotal;
-        const totalAssetVal = investedVal + currentComputedCash;
-
-        const existing = (historyRef.current || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-30');
-        const histNext = sanitizeAndPruneHistory([...existing, { date: slotDate, value: totalAssetVal }]);
-        await saveHistory(histNext);
-      }
-
-      // บันทึกประวัติรายปีอิสระเฉพาะวันสิ้นปี เวลา 23.00น. (1 ครั้งต่อปี)
-      const yearEndSlot = getYearEndSlotDate();
-      if (yearEndSlot) {
-        const investedVal = nextHoldings.reduce((s, h) => {
-          if (!h || h.type === 'cash') return s;
-          const currency = h.currency === 'USD' ? 'USD' : 'THB';
-          const isDr = h.instrumentType === 'dr';
-          const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h.type, rate) : 1;
-          return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0) * effRate;
-        }, 0);
-        const investedCostForCash = nextHoldings.filter(h => h && h.type !== 'cash').reduce((s, h) => {
-          const cur = h.currency === 'USD' ? 'USD' : 'THB';
-          const dr = h.instrumentType === 'dr';
-          const fr = (cur === 'USD' && !dr) ? (h.createdFxRate || rate) : 1;
-          return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.avgCost) || 0) * fr;
-        }, 0);
-        const currentComputedCash = totalCapital - investedCostForCash + cashAdjTotal;
-        const totalAssetVal = investedVal + currentComputedCash;
-
-        const existingY = (yearlyHistoryRef.current || []).filter((p) => p && p.date !== yearEndSlot);
-        const yHistNext = sanitizeAndPruneYearlyHistory([...existingY, { date: yearEndSlot, value: totalAssetVal }]);
-        await saveYearlyHistory(yHistNext);
-      }
-
-      setFetchIssues(failedNames);
-      const okCount = Object.keys(priceById).length;
-      showToast(`ดึงราคาสำเร็จ จำนวน ${okCount} ตัว`);
-    } catch (e) { /* background silent */ }
-  };
-
-  const submitUpdatePrices = async () => {
-    const next = (holdings || []).map((h) => {
-      if (!h) return h;
-      const v = parseFloat(updateDraft[h.id]);
-      if (isNaN(v) || v < 0) return h;
-      return { ...h, currentPrice: v, lastUpdated: todayStr() };
-    });
-    saveHoldings(next);
-
-    let rate = fxRate;
-    if (backendUrl) {
-      const fetched = await fetchFxRateValue();
-      if (fetched) {
-        rate = fetched;
-        setFxRate(fetched);
-        setFxDraft(String(fetched));
-        try { await window.storage.set('fx-usdthb', String(fetched), false); } catch (e) { /* ignore */ }
-      }
-    }
-
-    const slotDate = getBiMonthlySlotDate() || todayStr();
-    const investedVal = next.reduce((s, h) => {
-      if (!h || h.type === 'cash') return s;
-      const currency = h.currency === 'USD' ? 'USD' : 'THB';
-      const isDr = h.instrumentType === 'dr';
-      const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h.type, rate) : 1;
-      return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0) * effRate;
-    }, 0);
-
-    const investedCostForCash = next.filter(h => h && h.type !== 'cash').reduce((s, h) => {
-      const cur = h.currency === 'USD' ? 'USD' : 'THB';
-      const dr = h.instrumentType === 'dr';
-      const fr = (cur === 'USD' && !dr) ? (h.createdFxRate || rate) : 1;
-      return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.avgCost) || 0) * fr;
-    }, 0);
-
-    const currentComputedCash = totalCapital - investedCostForCash + cashAdjTotal;
-    const totalAssetVal = investedVal + currentComputedCash;
-
-    const existing = (history || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-30');
-    const histNext = sanitizeAndPruneHistory([...existing, { date: slotDate, value: totalAssetVal }]);
-    saveHistory(histNext);
-
-    const yearEndSlot = getYearEndSlotDate();
-    if (yearEndSlot) {
-      const existingY = (yearlyHistory || []).filter((p) => p && p.date !== yearEndSlot);
-      const yHistNext = sanitizeAndPruneYearlyHistory([...existingY, { date: yearEndSlot, value: totalAssetVal }]);
-      saveYearlyHistory(yHistNext);
-    }
-
-    showToast(`ดึงราคาสำเร็จ จำนวน ${Object.keys(updateDraft).length} ตัว`);
-    closePanel();
-  };
-
-  const saveBackendUrl = async () => {
-    const url = backendDraft.trim();
-    const fx = parseFloat(fxDraft);
-    setBackendUrl(url);
-    try { await window.storage.set('backend-url', url, false); } catch (e) { /* ignore */ }
-    if (!isNaN(fx) && fx > 0) {
-      setFxRate(fx);
-      try { await window.storage.set('fx-usdthb', String(fx), false); } catch (e) { /* ignore */ }
-    }
-    showToast('บันทึกการตั้งค่าแล้ว');
-    closePanel();
-  };
-
-  const saveInitialCapital = async () => {
-    const capital = parseFloat(initialCapitalDraft);
-    const nextCapital = !isNaN(capital) && capital >= 0 ? capital : 0;
-    setInitialCapital(nextCapital);
-    try { await window.storage.set('initial-capital', String(nextCapital), false); } catch (e) { /* ignore */ }
-    showToast('บันทึกทุนเริ่มต้นแล้ว');
-  };
-
-  const fetchAutoPrices = async () => {
-    if (!backendUrl) { showToast('ยังไม่ได้ตั้งค่า Backend URL'); return; }
-    const eligible = (holdings || []).filter((h) => h && typeInfo(h.type).market && h.ticker);
-    if (eligible.length === 0) { showToast('ไม่มีรายการที่ใส่สัญลักษณ์ไว้'); return; }
-    setFetchingPrices(true);
-    try {
-      const items = eligible.map((h) => ({ id: h.id, ticker: h.ticker, market: typeInfo(h.type).market }));
-      const res = await fetch(backendUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items }),
-      });
-      if (!res.ok) throw new Error('bad response');
-      const data = await res.json();
-      const next = { ...updateDraft };
-      const failedNames = [];
-      let okCount = 0;
-      (data.results || []).forEach((r) => {
-        if (!r) return;
-        if (typeof r.price === 'number') {
-          okCount++;
-          const holding = eligible.find((x) => x && x.id === r.id);
-          let updatedPrice = r.price;
-          if (holding && holding.type === 'crypto' && holding.currency === 'THB') { updatedPrice = r.price * fxRate; }
-          next[r.id] = String(updatedPrice);
-        } else {
-          const h = eligible.find((x) => x && x.id === r.id);
-          failedNames.push(h ? h.name : r.id);
-        }
-      });
-      setUpdateDraft(next);
-      setFetchIssues(failedNames);
-      showToast(`ดึงราคาสำเร็จ จำนวน ${okCount} ตัว`);
-    } catch (e) {
-      showToast('เชื่อมต่อ Backend ไม่สำเร็จ');
-    } finally {
-      setFetchingPrices(false);
-    }
-  };
-
-  const fetchFxRate = async () => {
-    if (!backendUrl) { showToast('ยังไม่ได้ตั้งค่า Backend URL'); return; }
-    setFetchingFx(true);
-    const price = await fetchFxRateValue();
-    if (price) {
-      setFxDraft(String(price));
-      showToast(`ดึงอัตราแลกเปลี่ยนแล้ว: 1 USD ≈ ฿${fmt(price, 2)}`);
-    } else {
-      showToast('เชื่อมต่อ Backend ไม่สำเร็จ');
-    }
-    setFetchingFx(false);
-  };
-
-  const exportData = () => {
-    const payload = { app: 'portfolio-tracker', version: 2, exportedAt: new Date().toISOString(), holdings, tradeLogs, history, yearlyHistory, fxRate, backendUrl, initialCapital, ledger };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `portfolio-backup-${todayStr()}.json`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast('ส่งออกไฟล์สำรองข้อมูลแล้ว');
-  };
-
-  const triggerImport = () => {
-    setImportError('');
-    if (fileInputRef.current) fileInputRef.current.click();
-  };
-
-  const handleImportFile = (e) => {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = '';
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const data = JSON.parse(reader.result);
-        if (!Array.isArray(data.holdings)) throw new Error('รูปแบบไฟล์ไม่ถูกต้อง');
-        setPendingImport(data);
-        setImportError('');
-      } catch (err) {
-        setImportError('อ่านไฟล์ไม่สำเร็จ');
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const confirmImport = async () => {
-    if (!pendingImport) return;
-    await saveHoldings(Array.isArray(pendingImport.holdings) ? pendingImport.holdings : []);
-    await saveTradeLogs(Array.isArray(pendingImport.tradeLogs) ? pendingImport.tradeLogs : []);
-    await saveHistory(Array.isArray(pendingImport.history) ? sanitizeAndPruneHistory(pendingImport.history) : []);
-    await saveYearlyHistory(Array.isArray(pendingImport.yearlyHistory) ? sanitizeAndPruneYearlyHistory(pendingImport.yearlyHistory) : []);
-    
-    const fx = typeof pendingImport.fxRate === 'number' && pendingImport.fxRate > 0 ? pendingImport.fxRate : 36.5;
-    setFxRate(fx);
-    setFxDraft(String(fx));
-    try { await window.storage.set('fx-usdthb', String(fx), false); } catch (e) { /* ignore */ }
-
-    const url = typeof pendingImport.backendUrl === 'string' ? pendingImport.backendUrl : '';
-    setBackendUrl(url);
-    setBackendDraft(url);
-    try { await window.storage.set('backend-url', url, false); } catch (e) { /* ignore */ }
-
-    const capital = typeof pendingImport.initialCapital === 'number' && pendingImport.initialCapital >= 0 ? pendingImport.initialCapital : 0;
-    setInitialCapital(capital);
-    setInitialCapitalDraft(capital > 0 ? String(capital) : '');
-    try { await window.storage.set('initial-capital', String(capital), false); } catch (e) { /* ignore */ }
-
-    await saveLedger(Array.isArray(pendingImport.ledger) ? pendingImport.ledger : []);
-    setPendingImport(null);
-    showToast('นำเข้าข้อมูลสำเร็จ');
-  };
-
-  const openLedgerForm = (type) => {
-    setLedgerType(type); setLedgerAmount(''); setLedgerSign('+'); setLedgerNote(''); setLedgerDate(todayStr()); setLedgerError(''); setPanel('ledger');
-  };
-
-  const submitLedger = () => {
-    const rawVal = ledgerAmount.trim();
-    let amt = parseFloat(rawVal);
-
-    if (ledgerType === 'rebalance') {
-      if (isNaN(amt)) { setLedgerError('กรอกจำนวนเงินให้ถูกต้อง'); return; }
-      const finalAmt = ledgerSign === '-' ? -Math.abs(amt) : Math.abs(amt);
-      const entry = { id: Date.now().toString(), type: 'rebalance', amount: finalAmt, date: ledgerDate || todayStr(), note: ledgerNote.trim() || 'รีบาลานซ์เงินสด' };
-      saveLedger([...ledger, entry]);
-      showToast('บันทึกรีบาลานซ์สำเร็จ');
-      setPanel('cashManage');
-      return;
-    }
-
-    if (isNaN(amt) || amt <= 0) { setLedgerError('กรอกจำนวนเงินให้มากกว่า 0'); return; }
-
-    const entry = { id: Date.now().toString(), type: ledgerType, amount: amt, date: ledgerDate || todayStr(), note: ledgerNote.trim() };
-    if (ledgerType === 'dividend') entry.invested = totalInvestedCost;
-    saveLedger([...ledger, entry]);
-    showToast('บันทึกรายการสำเร็จ');
-    setPanel('cashManage');
-  };
-
-  const deleteLedgerEntry = (id) => {
-    saveLedger((ledger || []).filter((e) => e && e.id !== id));
-    showToast('ลบรายการแล้ว');
-  };
-
-  const toggleTypeInclusion = (typeKey) => {
-    setExcludedTypes((prev) => {
-      const next = { ...prev, [typeKey]: !prev[typeKey] };
-      window.storage.set('excluded-types', JSON.stringify(next), false).catch(() => {});
-      return next;
-    });
-  };
-
-  const clearAll = async () => {
-    await saveHoldings([]); 
-    await saveTradeLogs([]); 
-    await saveHistory([]); 
-    await saveYearlyHistory([]);
-    await saveLedger([]);
-    setInitialCapital(0);
-    setInitialCapitalDraft('');
-    try { await window.storage.set('initial-capital', '0', false); } catch (e) { /* ignore */ }
-    setConfirmClear(false);
-    showToast('ล้างข้อมูลทั้งหมดแล้ว');
-  };
-
-  const filteredTradeLogs = useMemo(() => {
-    let list = Array.isArray(tradeLogs) ? [...tradeLogs] : [];
-    if (tradeFilterType !== 'all') {
-      list = list.filter((log) => {
-        if (!log) return false;
-        let t = log.assetType || 'th_stock';
-        if (t === 'th_stock' && log.instrumentType === 'dr') {
-          t = 'foreign_stock';
-        }
-        return t === tradeFilterType;
-      });
-    }
-    if (tradeStartDate) {
-      list = list.filter((log) => log && (log.date || '') >= tradeStartDate);
-    }
-    if (tradeEndDate) {
-      list = list.filter((log) => log && (log.date || '') <= tradeEndDate);
-    }
-    const q = tradeSearchQuery.trim().toLowerCase();
-    if (q) {
-      list = list.filter((log) => {
-        if (!log) return false;
-        return (log.assetName || '').toLowerCase().includes(q) || (log.note || '').toLowerCase().includes(q);
-      });
-    }
-    return list;
-  }, [tradeLogs, tradeFilterType, tradeStartDate, tradeEndDate, tradeSearchQuery]);
-
-  const totalFilteredFee = useMemo(() => {
-    return filteredTradeLogs.reduce((sum, log) => {
-      if (!log) return sum;
-      const logFx = (log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (parseFloat(log.tradeFx) || fxRate) : 1;
-      const feeThb = log.feeThbRecord !== undefined && log.feeThbRecord !== null 
-        ? log.feeThbRecord 
-        : (log.isFeeThb ? (parseFloat(log.fee) || 0) : ((log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (parseFloat(log.fee) || 0) * logFx : (parseFloat(log.fee) || 0)));
-      return sum + feeThb;
-    }, 0);
-  }, [filteredTradeLogs, fxRate]);
-
-  const searchFilteredAssetPnL = useMemo(() => {
-    const q = tradeSearchQuery.trim().toLowerCase();
-    if (!q) return null;
-    const matchingLogs = (tradeLogs || []).filter((log) => log && (log.assetName || '').toLowerCase().includes(q));
-    if (matchingLogs.length === 0) return null;
-    let totalPnlThb = 0;
-    matchingLogs.forEach(l => {
-      if (!l) return;
-      const logFx = (l.currency === 'USD' && l.assetType !== 'th_stock' && l.instrumentType !== 'dr') ? (l.tradeFx ? parseFloat(l.tradeFx) : fxRate) : 1;
-      let pnlVal = l.pnlThb !== undefined ? l.pnlThb : (l.pnl || 0) * logFx;
-      const effInst = getEffectiveInstrumentType(l.assetType, l.instrumentType);
-      const excludeFee = isFeeExcludedFromAssetCost(l.assetType, effInst);
-      if (excludeFee && l.feeThbRecord) {
-        pnlVal -= l.feeThbRecord;
-      }
-      totalPnlThb += pnlVal;
-    });
-    const assetName = matchingLogs[0]?.assetName || '';
-    return { name: assetName, pnl: totalPnlThb, count: matchingLogs.length };
-  }, [tradeLogs, fxRate, tradeSearchQuery]);
-
-  const isDirectFeeType = checkIsDirectFee(form.type, form.instrumentType);
-  const isFeeHiddenForType = form.type === 'crypto';
 
   return (
     <div className="pf-root">
@@ -2396,7 +2018,7 @@ export default function PortfolioApp() {
                   </div>
                 </div>
 
-                {holdings.length === 0 && !cashActive ? (
+                {holdings.length === 0 ? (
                   <div className="pf-empty" style={{ border: 'none', padding: '20px 0' }}>
                     <div>ยังไม่มีสินทรัพย์ในพอร์ต</div>
                     <button className="pf-btn pf-btn-primary pf-empty-cta" onClick={openAdd}><Plus size={16} /> เพิ่มสินทรัพย์แรก</button>
@@ -2549,7 +2171,7 @@ export default function PortfolioApp() {
                 </div>
               </div>
 
-              {/* 5. การ์ดปันผลรวม (ตัดปุ่มตั้งแต่เริ่มต้น/รายปีออกตามข้อ 1) */}
+              {/* 5. การ์ดปันผลรวม */}
               <div className="pf-hero" style={{ border: '2px solid rgba(56, 189, 248, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #0f172a 100%)' }}>
                 <div className="pf-hero-label">ปันผลรวม</div>
                 <div className="pf-hero-value pf-mono" style={{ fontSize: '32px', color: '#34d399' }}>
@@ -2871,8 +2493,6 @@ export default function PortfolioApp() {
                         <input className="pf-input pf-mono" inputMode="decimal" value={form.tradePrice} onChange={(e) => setForm({ ...form, tradePrice: e.target.value })} placeholder="0.00" />
                       </div>
                     </div>
-
-                    {/* ตัดช่องกรอกอัตราแลกเปลี่ยนออกในหน้าต่างซื้อขายตามข้อ 3 */}
 
                     <div className="pf-row2" style={{ marginBottom: '10px' }}>
                       <div>
@@ -3360,10 +2980,14 @@ export default function PortfolioApp() {
                           <span className="pf-mono" style={{ fontSize: '12px', color: 'var(--muted)' }}>{thaiDateAD(log.date)}</span>
                           <button style={{ background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: '2px' }} onClick={() => {
                             setEditingLog(log);
+                            const currentUsd = log.currency === 'USD' && log.instrumentType !== 'dr';
+                            const currentFx = currentUsd ? (log.tradeFx ? parseFloat(log.tradeFx) : fxRate) : 1;
+                            const defaultPnl = log.pnlThb !== undefined ? log.pnlThb : (log.pnl !== undefined ? log.pnl * currentFx : '');
                             setTradeLogForm({
                               quantity: String(log.quantity || ''),
                               price: String(log.price || ''),
                               fee: String(log.fee || ''),
+                              pnl: String(defaultPnl !== '' ? defaultPnl : ''),
                               date: log.date || todayStr(),
                               note: log.note || ''
                             });
@@ -3415,6 +3039,12 @@ export default function PortfolioApp() {
               <label className="pf-label">ค่าธรรมเนียม</label>
               <input className="pf-input pf-mono" inputMode="decimal" value={tradeLogForm.fee} onChange={(e) => setTradeLogForm({ ...tradeLogForm, fee: e.target.value })} placeholder="0" />
             </div>
+            {editingLog.action === 'sell' && (
+              <div className="pf-field">
+                <label className="pf-label">กำไร/ขาดทุนสุทธิ (บาท)</label>
+                <input className="pf-input pf-mono" inputMode="decimal" value={tradeLogForm.pnl} onChange={(e) => setTradeLogForm({ ...tradeLogForm, pnl: e.target.value })} placeholder="0.00" />
+              </div>
+            )}
             <div className="pf-field">
               <label className="pf-label">วันที่</label>
               <input className="pf-input pf-mono" type="date" value={tradeLogForm.date} onChange={(e) => setTradeLogForm({ ...tradeLogForm, date: e.target.value })} />
