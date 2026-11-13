@@ -38,8 +38,9 @@ const isFeeExcludedFromAssetCost = (type, instrumentType) => {
 };
 
 const sanitizeAndPruneHistory = (histList) => {
+  if (!Array.isArray(histList)) return [];
   const map = {};
-  (histList || []).forEach(item => {
+  histList.forEach(item => {
     if (item && item.date && typeof item.value === 'number') {
       map[item.date] = item.value;
     }
@@ -48,6 +49,21 @@ const sanitizeAndPruneHistory = (histList) => {
     .sort()
     .filter(date => date >= '2026-11-30')
     .slice(-72)
+    .map(date => ({ date, value: map[date] }));
+};
+
+const sanitizeAndPruneYearlyHistory = (histList) => {
+  if (!Array.isArray(histList)) return [];
+  const map = {};
+  histList.forEach(item => {
+    if (item && item.date && typeof item.value === 'number') {
+      const yr = String(item.date).slice(0, 4);
+      map[yr] = item.value;
+    }
+  });
+  return Object.keys(map)
+    .sort()
+    .slice(-10)
     .map(date => ({ date, value: map[date] }));
 };
 
@@ -70,6 +86,18 @@ const getBiMonthlySlotDate = () => {
 
   if (slotDate && slotDate < '2026-11-30') return null;
   return slotDate;
+};
+
+const getYearEndSlotDate = () => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth() + 1;
+  const d = now.getDate();
+  const h = now.getHours();
+  if (m === 12 && d === 31 && h >= 23) {
+    return `${y}-12-31`;
+  }
+  return null;
 };
 
 function hexToHsl(hex) {
@@ -126,7 +154,8 @@ function darken(hex, amt) {
 }
 
 function ExplodedPie3D({ data, rx = 88, depth = 20, explode = 7 }) {
-  const total = (data || []).reduce((s, d) => s + (d?.value || 0), 0);
+  const safeData = Array.isArray(data) ? data : [];
+  const total = safeData.reduce((s, d) => s + (d?.value || 0), 0);
   const ry = rx * 0.55;
   const pad = explode + 12;
   const width = rx * 2 + pad * 2;
@@ -134,7 +163,7 @@ function ExplodedPie3D({ data, rx = 88, depth = 20, explode = 7 }) {
   const cx = rx + pad;
   const cy = ry + pad;
 
-  if (isNaN(total) || total <= 0 || !Array.isArray(data) || data.length === 0) {
+  if (isNaN(total) || total <= 0 || safeData.length === 0) {
     return <div className="pf-pie-empty" style={{ width, height }} />;
   }
 
@@ -142,7 +171,7 @@ function ExplodedPie3D({ data, rx = 88, depth = 20, explode = 7 }) {
   const botPt = (theta, ox, oy) => { const p = topPt(theta, ox, oy); return { x: p.x, y: p.y + depth }; };
 
   let cursor = 0;
-  const slices = data.map((d) => {
+  const slices = safeData.map((d) => {
     const val = Number(d?.value) || 0;
     const frac = total > 0 ? val / total : 0;
     const a0 = cursor;
@@ -281,6 +310,7 @@ export default function PortfolioApp() {
   const [holdings, setHoldings] = useState([]);
   const [tradeLogs, setTradeLogs] = useState([]);
   const [history, setHistory] = useState([]);
+  const [yearlyHistory, setYearlyHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [panel, setPanel] = useState(null);
@@ -292,9 +322,8 @@ export default function PortfolioApp() {
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmDeleteTarget, setConfirmDeleteTarget] = useState(null);
   
-  // State สำหรับแก้ไขประวัติซื้อขาย (Edit Log)
   const [editingLog, setEditingLog] = useState(null);
-  const [tradeLogForm, setTradeLogForm] = useState({ quantity: '', price: '', fee: '', date: todayStr(), note: '' });
+  const [tradeLogForm, setTradeLogForm] = useState({ quantity: '', price: '', fee: '', pnl: '', date: todayStr(), note: '' });
 
   const [pendingImport, setPendingImport] = useState(null);
   const [importError, setImportError] = useState('');
@@ -332,10 +361,12 @@ export default function PortfolioApp() {
   const [fetchingFx, setFetchingFx] = useState(false);
   const holdingsRef = useRef(holdings);
   const historyRef = useRef(history);
+  const yearlyHistoryRef = useRef(yearlyHistory);
   const fxRateRef = useRef(fxRate);
   const backendUrlRef = useRef(backendUrl);
   useEffect(() => { holdingsRef.current = holdings; }, [holdings]);
   useEffect(() => { historyRef.current = history; }, [history]);
+  useEffect(() => { yearlyHistoryRef.current = yearlyHistory; }, [yearlyHistory]);
   useEffect(() => { fxRateRef.current = fxRate; }, [fxRate]);
   useEffect(() => { backendUrlRef.current = backendUrl; }, [backendUrl]);
   const [initialCapital, setInitialCapital] = useState(0);
@@ -351,15 +382,9 @@ export default function PortfolioApp() {
   const [ledgerSearchQuery, setLedgerSearchQuery] = useState('');
 
   const [graphModeTotal, setGraphModeTotal] = useState('all');
-  const [graphYearTotal, setGraphYearTotal] = useState(String(new Date().getFullYear()));
   const [graphModeGain, setGraphModeGain] = useState('all');
-  const [graphYearGain, setGraphYearGain] = useState(String(new Date().getFullYear()));
   const [graphModeTh, setGraphModeTh] = useState('all');
-  const [graphYearTh, setGraphYearTh] = useState(String(new Date().getFullYear()));
   const [graphModeUs, setGraphModeUs] = useState('all');
-  const [graphYearUs, setGraphYearUs] = useState(String(new Date().getFullYear()));
-
-  const [dividendGraphMode, setDividendGraphMode] = useState('year');
 
   useEffect(() => { load(); }, []);
 
@@ -393,6 +418,7 @@ export default function PortfolioApp() {
       let h = [];
       let logs = [];
       let hist = [];
+      let yHist = [];
       try {
         const r = await window.storage.get('holdings', false);
         if (r && r.value) h = JSON.parse(r.value);
@@ -405,6 +431,11 @@ export default function PortfolioApp() {
         const r2 = await window.storage.get('portfolio-history', false);
         if (r2 && r2.value) hist = sanitizeAndPruneHistory(JSON.parse(r2.value));
       } catch (e) { /* no data */ }
+      try {
+        const rY = await window.storage.get('portfolio-yearly-history', false);
+        if (rY && rY.value) yHist = sanitizeAndPruneYearlyHistory(JSON.parse(rY.value));
+      } catch (e) { /* no data */ }
+
       let url = '';
       try {
         const r3 = await window.storage.get('backend-url', false);
@@ -430,9 +461,11 @@ export default function PortfolioApp() {
         const r7 = await window.storage.get('excluded-types', false);
         if (r7 && r7.value) excluded = JSON.parse(r7.value);
       } catch (e) { /* not set */ }
+
       setHoldings(Array.isArray(h) ? h : []);
       setTradeLogs(Array.isArray(logs) ? logs : []);
       setHistory(Array.isArray(hist) ? hist : []);
+      setYearlyHistory(Array.isArray(yHist) ? yHist : []);
       setBackendUrl(url);
       setBackendDraft(url);
       setFxRate(isNaN(fx) ? 36.5 : fx);
@@ -449,14 +482,16 @@ export default function PortfolioApp() {
   };
 
   const saveHoldings = async (next) => {
-    setHoldings(next);
-    try { await window.storage.set('holdings', JSON.stringify(next), false); }
+    const arr = Array.isArray(next) ? next : [];
+    setHoldings(arr);
+    try { await window.storage.set('holdings', JSON.stringify(arr), false); }
     catch (e) { showToast('บันทึกไม่สำเร็จ'); }
   };
 
   const saveTradeLogs = async (next) => {
-    setTradeLogs(next);
-    try { await window.storage.set('trade-logs', JSON.stringify(next), false); }
+    const arr = Array.isArray(next) ? next : [];
+    setTradeLogs(arr);
+    try { await window.storage.set('trade-logs', JSON.stringify(arr), false); }
     catch (e) { showToast('บันทึกประวัติการซื้อขายไม่สำเร็จ'); }
   };
 
@@ -467,53 +502,64 @@ export default function PortfolioApp() {
     catch (e) { showToast('บันทึกประวัติไม่สำเร็จ'); }
   };
 
+  const saveYearlyHistory = async (next) => {
+    const pruned = sanitizeAndPruneYearlyHistory(next);
+    setYearlyHistory(pruned);
+    try { await window.storage.set('portfolio-yearly-history', JSON.stringify(pruned), false); }
+    catch (e) { showToast('บันทึกประวัติรายปีไม่สำเร็จ'); }
+  };
+
   const saveLedger = async (next) => {
-    setLedger(next);
-    try { await window.storage.set('cash-ledger', JSON.stringify(next), false); } catch (e) { /* ignore */ }
+    const arr = Array.isArray(next) ? next : [];
+    setLedger(arr);
+    try { await window.storage.set('cash-ledger', JSON.stringify(arr), false); } catch (e) { /* ignore */ }
   };
 
   const getEffectiveRate = (type, rate) => {
     return parseFloat(rate) || 36.5;
   };
 
-  const enriched = useMemo(() => (holdings || []).map((h) => {
-    const qty = parseFloat(h?.quantity) || 0;
-    const avg = parseFloat(h?.avgCost) || 0;
-    const price = parseFloat(h?.currentPrice) || 0;
-    const currency = h?.currency === 'USD' ? 'USD' : 'THB';
-    const isDr = h?.instrumentType === 'dr';
+  const enriched = useMemo(() => {
+    const safeHoldings = Array.isArray(holdings) ? holdings : [];
+    return safeHoldings.map((h) => {
+      const qty = parseFloat(h?.quantity) || 0;
+      const avg = parseFloat(h?.avgCost) || 0;
+      const price = parseFloat(h?.currentPrice) || 0;
+      const currency = h?.currency === 'USD' ? 'USD' : 'THB';
+      const isDr = h?.instrumentType === 'dr';
 
-    const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h?.type, fxRate) : 1;
-    const marketValue = qty * price * effRate;
+      const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h?.type, fxRate) : 1;
+      const marketValue = qty * price * effRate;
 
-    const fixedRate = (currency === 'USD' && !isDr) ? (h?.createdFxRate || fxRate) : 1;
-    const costValue = h?.totalCostThb !== undefined && h.totalCostThb !== null 
-      ? h.totalCostThb 
-      : (qty * avg * fixedRate);
+      const fixedRate = (currency === 'USD' && !isDr) ? (h?.createdFxRate || fxRate) : 1;
+      const costValue = h?.totalCostThb !== undefined && h.totalCostThb !== null 
+        ? h.totalCostThb 
+        : (qty * avg * fixedRate);
 
-    const gain = marketValue - costValue;
-    const gainPct = costValue > 0 ? (gain / costValue) * 100 : 0;
+      const gain = marketValue - costValue;
+      const gainPct = costValue > 0 ? (gain / costValue) * 100 : 0;
 
-    let effectiveType = h?.type;
-    if (effectiveType === 'th_stock' && h?.instrumentType === 'dr') {
-      effectiveType = 'foreign_stock';
-    }
-    return { 
-      ...h, 
-      type: effectiveType, 
-      qty: isNaN(qty) ? 0 : qty, 
-      avg: isNaN(avg) ? 0 : avg, 
-      price: isNaN(price) ? 0 : price, 
-      currency, 
-      marketValue: isNaN(marketValue) ? 0 : marketValue, 
-      costValue: isNaN(costValue) ? 0 : costValue, 
-      gain: isNaN(gain) ? 0 : gain, 
-      gainPct: isNaN(gainPct) ? 0 : gainPct 
-    };
-  }), [holdings, fxRate]);
+      let effectiveType = h?.type;
+      if (effectiveType === 'th_stock' && h?.instrumentType === 'dr') {
+        effectiveType = 'foreign_stock';
+      }
+      return { 
+        ...h, 
+        type: effectiveType, 
+        qty: isNaN(qty) ? 0 : qty, 
+        avg: isNaN(avg) ? 0 : avg, 
+        price: isNaN(price) ? 0 : price, 
+        currency, 
+        marketValue: isNaN(marketValue) ? 0 : marketValue, 
+        costValue: isNaN(costValue) ? 0 : costValue, 
+        gain: isNaN(gain) ? 0 : gain, 
+        gainPct: isNaN(gainPct) ? 0 : gainPct 
+      };
+    });
+  }, [holdings, fxRate]);
 
-  const totalInvestedValue = useMemo(() => enriched.filter((h) => h?.type !== 'cash').reduce((s, h) => s + (h?.marketValue || 0), 0), [enriched]);
-  const totalInvestedCost = useMemo(() => enriched.filter((h) => h?.type !== 'cash').reduce((s, h) => s + (h?.costValue || 0), 0), [enriched]);
+  const totalInvestedValue = useMemo(() => (enriched || []).filter((h) => h?.type !== 'cash').reduce((s, h) => s + (h?.marketValue || 0), 0), [enriched]);
+  const totalInvestedCost = useMemo(() => (enriched || []).filter((h) => h?.type !== 'cash').reduce((s, h) => s + (h?.costValue || 0), 0), [enriched]);
 
   const capitalAddTotal = useMemo(() => (ledger || []).filter((e) => e && e.type === 'capital_add').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0), [ledger]);
   const capitalReduceTotal = useMemo(() => (ledger || []).filter((e) => e && e.type === 'capital_reduce').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0), [ledger]);
@@ -548,20 +594,20 @@ export default function PortfolioApp() {
 
   const totalFees = useMemo(() => (ledger || []).filter(e => e && e.type === 'fee').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0), [ledger]);
   const performanceTotal = useMemo(() => (
-    combinedLedger.filter((e) => e && e.type === 'profit').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0)
-    - combinedLedger.filter((e) => e && (e.type === 'loss' || e.type === 'fee')).reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0)
+    (combinedLedger || []).filter((e) => e && e.type === 'profit').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0)
+    - (combinedLedger || []).filter((e) => e && (e.type === 'loss' || e.type === 'fee')).reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0)
   ), [combinedLedger]);
 
   const rebalanceTotal = useMemo(() => (
-    combinedLedger.filter((e) => e && e.type === 'rebalance').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0)
+    (combinedLedger || []).filter((e) => e && e.type === 'rebalance').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0)
   ), [combinedLedger]);
 
   const cashAdjTotal = useMemo(() => (
-    performanceTotal + combinedLedger.filter((e) => e && e.type === 'dividend').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0) + rebalanceTotal
+    performanceTotal + (combinedLedger || []).filter((e) => e && e.type === 'dividend').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0) + rebalanceTotal
   ), [combinedLedger, performanceTotal, rebalanceTotal]);
 
   const profitAdjTotal = useMemo(() => (
-    performanceTotal + combinedLedger.filter((e) => e && e.type === 'dividend').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0)
+    performanceTotal + (combinedLedger || []).filter((e) => e && e.type === 'dividend').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0)
   ), [combinedLedger, performanceTotal]);
 
   const totalCapital = initialCapital + capitalAdjTotal;
@@ -601,7 +647,7 @@ export default function PortfolioApp() {
   }, [tradeLogs, fxRate]);
 
   const recentLedger = useMemo(() => {
-    let list = combinedLedger.slice().sort((a, b) => (b?.date || '').localeCompare(a?.date || '') || String(b?.id || '').localeCompare(String(a?.id || '')));
+    let list = Array.isArray(combinedLedger) ? combinedLedger.slice().sort((a, b) => (b?.date || '').localeCompare(a?.date || '') || String(b?.id || '').localeCompare(String(a?.id || ''))) : [];
     const q = ledgerSearchQuery.trim().toLowerCase();
     if (q) {
       list = list.filter((e) => {
@@ -618,7 +664,7 @@ export default function PortfolioApp() {
   const currentYearKey = String(new Date().getFullYear());
   const [selectedYear, setSelectedYear] = useState(currentYearKey);
   const yearOptions = useMemo(() => {
-    const set = new Set([currentYearKey, ...combinedLedger.map((e) => (e?.date || '').slice(0, 4)).filter(Boolean), ...(history || []).map((h) => (h?.date || '').slice(0, 4)).filter(Boolean)]);
+    const set = new Set([currentYearKey, ...(combinedLedger || []).map((e) => (e?.date || '').slice(0, 4)).filter(Boolean), ...(history || []).map((h) => (h?.date || '').slice(0, 4)).filter(Boolean)]);
     return Array.from(set).sort((a, b) => b.localeCompare(a)).slice(0, 5);
   }, [combinedLedger, history, currentYearKey]);
 
@@ -629,7 +675,7 @@ export default function PortfolioApp() {
 
   const yearSummary = useMemo(() => {
     const d = { capital_add: 0, capital_reduce: 0, profit: 0, loss: 0, dividend: 0, rebalance: 0, fee: 0 };
-    combinedLedger.forEach((e) => {
+    (combinedLedger || []).forEach((e) => {
       if (e && (e?.date || '').slice(0, 4) === selectedYear) {
         const amt = parseFloat(e.amount) || 0;
         if (e.type === 'rebalance') {
@@ -654,22 +700,22 @@ export default function PortfolioApp() {
 
   const byType = useMemo(() => {
     const map = {};
-    enriched.forEach((h) => { if (h && h.type !== 'cash') map[h.type] = (map[h.type] || 0) + (h.marketValue || 0); });
+    (enriched || []).forEach((h) => { if (h && h.type !== 'cash') map[h.type] = (map[h.type] || 0) + (h.marketValue || 0); });
     const list = ASSET_TYPES.filter((t) => t && t.key !== 'cash').map((t) => ({ ...t, value: map[t.key] || 0 })).filter((t) => t.value > 0);
     const cashType = ASSET_TYPES.find((t) => t && t.key === 'cash');
     list.push({ ...cashType, value: computedCash });
     return list.sort((a, b) => b.value - a.value);
   }, [enriched, computedCash]);
 
-  const displayByType = useMemo(() => byType.filter((t) => t && !excludedTypes[t.key]), [byType, excludedTypes]);
-  const displayTotalValue = useMemo(() => displayByType.reduce((s, t) => s + (t?.value || 0), 0), [displayByType]);
+  const displayByType = useMemo(() => (byType || []).filter((t) => t && !excludedTypes[t.key]), [byType, excludedTypes]);
+  const displayTotalValue = useMemo(() => (displayByType || []).reduce((s, t) => s + (t?.value || 0), 0), [displayByType]);
   
   const visibleInvestedCost = useMemo(() => {
-    return enriched.filter((h) => h && h.type !== 'cash' && !excludedTypes[h.type]).reduce((s, h) => s + (h?.costValue || 0), 0);
+    return (enriched || []).filter((h) => h && h.type !== 'cash' && !excludedTypes[h.type]).reduce((s, h) => s + (h?.costValue || 0), 0);
   }, [enriched, excludedTypes]);
 
   const visibleInvestedGain = useMemo(() => {
-    return enriched.filter((h) => h && h.type !== 'cash' && !excludedTypes[h.type]).reduce((s, h) => s + (h?.gain || 0), 0);
+    return (enriched || []).filter((h) => h && h.type !== 'cash' && !excludedTypes[h.type]).reduce((s, h) => s + (h?.gain || 0), 0);
   }, [enriched, excludedTypes]);
 
   const heroProfitAmount = useMemo(() => {
@@ -682,7 +728,7 @@ export default function PortfolioApp() {
   }, [heroProfitAmount, totalCapital, visibleInvestedCost]);
 
   const lastUpdated = useMemo(() => {
-    const dates = holdings.map((h) => h?.lastUpdated).filter(Boolean).sort();
+    const dates = (holdings || []).map((h) => h?.lastUpdated).filter(Boolean).sort();
     return dates.length ? dates[dates.length - 1] : null;
   }, [holdings]);
 
@@ -707,37 +753,32 @@ export default function PortfolioApp() {
     });
   }, [history, displayTotalValue]);
 
-  const historyYearly = useMemo(() => {
-    const map = {};
-    (history || []).filter(h => h && h.date >= '2026-11-30').forEach(h => {
-      const yr = (h.date || '').slice(0, 4);
-      if (yr) map[yr] = h.value;
-    });
-    const years = Object.keys(map).sort();
-    if (years.length === 0) {
+  const historyYearlyIndependent = useMemo(() => {
+    const valid = (yearlyHistory || []).filter(h => h && h.date >= '2026-11-30').sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
+    if (valid.length === 0) {
       const currentYr = String(new Date().getFullYear());
       return [{ date: currentYr, value: displayTotalValue }];
     }
-    return years.map(yr => ({
-      date: yr,
-      value: map[yr]
+    return valid.slice(-10).map(h => ({
+      date: (h.date || '').slice(0, 4),
+      value: h.value
     }));
-  }, [history, displayTotalValue]);
+  }, [yearlyHistory, displayTotalValue]);
 
   const chartDataTotal = useMemo(() => {
     const isYearMode = graphModeTotal === 'year';
-    const dataSrc = isYearMode ? historyYearly : historyMonthly;
+    const dataSrc = isYearMode ? historyYearlyIndependent : historyMonthly;
     return dataSrc.map(h => ({ date: h.date, value: h.value, principal: totalCapital }));
-  }, [historyMonthly, historyYearly, graphModeTotal, totalCapital]);
+  }, [historyMonthly, historyYearlyIndependent, graphModeTotal, totalCapital]);
 
   const chartDataGainCard = useMemo(() => {
     const currentValForGainChart = totalInvestedCost + totalGain;
     const isYearMode = graphModeGain === 'year';
-    const dataSrc = isYearMode ? historyYearly : historyMonthly;
+    const dataSrc = isYearMode ? historyYearlyIndependent : historyMonthly;
     const latestVal = dataSrc[dataSrc.length - 1]?.value || currentValForGainChart;
     const ratio = latestVal > 0 ? currentValForGainChart / latestVal : 1;
     return dataSrc.map(h => ({ date: h.date, gain: h.value * ratio, cost: totalInvestedCost }));
-  }, [historyMonthly, historyYearly, totalInvestedCost, totalGain, graphModeGain]);
+  }, [historyMonthly, historyYearlyIndependent, totalInvestedCost, totalGain, graphModeGain]);
 
   const dividendYears = useMemo(() => {
     const y = new Date().getFullYear();
@@ -746,7 +787,7 @@ export default function PortfolioApp() {
 
   const dividendByYear = useMemo(() => {
     return dividendYears.map((y) => {
-      const entries = combinedLedger.filter((e) => e && e.type === 'dividend' && (e?.date || '').slice(0, 4) === y);
+      const entries = (combinedLedger || []).filter((e) => e && e.type === 'dividend' && (e?.date || '').slice(0, 4) === y);
       const divSum = entries.reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0);
       const snaps = entries.map((e) => e?.invested).filter((v) => typeof v === 'number' && v > 0);
       const investedSnap = snaps.length ? snaps[snaps.length - 1] : totalInvestedCost;
@@ -760,24 +801,11 @@ export default function PortfolioApp() {
   }, [dividendYears, combinedLedger, totalInvestedCost]);
 
   const dividendChartData = useMemo(() => {
-    if (dividendGraphMode === 'all') {
-      const totalDiv = combinedLedger.filter((e) => e && e.type === 'dividend').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0);
-      const yearsWithDiv = dividendByYear.filter((d) => d && d.dividend > 0);
-      const avgInvested = yearsWithDiv.length
-        ? yearsWithDiv.reduce((s, d) => s + d.invested, 0) / yearsWithDiv.length
-        : totalInvestedCost;
-      return [{
-        year: 'ตั้งแต่เริ่มต้น',
-        dividend: totalDiv,
-        invested: totalDiv > 0 ? avgInvested : 0,
-        yieldPct: totalDiv > 0 && avgInvested > 0 ? (totalDiv / avgInvested) * 100 : 0,
-      }];
-    }
     return dividendByYear;
-  }, [dividendGraphMode, dividendByYear, combinedLedger, totalInvestedCost]);
+  }, [dividendByYear]);
 
   const totalDividendAmount = useMemo(() => {
-    return combinedLedger.filter((e) => e && e.type === 'dividend').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0);
+    return (combinedLedger || []).filter((e) => e && e.type === 'dividend').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0);
   }, [combinedLedger]);
 
   const dividendMaxVal = useMemo(() => {
@@ -787,26 +815,26 @@ export default function PortfolioApp() {
   }, [dividendChartData]);
 
   const chartDataTh = useMemo(() => {
-    const thHoldings = enriched.filter((h) => h && h.type === 'th_stock');
+    const thHoldings = (enriched || []).filter((h) => h && h.type === 'th_stock');
     const thCost = thHoldings.reduce((s, h) => s + (h?.costValue || 0), 0);
     const thVal = thHoldings.reduce((s, h) => s + (h?.marketValue || 0), 0);
     const isYearMode = graphModeTh === 'year';
-    const dataSrc = isYearMode ? historyYearly : historyMonthly;
+    const dataSrc = isYearMode ? historyYearlyIndependent : historyMonthly;
     const latestVal = dataSrc[dataSrc.length - 1]?.value || (thVal || 1);
     const ratio = latestVal > 0 ? thVal / latestVal : 1;
     return dataSrc.map(h => ({ date: h.date, gain: h.value * ratio, cost: thCost }));
-  }, [historyMonthly, historyYearly, graphModeTh, enriched]);
+  }, [historyMonthly, historyYearlyIndependent, graphModeTh, enriched]);
 
   const chartDataUs = useMemo(() => {
-    const usHoldings = enriched.filter((h) => h && h.type === 'foreign_stock');
+    const usHoldings = (enriched || []).filter((h) => h && h.type === 'foreign_stock');
     const usCost = usHoldings.reduce((s, h) => s + (h?.costValue || 0), 0);
     const usVal = usHoldings.reduce((s, h) => s + (h?.marketValue || 0), 0);
     const isYearMode = graphModeUs === 'year';
-    const dataSrc = isYearMode ? historyYearly : historyMonthly;
+    const dataSrc = isYearMode ? historyYearlyIndependent : historyMonthly;
     const latestVal = dataSrc[dataSrc.length - 1]?.value || (usVal || 1);
     const ratio = latestVal > 0 ? usVal / latestVal : 1;
     return dataSrc.map(h => ({ date: h.date, gain: h.value * ratio, cost: usCost }));
-  }, [historyMonthly, historyYearly, graphModeUs, enriched]);
+  }, [historyMonthly, historyYearlyIndependent, graphModeUs, enriched]);
 
   const openAdd = () => { 
     setForm({ 
@@ -862,7 +890,7 @@ export default function PortfolioApp() {
 
   const getAssetLots = (assetId, currentQty, currentPrice, assetCurrency, assetType, instrumentType) => {
     try {
-      const targetHolding = holdings.find(h => h && h.id === assetId);
+      const targetHolding = (holdings || []).find(h => h && h.id === assetId);
       if (!targetHolding) return [];
       const hQty = parseFloat(targetHolding.quantity) || 0;
       const hCostThb = targetHolding.totalCostThb !== undefined && targetHolding.totalCostThb !== null 
@@ -888,6 +916,40 @@ export default function PortfolioApp() {
     }
   };
 
+  const fetchFxRateValue = async () => {
+    const url = backendUrlRef.current;
+    if (!url) return null;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: [{ id: '__fx__', ticker: 'USDTHB', market: 'fx' }] }),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const fxResult = (data.results || []).find((r) => r && r.id === '__fx__');
+      if (fxResult && typeof fxResult.price === 'number') {
+        return fxResult.price;
+      }
+    } catch (e) { /* ignore */ }
+    return null;
+  };
+
+  const fetchFxRate = async () => {
+    if (!backendUrl) { showToast('ยังไม่ได้ตั้งค่า Backend URL'); return; }
+    setFetchingFx(true);
+    const price = await fetchFxRateValue();
+    if (price) {
+      setFxDraft(String(price));
+      setFxRate(price);
+      try { await window.storage.set('fx-usdthb', String(price), false); } catch (e) { /* ignore */ }
+      showToast(`ดึงอัตราแลกเปลี่ยนแล้ว: 1 USD ≈ ฿${fmt(price, 2)}`);
+    } else {
+      showToast('เชื่อมต่อ Backend ไม่สำเร็จ');
+    }
+    setFetchingFx(false);
+  };
+
   const submitForm = () => {
     const isCash = form.type === 'cash';
     const name = (form.name || '').trim();
@@ -902,7 +964,7 @@ export default function PortfolioApp() {
     const excludeFeeFromCost = isFeeExcludedFromAssetCost(form.type, instrumentType);
 
     if (editingId) {
-      const target = holdings.find((h) => h && h.id === editingId);
+      const target = (holdings || []).find((h) => h && h.id === editingId);
       if (!target) return;
 
       let currentQty = parseFloat(target.quantity) || 0;
@@ -922,7 +984,7 @@ export default function PortfolioApp() {
           return;
         }
         const subtotal = addQty * addPrice;
-        const customFx = form.tradeFx && parseFloat(form.tradeFx) > 0 ? parseFloat(form.tradeFx) : fxRate;
+        const customFx = fxRate;
         const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
 
         let feeAmount = 0;
@@ -1002,7 +1064,7 @@ export default function PortfolioApp() {
           return;
         }
 
-        const customFx = form.tradeFx && parseFloat(form.tradeFx) > 0 ? parseFloat(form.tradeFx) : fxRate;
+        const customFx = fxRate;
         const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
         const saleThb = sellQty * sellPrice * (isUsdAsset ? customFx : 1);
         
@@ -1091,10 +1153,10 @@ export default function PortfolioApp() {
 
       let next;
       if (form.tradeAction === 'sell' && currentQty <= 1e-8) {
-        next = holdings.filter((h) => h && h.id !== editingId);
+        next = (holdings || []).filter((h) => h && h.id !== editingId);
         showToast('ขายหมดและลบสินทรัพย์ออกจากพอร์ตแล้ว');
       } else {
-        next = holdings.map((h) => h && h.id === editingId ? { 
+        next = (holdings || []).map((h) => h && h.id === editingId ? { 
           ...h, 
           name, 
           ticker, 
@@ -1169,7 +1231,7 @@ export default function PortfolioApp() {
       }
 
       const newId = Date.now().toString();
-      const nextHoldings = [...holdings, { 
+      const nextHoldings = [...(holdings || []), { 
         id: newId, 
         name, 
         ticker, 
@@ -1219,7 +1281,6 @@ export default function PortfolioApp() {
     showToast('ลบรายการแล้ว');
   };
 
-  // ฟังก์ชันลบประวัติซื้อขาย (Trade Log) อย่างอิสระ
   const executeDeleteTradeLog = (logId) => {
     const targetLog = (tradeLogs || []).find(l => l && l.id === logId);
     if (targetLog && targetLog.ledgerFeeId) {
@@ -1231,12 +1292,12 @@ export default function PortfolioApp() {
     showToast('ลบประวัติซื้อขายสำเร็จ');
   };
 
-  // ฟังก์ชันบันทึกการแก้ไขประวัติซื้อขาย (Edit Log)
   const submitEditLog = () => {
     if (!editingLog) return;
     const qty = parseFloat(tradeLogForm.quantity);
     const price = parseFloat(tradeLogForm.price);
     const feeVal = parseFloat(tradeLogForm.fee) || 0;
+    const inputPnl = parseFloat(tradeLogForm.pnl);
     if (isNaN(qty) || qty <= 0 || isNaN(price) || price < 0) {
       showToast('กรอกจำนวนและราคาให้ถูกต้อง');
       return;
@@ -1265,12 +1326,18 @@ export default function PortfolioApp() {
       }
 
       updatedFeeThbRecord = feeThb;
-      if (excludeFee) {
-        updatedPnlThb = saleThb - costThbSold;
+
+      if (!isNaN(inputPnl)) {
+        updatedPnlThb = inputPnl;
+        updatedPnl = isUsdAsset && logFx > 0 ? inputPnl / logFx : inputPnl;
       } else {
-        updatedPnlThb = saleThb - costThbSold - feeThb;
+        if (excludeFee) {
+          updatedPnlThb = saleThb - costThbSold;
+        } else {
+          updatedPnlThb = saleThb - costThbSold - feeThb;
+        }
+        updatedPnl = isUsdAsset && logFx > 0 ? updatedPnlThb / logFx : updatedPnlThb;
       }
-      updatedPnl = isUsdAsset && logFx > 0 ? updatedPnlThb / logFx : updatedPnlThb;
     } else {
       const subtotal = qty * price;
       const subtotalThb = isUsdAsset ? subtotal * logFx : subtotal;
@@ -1285,7 +1352,7 @@ export default function PortfolioApp() {
       updatedFeeThbRecord = feeThb;
     }
 
-    const nextLogs = tradeLogs.map(l => l && l.id === editingLog.id ? {
+    const nextLogs = (tradeLogs || []).map(l => l && l.id === editingLog.id ? {
       ...l,
       quantity: qty,
       price: price,
@@ -1317,23 +1384,6 @@ export default function PortfolioApp() {
     (holdings || []).filter((h) => h && h.type !== 'cash').forEach((h) => { draft[h.id] = String(h.currentPrice); });
     setUpdateDraft(draft);
     setPanel('update');
-  };
-
-  const fetchFxRateValue = async () => {
-    if (!backendUrl) return null;
-    try {
-      const res = await fetch(backendUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: [{ id: '__fx__', ticker: 'USDTHB', market: 'fx' }] }),
-      });
-      if (!res.ok) return null;
-      const data = await res.json();
-      const r = (data.results || []).find((x) => x && x.id === '__fx__');
-      return r && typeof r.price === 'number' ? r.price : null;
-    } catch (e) {
-      return null;
-    }
   };
 
   const runAutoPriceUpdate = async () => {
@@ -1406,8 +1456,31 @@ export default function PortfolioApp() {
         const histNext = sanitizeAndPruneHistory([...existing, { date: slotDate, value: totalAssetVal }]);
         await saveHistory(histNext);
       }
-      setFetchIssues(failedNames);
 
+      const yearEndSlot = getYearEndSlotDate();
+      if (yearEndSlot) {
+        const investedVal = nextHoldings.reduce((s, h) => {
+          if (!h || h.type === 'cash') return s;
+          const currency = h.currency === 'USD' ? 'USD' : 'THB';
+          const isDr = h.instrumentType === 'dr';
+          const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h.type, rate) : 1;
+          return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0) * effRate;
+        }, 0);
+        const investedCostForCash = nextHoldings.filter(h => h && h.type !== 'cash').reduce((s, h) => {
+          const cur = h.currency === 'USD' ? 'USD' : 'THB';
+          const dr = h.instrumentType === 'dr';
+          const fr = (cur === 'USD' && !dr) ? (h.createdFxRate || rate) : 1;
+          return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.avgCost) || 0) * fr;
+        }, 0);
+        const currentComputedCash = totalCapital - investedCostForCash + cashAdjTotal;
+        const totalAssetVal = investedVal + currentComputedCash;
+
+        const existingY = (yearlyHistoryRef.current || []).filter((p) => p && p.date !== yearEndSlot);
+        const yHistNext = sanitizeAndPruneYearlyHistory([...existingY, { date: yearEndSlot, value: totalAssetVal }]);
+        await saveYearlyHistory(yHistNext);
+      }
+
+      setFetchIssues(failedNames);
       const okCount = Object.keys(priceById).length;
       showToast(`ดึงราคาสำเร็จ จำนวน ${okCount} ตัว`);
     } catch (e) { /* background silent */ }
@@ -1456,234 +1529,16 @@ export default function PortfolioApp() {
     const histNext = sanitizeAndPruneHistory([...existing, { date: slotDate, value: totalAssetVal }]);
     saveHistory(histNext);
 
+    const yearEndSlot = getYearEndSlotDate();
+    if (yearEndSlot) {
+      const existingY = (yearlyHistory || []).filter((p) => p && p.date !== yearEndSlot);
+      const yHistNext = sanitizeAndPruneYearlyHistory([...existingY, { date: yearEndSlot, value: totalAssetVal }]);
+      saveYearlyHistory(yHistNext);
+    }
+
     showToast(`ดึงราคาสำเร็จ จำนวน ${Object.keys(updateDraft).length} ตัว`);
     closePanel();
   };
-
-  const saveBackendUrl = async () => {
-    const url = backendDraft.trim();
-    const fx = parseFloat(fxDraft);
-    setBackendUrl(url);
-    try { await window.storage.set('backend-url', url, false); } catch (e) { /* ignore */ }
-    if (!isNaN(fx) && fx > 0) {
-      setFxRate(fx);
-      try { await window.storage.set('fx-usdthb', String(fx), false); } catch (e) { /* ignore */ }
-    }
-    showToast('บันทึกการตั้งค่าแล้ว');
-    closePanel();
-  };
-
-  const saveInitialCapital = async () => {
-    const capital = parseFloat(initialCapitalDraft);
-    const nextCapital = !isNaN(capital) && capital >= 0 ? capital : 0;
-    setInitialCapital(nextCapital);
-    try { await window.storage.set('initial-capital', String(nextCapital), false); } catch (e) { /* ignore */ }
-    showToast('บันทึกทุนเริ่มต้นแล้ว');
-  };
-
-  const fetchAutoPrices = async () => {
-    if (!backendUrl) { showToast('ยังไม่ได้ตั้งค่า Backend URL'); return; }
-    const eligible = (holdings || []).filter((h) => h && typeInfo(h.type).market && h.ticker);
-    if (eligible.length === 0) { showToast('ไม่มีรายการที่ใส่สัญลักษณ์ไว้'); return; }
-    setFetchingPrices(true);
-    try {
-      const items = eligible.map((h) => ({ id: h.id, ticker: h.ticker, market: typeInfo(h.type).market }));
-      const res = await fetch(backendUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items }),
-      });
-      if (!res.ok) throw new Error('bad response');
-      const data = await res.json();
-      const next = { ...updateDraft };
-      const failedNames = [];
-      let okCount = 0;
-      (data.results || []).forEach((r) => {
-        if (!r) return;
-        if (typeof r.price === 'number') {
-          okCount++;
-          const holding = eligible.find((x) => x && x.id === r.id);
-          let updatedPrice = r.price;
-          if (holding && holding.type === 'crypto' && holding.currency === 'THB') { updatedPrice = r.price * fxRate; }
-          next[r.id] = String(updatedPrice);
-        } else {
-          const h = eligible.find((x) => x && x.id === r.id);
-          failedNames.push(h ? h.name : r.id);
-        }
-      });
-      setUpdateDraft(next);
-      setFetchIssues(failedNames);
-      showToast(`ดึงราคาสำเร็จ จำนวน ${okCount} ตัว`);
-    } catch (e) {
-      showToast('เชื่อมต่อ Backend ไม่สำเร็จ');
-    } finally {
-      setFetchingPrices(false);
-    }
-  };
-
-  const fetchFxRate = async () => {
-    if (!backendUrl) { showToast('ยังไม่ได้ตั้งค่า Backend URL'); return; }
-    setFetchingFx(true);
-    const price = await fetchFxRateValue();
-    if (price) {
-      setFxDraft(String(price));
-      showToast(`ดึงอัตราแลกเปลี่ยนแล้ว: 1 USD ≈ ฿${fmt(price, 2)}`);
-    } else {
-      showToast('เชื่อมต่อ Backend ไม่สำเร็จ');
-    }
-    setFetchingFx(false);
-  };
-
-  const exportData = () => {
-    const payload = { app: 'portfolio-tracker', version: 2, exportedAt: new Date().toISOString(), holdings, tradeLogs, history, fxRate, backendUrl, initialCapital, ledger };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `portfolio-backup-${todayStr()}.json`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast('ส่งออกไฟล์สำรองข้อมูลแล้ว');
-  };
-
-  const triggerImport = () => {
-    setImportError('');
-    if (fileInputRef.current) fileInputRef.current.click();
-  };
-
-  const handleImportFile = (e) => {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = '';
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const data = JSON.parse(reader.result);
-        if (!Array.isArray(data.holdings)) throw new Error('รูปแบบไฟล์ไม่ถูกต้อง');
-        setPendingImport(data);
-        setImportError('');
-      } catch (err) {
-        setImportError('อ่านไฟล์ไม่สำเร็จ');
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const confirmImport = async () => {
-    if (!pendingImport) return;
-    await saveHoldings(Array.isArray(pendingImport.holdings) ? pendingImport.holdings : []);
-    await saveTradeLogs(Array.isArray(pendingImport.tradeLogs) ? pendingImport.tradeLogs : []);
-    await saveHistory(Array.isArray(pendingImport.history) ? sanitizeAndPruneHistory(pendingImport.history) : []);
-    
-    const fx = typeof pendingImport.fxRate === 'number' && pendingImport.fxRate > 0 ? pendingImport.fxRate : 36.5;
-    setFxRate(fx);
-    setFxDraft(String(fx));
-    try { await window.storage.set('fx-usdthb', String(fx), false); } catch (e) { /* ignore */ }
-
-    const url = typeof pendingImport.backendUrl === 'string' ? pendingImport.backendUrl : '';
-    setBackendUrl(url);
-    setBackendDraft(url);
-    try { await window.storage.set('backend-url', url, false); } catch (e) { /* ignore */ }
-
-    const capital = typeof pendingImport.initialCapital === 'number' && pendingImport.initialCapital >= 0 ? pendingImport.initialCapital : 0;
-    setInitialCapital(capital);
-    setInitialCapitalDraft(capital > 0 ? String(capital) : '');
-    try { await window.storage.set('initial-capital', String(capital), false); } catch (e) { /* ignore */ }
-
-    await saveLedger(Array.isArray(pendingImport.ledger) ? pendingImport.ledger : []);
-    setPendingImport(null);
-    showToast('นำเข้าข้อมูลสำเร็จ');
-  };
-
-  const openLedgerForm = (type) => {
-    setLedgerType(type); setLedgerAmount(''); setLedgerSign('+'); setLedgerNote(''); setLedgerDate(todayStr()); setLedgerError(''); setPanel('ledger');
-  };
-
-  const submitLedger = () => {
-    const rawVal = ledgerAmount.trim();
-    let amt = parseFloat(rawVal);
-
-    if (ledgerType === 'rebalance') {
-      if (isNaN(amt)) { setLedgerError('กรอกจำนวนเงินให้ถูกต้อง'); return; }
-      const finalAmt = ledgerSign === '-' ? -Math.abs(amt) : Math.abs(amt);
-      const entry = { id: Date.now().toString(), type: 'rebalance', amount: finalAmt, date: ledgerDate || todayStr(), note: ledgerNote.trim() || 'รีบาลานซ์เงินสด' };
-      saveLedger([...ledger, entry]);
-      showToast('บันทึกรีบาลานซ์สำเร็จ');
-      setPanel('cashManage');
-      return;
-    }
-
-    if (isNaN(amt) || amt <= 0) { setLedgerError('กรอกจำนวนเงินให้มากกว่า 0'); return; }
-
-    const entry = { id: Date.now().toString(), type: ledgerType, amount: amt, date: ledgerDate || todayStr(), note: ledgerNote.trim() };
-    if (ledgerType === 'dividend') entry.invested = totalInvestedCost;
-    saveLedger([...ledger, entry]);
-    showToast('บันทึกรายการสำเร็จ');
-    setPanel('cashManage');
-  };
-
-  const deleteLedgerEntry = (id) => {
-    saveLedger((ledger || []).filter((e) => e && e.id !== id));
-    showToast('ลบรายการแล้ว');
-  };
-
-  const toggleTypeInclusion = (typeKey) => {
-    setExcludedTypes((prev) => {
-      const next = { ...prev, [typeKey]: !prev[typeKey] };
-      window.storage.set('excluded-types', JSON.stringify(next), false).catch(() => {});
-      return next;
-    });
-  };
-
-  const clearAll = async () => {
-    await saveHoldings([]); 
-    await saveTradeLogs([]); 
-    await saveHistory([]); 
-    await saveLedger([]);
-    setInitialCapital(0);
-    setInitialCapitalDraft('');
-    try { await window.storage.set('initial-capital', '0', false); } catch (e) { /* ignore */ }
-    setConfirmClear(false);
-    showToast('ล้างข้อมูลทั้งหมดแล้ว');
-  };
-
-  const filteredTradeLogs = useMemo(() => {
-    let list = Array.isArray(tradeLogs) ? [...tradeLogs] : [];
-    if (tradeFilterType !== 'all') {
-      list = list.filter((log) => {
-        if (!log) return false;
-        let t = log.assetType || 'th_stock';
-        if (t === 'th_stock' && log.instrumentType === 'dr') {
-          t = 'foreign_stock';
-        }
-        return t === tradeFilterType;
-      });
-    }
-    if (tradeStartDate) {
-      list = list.filter((log) => log && (log.date || '') >= tradeStartDate);
-    }
-    if (tradeEndDate) {
-      list = list.filter((log) => log && (log.date || '') <= tradeEndDate);
-    }
-    const q = tradeSearchQuery.trim().toLowerCase();
-    if (q) {
-      list = list.filter((log) => {
-        if (!log) return false;
-        return (log.assetName || '').toLowerCase().includes(q) || (log.note || '').toLowerCase().includes(q);
-      });
-    }
-    return list;
-  }, [tradeLogs, tradeFilterType, tradeStartDate, tradeEndDate, tradeSearchQuery]);
-
-  const totalFilteredFee = useMemo(() => {
-    return filteredTradeLogs.reduce((sum, log) => {
-      if (!log) return sum;
-      const logFx = (log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (parseFloat(log.tradeFx) || fxRate) : 1;
-      const feeThb = log.feeThbRecord !== undefined && log.feeThbRecord !== null 
-        ? log.feeThbRecord 
-        : (log.isFeeThb ? (parseFloat(log.fee) || 0) : ((log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (parseFloat(log.fee) || 0) * logFx : (parseFloat(log.fee) || 0)));
-      return sum + feeThb;
-    }, 0);
-  }, [filteredTradeLogs, fxRate]);
 
   return (
     <div className="pf-root">
@@ -2000,13 +1855,6 @@ export default function PortfolioApp() {
                             <button className={graphModeTh === 'year' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeTh('year')} style={{ padding: '2px 8px', fontSize: '11px' }}>รายปี</button>
                           </div>
                         </div>
-                        {graphModeTh === 'year' && (
-                          <div className="pf-year-picker" style={{ marginBottom: '8px' }}>
-                            {yearOptions.map((y) => (
-                              <button key={y} className={y === graphYearTh ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphYearTh(y)} style={{ padding: '2px 8px', fontSize: '11px' }}>{y}</button>
-                            ))}
-                          </div>
-                        )}
                         <div className="pf-spark">
                           <ResponsiveContainer width="100%" height="100%">
                             <LineChart data={chartDataTh}>
@@ -2198,13 +2046,6 @@ export default function PortfolioApp() {
                             <button className={graphModeUs === 'year' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeUs('year')} style={{ padding: '2px 8px', fontSize: '11px' }}>รายปี</button>
                           </div>
                         </div>
-                        {graphModeUs === 'year' && (
-                          <div className="pf-year-picker" style={{ marginBottom: '8px' }}>
-                            {yearOptions.map((y) => (
-                              <button key={y} className={y === graphYearUs ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphYearUs(y)} style={{ padding: '2px 8px', fontSize: '11px' }}>{y}</button>
-                            ))}
-                          </div>
-                        )}
                         <div className="pf-spark">
                           <ResponsiveContainer width="100%" height="100%">
                             <LineChart data={chartDataUs}>
@@ -2348,7 +2189,7 @@ export default function PortfolioApp() {
                   </div>
                 </div>
 
-                {holdings.length === 0 && !cashActive ? (
+                {holdings.length === 0 ? (
                   <div className="pf-empty" style={{ border: 'none', padding: '20px 0' }}>
                     <div>ยังไม่มีสินทรัพย์ในพอร์ต</div>
                     <button className="pf-btn pf-btn-primary pf-empty-cta" onClick={openAdd}><Plus size={16} /> เพิ่มสินทรัพย์แรก</button>
@@ -2454,13 +2295,6 @@ export default function PortfolioApp() {
                       <button className={graphModeTotal === 'year' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeTotal('year')} style={{ padding: '2px 8px', fontSize: '11px' }}>รายปี</button>
                     </div>
                   </div>
-                  {graphModeTotal === 'year' && (
-                    <div className="pf-year-picker" style={{ marginBottom: '8px' }}>
-                      {yearOptions.map((y) => (
-                        <button key={y} className={y === graphYearTotal ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphYearTotal(y)} style={{ padding: '2px 8px', fontSize: '11px' }}>{y}</button>
-                      ))}
-                    </div>
-                  )}
                   <div className="pf-spark">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={chartDataTotal}>
@@ -2494,13 +2328,6 @@ export default function PortfolioApp() {
                       <button className={graphModeGain === 'year' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeGain('year')} style={{ padding: '2px 8px', fontSize: '11px' }}>รายปี</button>
                     </div>
                   </div>
-                  {graphModeGain === 'year' && (
-                    <div className="pf-year-picker" style={{ marginBottom: '8px' }}>
-                      {yearOptions.map((y) => (
-                        <button key={y} className={y === graphYearGain ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphYearGain(y)} style={{ padding: '2px 8px', fontSize: '11px' }}>{y}</button>
-                      ))}
-                    </div>
-                  )}
                   <div className="pf-spark">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={chartDataGainCard}>
@@ -2523,11 +2350,7 @@ export default function PortfolioApp() {
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '14px 0 8px', paddingTop: '12px', borderTop: '1px solid var(--divider)' }}>
-                  <div className="pf-hero-label" style={{ margin: 0 }}>กราฟปันผล / เงินที่ลงทุนไป</div>
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    <button className={dividendGraphMode === 'all' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setDividendGraphMode('all')} style={{ padding: '2px 8px', fontSize: '11px' }}>ตั้งแต่เริ่มต้น</button>
-                    <button className={dividendGraphMode === 'year' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setDividendGraphMode('year')} style={{ padding: '2px 8px', fontSize: '11px' }}>รายปี</button>
-                  </div>
+                  <div className="pf-hero-label" style={{ margin: 0 }}>กราฟปันผลรายปี / เงินที่ลงทุนไป</div>
                 </div>
 
                 <div className="pf-spark" style={{ marginTop: '10px', height: '190px' }}>
@@ -2820,7 +2643,7 @@ export default function PortfolioApp() {
                   <button type="button" className={`pf-btn ${form.tradeAction === 'none' ? 'pf-btn-primary' : 'pf-btn-ghost'}`} style={{ flex: 1, padding: '8px', justifyContent: 'center', fontSize: '13px' }} onClick={() => setForm({ ...form, tradeAction: 'none' })}>แก้ไขข้อมูล</button>
                   <button type="button" className={`pf-btn ${form.tradeAction === 'buy' ? 'pf-btn-primary' : 'pf-btn-ghost'}`} style={{ flex: 1, padding: '8px', justifyContent: 'center', fontSize: '13px' }} onClick={() => setForm({ ...form, tradeAction: 'buy' })}>ซื้อเพิ่ม</button>
                   <button type="button" className={`pf-btn ${form.tradeAction === 'sell' ? 'pf-btn-primary' : 'pf-btn-ghost'}`} style={{ flex: 1, padding: '8px', justifyContent: 'center', fontSize: '13px' }} onClick={() => {
-                    const targetHolding = holdings.find(h => h && h.id === editingId);
+                    const targetHolding = (holdings || []).find(h => h && h.id === editingId);
                     setForm({ 
                       ...form, 
                       tradeAction: 'sell', 
@@ -2841,13 +2664,6 @@ export default function PortfolioApp() {
                         <input className="pf-input pf-mono" inputMode="decimal" value={form.tradePrice} onChange={(e) => setForm({ ...form, tradePrice: e.target.value })} placeholder="0.00" />
                       </div>
                     </div>
-
-                    {form.currency === 'USD' && (
-                      <div className="pf-field" style={{ marginBottom: '10px' }}>
-                        <label className="pf-label">อัตราแลกเปลี่ยน (1 USD = ? บาท) <span style={{ opacity: 0.6 }}>(ไม่กรอก = ใช้เรทกลางแอพ)</span></label>
-                        <input className="pf-input pf-mono" inputMode="decimal" value={form.tradeFx} onChange={(e) => setForm({ ...form, tradeFx: e.target.value })} placeholder={String(fxRate)} />
-                      </div>
-                    )}
 
                     <div className="pf-row2" style={{ marginBottom: '10px' }}>
                       <div>
@@ -2876,99 +2692,103 @@ export default function PortfolioApp() {
               </div>
             )}
 
-            <div className="pf-field">
-              <label className="pf-label">ชื่อสินทรัพย์</label>
-              <input className="pf-input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="เช่น PTT, AAPL, Bitcoin" />
-            </div>
-            {form.type !== 'cash' && (
-              <div className="pf-field">
-                <label className="pf-label">สัญลักษณ์ {typeInfo(form.type).market ? '(ใส่เพื่อดึงราคาอัตโนมัติได้)' : '(ถ้ามี)'}</label>
-                <input className="pf-input" value={form.ticker} onChange={(e) => setForm({ ...form, ticker: e.target.value.toUpperCase() })} placeholder={TICKER_HINT[form.type] || 'ไม่บังคับ'} />
-              </div>
-            )}
-            {(form.type === 'th_stock' || form.type === 'foreign_stock') && (
-              <div className="pf-field">
-                <label className="pf-label">ประเภทตราสาร</label>
-                <select className="pf-select" value={form.instrumentType} onChange={(e) => setForm({ ...form, instrumentType: e.target.value })}>
-                  {INSTRUMENT_TYPES.map((it) => <option value={it.key} key={it.key}>{it.label}</option>)}
-                </select>
-              </div>
-            )}
-            {(form.type === 'th_stock' || form.type === 'foreign_stock') && (
-              <div className="pf-field">
-                <label className="pf-label">กลุ่มอุตสาหกรรม (ถ้ามี)</label>
-                <input className="pf-input" value={form.industry} onChange={(e) => setForm({ ...form, industry: e.target.value })} placeholder="เช่น พลังงาน, เทคโนโลยี" />
-              </div>
-            )}
-            <div className="pf-field">
-              <label className="pf-label">ประเภทสินทรัพย์</label>
-              <select className="pf-select" value={form.type} onChange={(e) => onFormTypeChange(e.target.value)}>
-                {ASSET_TYPES.filter((t) => t && t.key !== 'cash').map((t) => <option value={t.key} key={t.key}>{t.label}</option>)}
-              </select>
-            </div>
-            <div className="pf-field">
-              <label className="pf-label">สกุลเงิน {editingId && <span style={{ color: 'var(--gold)', fontSize: '11px' }}>(ไม่สามารถเปลี่ยนสกุลเงินของสินทรัพย์เดิมได้)</span>}</label>
-              <div className="pf-currency-toggle">
-                <button type="button" disabled={!!editingId} style={editingId ? { opacity: 0.5, cursor: 'not-allowed' } : {}} className={form.currency !== 'USD' ? 'pf-currency-active' : ''} onClick={() => !editingId && setForm({ ...form, currency: 'THB' })}>บาท (THB)</button>
-                <button type="button" disabled={!!editingId} style={editingId ? { opacity: 0.5, cursor: 'not-allowed' } : {}} className={form.currency === 'USD' ? 'pf-currency-active' : ''} onClick={() => !editingId && setForm({ ...form, currency: 'USD' })}>ดอลลาร์ (USD)</button>
-              </div>
-            </div>
-
-            {form.currency === 'USD' && !editingId && (
-              <div className="pf-field" style={{ marginBottom: '14px' }}>
-                <label className="pf-label">อัตราแลกเปลี่ยน (1 USD = ? บาท) <span style={{ opacity: 0.6 }}>(ไม่กรอก = ใช้เรทกลางแอพ)</span></label>
-                <input className="pf-input pf-mono" inputMode="decimal" value={form.tradeFx} onChange={(e) => setForm({ ...form, tradeFx: e.target.value })} placeholder={String(fxRate)} />
-              </div>
-            )}
-
-            {form.type === 'cash' ? (
-              <div className="pf-field">
-                <label className="pf-label">จำนวนเงิน</label>
-                <input className="pf-input pf-mono" inputMode="decimal" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} placeholder="0.00" />
-              </div>
-            ) : (
+            {form.tradeAction === 'none' && (
               <>
-                <div className="pf-row2">
+                <div className="pf-field">
+                  <label className="pf-label">ชื่อสินทรัพย์</label>
+                  <input className="pf-input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="เช่น PTT, AAPL, Bitcoin" />
+                </div>
+                {form.type !== 'cash' && (
                   <div className="pf-field">
-                    <label className="pf-label">จำนวน</label>
-                    <input className="pf-input pf-mono" inputMode="decimal" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} placeholder="0" />
+                    <label className="pf-label">สัญลักษณ์ {typeInfo(form.type).market ? '(ใส่เพื่อดึงราคาอัตโนมัติได้)' : '(ถ้ามี)'}</label>
+                    <input className="pf-input" value={form.ticker} onChange={(e) => setForm({ ...form, ticker: e.target.value.toUpperCase() })} placeholder={TICKER_HINT[form.type] || 'ไม่บังคับ'} />
                   </div>
+                )}
+                {(form.type === 'th_stock' || form.type === 'foreign_stock') && (
                   <div className="pf-field">
-                    <label className="pf-label">ราคาต่อหน่วย</label>
-                    <input className="pf-input pf-mono" inputMode="decimal" value={form.avgCost} onChange={(e) => setForm({ ...form, avgCost: e.target.value })} placeholder="0.00" />
+                    <label className="pf-label">ประเภทตราสาร</label>
+                    <select className="pf-select" value={form.instrumentType} onChange={(e) => setForm({ ...form, instrumentType: e.target.value })}>
+                      {INSTRUMENT_TYPES.map((it) => <option value={it.key} key={it.key}>{it.label}</option>)}
+                    </select>
                   </div>
+                )}
+                {(form.type === 'th_stock' || form.type === 'foreign_stock') && (
+                  <div className="pf-field">
+                    <label className="pf-label">กลุ่มอุตสาหกรรม (ถ้ามี)</label>
+                    <input className="pf-input" value={form.industry} onChange={(e) => setForm({ ...form, industry: e.target.value })} placeholder="เช่น พลังงาน, เทคโนโลยี" />
+                  </div>
+                )}
+                <div className="pf-field">
+                  <label className="pf-label">ประเภทสินทรัพย์</label>
+                  <select className="pf-select" value={form.type} onChange={(e) => onFormTypeChange(e.target.value)}>
+                    {ASSET_TYPES.filter((t) => t && t.key !== 'cash').map((t) => <option value={t.key} key={t.key}>{t.label}</option>)}
+                  </select>
                 </div>
                 <div className="pf-field">
-                  <label className="pf-label">ราคาปัจจุบัน</label>
-                  <input className="pf-input pf-mono" inputMode="decimal" value={form.currentPrice} onChange={(e) => setForm({ ...form, currentPrice: e.target.value })} placeholder="0.00" />
+                  <label className="pf-label">สกุลเงิน {editingId && <span style={{ color: 'var(--gold)', fontSize: '11px' }}>(ไม่สามารถเปลี่ยนสกุลเงินของสินทรัพย์เดิมได้)</span>}</label>
+                  <div className="pf-currency-toggle">
+                    <button type="button" disabled={!!editingId} style={editingId ? { opacity: 0.5, cursor: 'not-allowed' } : {}} className={form.currency !== 'USD' ? 'pf-currency-active' : ''} onClick={() => !editingId && setForm({ ...form, currency: 'THB' })}>บาท (THB)</button>
+                    <button type="button" disabled={!!editingId} style={editingId ? { opacity: 0.5, cursor: 'not-allowed' } : {}} className={form.currency === 'USD' ? 'pf-currency-active' : ''} onClick={() => !editingId && setForm({ ...form, currency: 'USD' })}>ดอลลาร์ (USD)</button>
+                  </div>
                 </div>
 
-                {!editingId && (
+                {form.currency === 'USD' && !editingId && (
+                  <div className="pf-field" style={{ marginBottom: '14px' }}>
+                    <label className="pf-label">อัตราแลกเปลี่ยน (1 USD = ? บาท) <span style={{ opacity: 0.6 }}>(ไม่กรอก = ใช้เรทกลางแอพ)</span></label>
+                    <input className="pf-input pf-mono" inputMode="decimal" value={form.tradeFx} onChange={(e) => setForm({ ...form, tradeFx: e.target.value })} placeholder={String(fxRate)} />
+                  </div>
+                )}
+
+                {form.type === 'cash' ? (
+                  <div className="pf-field">
+                    <label className="pf-label">จำนวนเงิน</label>
+                    <input className="pf-input pf-mono" inputMode="decimal" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} placeholder="0.00" />
+                  </div>
+                ) : (
                   <>
-                    {!isFeeHiddenForType && (
-                      <div className="pf-row2">
-                        <div className="pf-field">
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                            <label className="pf-label" style={{ margin: 0 }}>ค่าธรรมเนียม {isDirectFeeType ? '' : '(%)'}</label>
-                            {isDirectFeeType && (
-                              <div style={{ display: 'flex', gap: '4px' }}>
-                                <button type="button" className={form.feeCurrency !== 'USD' ? 'pf-year-pill-active' : 'pf-year-pill'} style={{ padding: '1px 6px', fontSize: '10px' }} onClick={() => setForm({ ...form, feeCurrency: 'THB' })}>บาท</button>
-                                <button type="button" className={form.feeCurrency === 'USD' ? 'pf-year-pill-active' : 'pf-year-pill'} style={{ padding: '1px 6px', fontSize: '10px' }} onClick={() => setForm({ ...form, feeCurrency: 'USD' })}>USD</button>
-                              </div>
-                            )}
-                          </div>
-                          <input className="pf-input pf-mono" inputMode="decimal" value={form.feePct} onChange={(e) => setForm({ ...form, feePct: e.target.value })} placeholder="0" />
-                        </div>
-                        <div className="pf-field">
-                          <label className="pf-label">วันที่ทำรายการ</label>
-                          <input className="pf-input pf-mono" type="date" value={form.tradeDate} onChange={(e) => setForm({ ...form, tradeDate: e.target.value })} />
-                        </div>
+                    <div className="pf-row2">
+                      <div className="pf-field">
+                        <label className="pf-label">จำนวน</label>
+                        <input className="pf-input pf-mono" inputMode="decimal" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} placeholder="0" />
                       </div>
-                    )}
-                    <div className="pf-field">
-                      <label className="pf-label">หมายเหตุการซื้อ</label>
-                      <input className="pf-input" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="เช่น ซื้อครั้งแรก" />
+                      <div className="pf-field">
+                        <label className="pf-label">ราคาต่อหน่วย</label>
+                        <input className="pf-input pf-mono" inputMode="decimal" value={form.avgCost} onChange={(e) => setForm({ ...form, avgCost: e.target.value })} placeholder="0.00" />
+                      </div>
                     </div>
+                    <div className="pf-field">
+                      <label className="pf-label">ราคาปัจจุบัน</label>
+                      <input className="pf-input pf-mono" inputMode="decimal" value={form.currentPrice} onChange={(e) => setForm({ ...form, currentPrice: e.target.value })} placeholder="0.00" />
+                    </div>
+
+                    {!editingId && (
+                      <>
+                        {!isFeeHiddenForType && (
+                          <div className="pf-row2">
+                            <div className="pf-field">
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                <label className="pf-label" style={{ margin: 0 }}>ค่าธรรมเนียม {isDirectFeeType ? '' : '(%)'}</label>
+                                {isDirectFeeType && (
+                                  <div style={{ display: 'flex', gap: '4px' }}>
+                                    <button type="button" className={form.feeCurrency !== 'USD' ? 'pf-year-pill-active' : 'pf-year-pill'} style={{ padding: '1px 6px', fontSize: '10px' }} onClick={() => setForm({ ...form, feeCurrency: 'THB' })}>บาท</button>
+                                    <button type="button" className={form.feeCurrency === 'USD' ? 'pf-year-pill-active' : 'pf-year-pill'} style={{ padding: '1px 6px', fontSize: '10px' }} onClick={() => setForm({ ...form, feeCurrency: 'USD' })}>USD</button>
+                                  </div>
+                                )}
+                              </div>
+                              <input className="pf-input pf-mono" inputMode="decimal" value={form.feePct} onChange={(e) => setForm({ ...form, feePct: e.target.value })} placeholder="0" />
+                            </div>
+                            <div className="pf-field">
+                              <label className="pf-label">วันที่ทำรายการ</label>
+                              <input className="pf-input pf-mono" type="date" value={form.tradeDate} onChange={(e) => setForm({ ...form, tradeDate: e.target.value })} />
+                            </div>
+                          </div>
+                        )}
+                        <div className="pf-field">
+                          <label className="pf-label">หมายเหตุการซื้อ</label>
+                          <input className="pf-input" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="เช่น ซื้อครั้งแรก" />
+                        </div>
+                      </>
+                    )}
                   </>
                 )}
               </>
@@ -2976,7 +2796,9 @@ export default function PortfolioApp() {
 
             <div className="pf-panel-actions">
               <button className="pf-btn pf-btn-ghost" onClick={closePanel}>ยกเลิก</button>
-              <button className="pf-btn pf-btn-primary" onClick={submitForm}>{editingId ? 'บันทึกการแก้ไข' : 'เพิ่มสินทรัพย์'}</button>
+              <button className="pf-btn pf-btn-primary" onClick={submitForm}>
+                {editingId && form.tradeAction !== 'none' ? 'บันทึก' : (editingId ? 'บันทึกการแก้ไข' : 'เพิ่มสินทรัพย์')}
+              </button>
             </div>
           </div>
         </div>
@@ -3028,7 +2850,7 @@ export default function PortfolioApp() {
               )}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '55vh', overflowY: 'auto', marginBottom: '16px', paddingRight: '4px' }}>
-              {holdings.filter(h => h && h.type !== 'cash').map(h => (
+              {(holdings || []).filter(h => h && h.type !== 'cash').map(h => (
                 <div className="pf-update-item" key={h.id}>
                   <div className="pf-update-name"><b>{h.name}</b> <span style={{ fontSize: '11px', color: 'var(--muted)' }}>({h.ticker || '-'})</span></div>
                   <input 
@@ -3335,10 +3157,14 @@ export default function PortfolioApp() {
                           <span className="pf-mono" style={{ fontSize: '12px', color: 'var(--muted)' }}>{thaiDateAD(log.date)}</span>
                           <button style={{ background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: '2px' }} onClick={() => {
                             setEditingLog(log);
+                            const currentUsd = log.currency === 'USD' && log.instrumentType !== 'dr';
+                            const currentFx = currentUsd ? (log.tradeFx ? parseFloat(log.tradeFx) : fxRate) : 1;
+                            const defaultPnl = log.pnlThb !== undefined ? log.pnlThb : (log.pnl !== undefined ? log.pnl * currentFx : '');
                             setTradeLogForm({
                               quantity: String(log.quantity || ''),
                               price: String(log.price || ''),
                               fee: String(log.fee || ''),
+                              pnl: String(defaultPnl !== '' ? defaultPnl : ''),
                               date: log.date || todayStr(),
                               note: log.note || ''
                             });
@@ -3390,6 +3216,12 @@ export default function PortfolioApp() {
               <label className="pf-label">ค่าธรรมเนียม</label>
               <input className="pf-input pf-mono" inputMode="decimal" value={tradeLogForm.fee} onChange={(e) => setTradeLogForm({ ...tradeLogForm, fee: e.target.value })} placeholder="0" />
             </div>
+            {editingLog.action === 'sell' && (
+              <div className="pf-field">
+                <label className="pf-label">กำไร/ขาดทุนสุทธิ (บาท)</label>
+                <input className="pf-input pf-mono" inputMode="decimal" value={tradeLogForm.pnl} onChange={(e) => setTradeLogForm({ ...tradeLogForm, pnl: e.target.value })} placeholder="0.00" />
+              </div>
+            )}
             <div className="pf-field">
               <label className="pf-label">วันที่</label>
               <input className="pf-input pf-mono" type="date" value={tradeLogForm.date} onChange={(e) => setTradeLogForm({ ...tradeLogForm, date: e.target.value })} />
