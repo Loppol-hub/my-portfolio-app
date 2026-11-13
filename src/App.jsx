@@ -950,6 +950,55 @@ export default function PortfolioApp() {
     setFetchingFx(false);
   };
 
+  const fetchAutoPrices = async () => {
+    if (!backendUrl) { showToast('ยังไม่ได้ตั้งค่า Backend URL'); return; }
+    const eligible = (holdings || []).filter((h) => h && typeInfo(h.type).market && h.ticker);
+    if (eligible.length === 0) { showToast('ไม่มีรายการที่ใส่สัญลักษณ์ไว้'); return; }
+    setFetchingPrices(true);
+    try {
+      const items = eligible.map((h) => ({ id: h.id, ticker: h.ticker, market: typeInfo(h.type).market }));
+      items.push({ id: '__fx__', ticker: 'USDTHB', market: 'fx' });
+      const res = await fetch(backendUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items }),
+      });
+      if (!res.ok) throw new Error('bad response');
+      const data = await res.json();
+      const next = { ...updateDraft };
+      const failedNames = [];
+      let okCount = 0;
+      (data.results || []).forEach((r) => {
+        if (!r) return;
+        if (r.id === '__fx__') {
+          if (typeof r.price === 'number') {
+            setFxRate(r.price);
+            setFxDraft(String(r.price));
+            window.storage.set('fx-usdthb', String(r.price), false).catch(() => {});
+          }
+          return;
+        }
+        if (typeof r.price === 'number') {
+          okCount++;
+          const holding = eligible.find((x) => x && x.id === r.id);
+          let updatedPrice = r.price;
+          if (holding && holding.type === 'crypto' && holding.currency === 'THB') { updatedPrice = r.price * fxRate; }
+          next[r.id] = String(updatedPrice);
+        } else {
+          const h = eligible.find((x) => x && x.id === r.id);
+          failedNames.push(h ? h.name : r.id);
+        }
+      });
+      setUpdateDraft(next);
+      setFetchIssues(failedNames);
+      showToast(`ดึงราคาสำเร็จ จำนวน ${okCount} ตัว`);
+    } catch (e) {
+      showToast('เชื่อมต่อ Backend ไม่สำเร็จ');
+    } finally {
+      setFetchingPrices(false);
+    }
+  };
+
   const submitForm = () => {
     const isCash = form.type === 'cash';
     const name = (form.name || '').trim();
@@ -1188,7 +1237,6 @@ export default function PortfolioApp() {
       let feeAmount = 0;
       let feeThb = 0;
       let recordFeeForDisplay = 0;
-      const isFeeHiddenForType = form.type === 'crypto';
 
       if (!isCash && !isFeeHiddenForType) {
         if (isDirectFee) {
@@ -1281,6 +1329,11 @@ export default function PortfolioApp() {
     showToast('ลบรายการแล้ว');
   };
 
+  const deleteLedgerEntry = (id) => {
+    saveLedger((ledger || []).filter((e) => e && e.id !== id));
+    showToast('ลบรายการแล้ว');
+  };
+
   const executeDeleteTradeLog = (logId) => {
     const targetLog = (tradeLogs || []).find(l => l && l.id === logId);
     if (targetLog && targetLog.ledgerFeeId) {
@@ -1296,8 +1349,9 @@ export default function PortfolioApp() {
     if (!editingLog) return;
     const qty = parseFloat(tradeLogForm.quantity);
     const price = parseFloat(tradeLogForm.price);
-    const feeVal = parseFloat(tradeLogForm.fee) || 0;
+    const inputFee = parseFloat(tradeLogForm.fee);
     const inputPnl = parseFloat(tradeLogForm.pnl);
+
     if (isNaN(qty) || qty <= 0 || isNaN(price) || price < 0) {
       showToast('กรอกจำนวนและราคาให้ถูกต้อง');
       return;
@@ -1308,6 +1362,9 @@ export default function PortfolioApp() {
     
     let updatedPnl = editingLog.pnl;
     let updatedPnlThb = editingLog.pnlThb;
+    
+    // คงค่าธรรมเนียมเดิมไว้ถ้าไม่ได้กรอกใหม่
+    let updatedFee = !isNaN(inputFee) ? inputFee : (editingLog.fee || 0);
     let updatedFeeThbRecord = editingLog.feeThbRecord;
 
     if (editingLog.action === 'sell') {
@@ -1317,15 +1374,18 @@ export default function PortfolioApp() {
       const excludeFee = isFeeExcludedFromAssetCost(editingLog.assetType, effInst);
       
       let feeThb = 0;
-      if (editingLog.assetType === 'th_stock' && effInst === 'stock') {
-        feeThb = (saleThb * feeVal) / 100;
-      } else if (checkIsDirectFee(editingLog.assetType, effInst)) {
-        feeThb = editingLog.currency === 'USD' ? (feeVal * logFx) : feeVal;
+      if (!isNaN(inputFee)) {
+        if (editingLog.assetType === 'th_stock' && effInst === 'stock') {
+          feeThb = (saleThb * inputFee) / 100;
+        } else if (checkIsDirectFee(editingLog.assetType, effInst)) {
+          feeThb = editingLog.currency === 'USD' ? (inputFee * logFx) : inputFee;
+        } else {
+          feeThb = (saleThb * inputFee) / 100;
+        }
+        updatedFeeThbRecord = feeThb;
       } else {
-        feeThb = (saleThb * feeVal) / 100;
+        feeThb = editingLog.feeThbRecord || 0;
       }
-
-      updatedFeeThbRecord = feeThb;
 
       if (!isNaN(inputPnl)) {
         updatedPnlThb = inputPnl;
@@ -1340,23 +1400,22 @@ export default function PortfolioApp() {
       }
     } else {
       const subtotal = qty * price;
-      const subtotalThb = isUsdAsset ? subtotal * logFx : subtotal;
       const effInst = getEffectiveInstrumentType(editingLog.assetType, editingLog.instrumentType);
       const isDirect = checkIsDirectFee(editingLog.assetType, effInst);
-      let feeThb = 0;
-      if (isDirect) {
-        feeThb = editingLog.currency === 'USD' ? feeVal * logFx : feeVal;
-      } else {
-        feeThb = isUsdAsset ? ((subtotal * feeVal) / 100) * logFx : (subtotal * feeVal) / 100;
+      if (!isNaN(inputFee)) {
+        if (isDirect) {
+          updatedFeeThbRecord = editingLog.currency === 'USD' ? inputFee * logFx : inputFee;
+        } else {
+          updatedFeeThbRecord = isUsdAsset ? ((subtotal * inputFee) / 100) * logFx : (subtotal * inputFee) / 100;
+        }
       }
-      updatedFeeThbRecord = feeThb;
     }
 
     const nextLogs = (tradeLogs || []).map(l => l && l.id === editingLog.id ? {
       ...l,
       quantity: qty,
       price: price,
-      fee: feeVal,
+      fee: updatedFee,
       feeThbRecord: updatedFeeThbRecord,
       pnl: updatedPnl,
       pnlThb: updatedPnlThb,
@@ -1620,46 +1679,6 @@ export default function PortfolioApp() {
     await saveLedger(Array.isArray(pendingImport.ledger) ? pendingImport.ledger : []);
     setPendingImport(null);
     showToast('นำเข้าข้อมูลสำเร็จ');
-  };
-
-  const openLedgerForm = (type) => {
-    setLedgerType(type); setLedgerAmount(''); setLedgerSign('+'); setLedgerNote(''); setLedgerDate(todayStr()); setLedgerError(''); setPanel('ledger');
-  };
-
-  const submitLedger = () => {
-    const rawVal = ledgerAmount.trim();
-    let amt = parseFloat(rawVal);
-
-    if (ledgerType === 'rebalance') {
-      if (isNaN(amt)) { setLedgerError('กรอกจำนวนเงินให้ถูกต้อง'); return; }
-      const finalAmt = ledgerSign === '-' ? -Math.abs(amt) : Math.abs(amt);
-      const entry = { id: Date.now().toString(), type: 'rebalance', amount: finalAmt, date: ledgerDate || todayStr(), note: ledgerNote.trim() || 'รีบาลานซ์เงินสด' };
-      saveLedger([...ledger, entry]);
-      showToast('บันทึกรีบาลานซ์สำเร็จ');
-      setPanel('cashManage');
-      return;
-    }
-
-    if (isNaN(amt) || amt <= 0) { setLedgerError('กรอกจำนวนเงินให้มากกว่า 0'); return; }
-
-    const entry = { id: Date.now().toString(), type: ledgerType, amount: amt, date: ledgerDate || todayStr(), note: ledgerNote.trim() };
-    if (ledgerType === 'dividend') entry.invested = totalInvestedCost;
-    saveLedger([...ledger, entry]);
-    showToast('บันทึกรายการสำเร็จ');
-    setPanel('cashManage');
-  };
-
-  const deleteLedgerEntry = (id) => {
-    saveLedger((ledger || []).filter((e) => e && e.id !== id));
-    showToast('ลบรายการแล้ว');
-  };
-
-  const toggleTypeInclusion = (typeKey) => {
-    setExcludedTypes((prev) => {
-      const next = { ...prev, [typeKey]: !prev[typeKey] };
-      window.storage.set('excluded-types', JSON.stringify(next), false).catch(() => {});
-      return next;
-    });
   };
 
   const clearAll = async () => {
