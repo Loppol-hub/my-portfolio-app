@@ -51,21 +51,6 @@ const sanitizeAndPruneHistory = (histList) => {
     .map(date => ({ date, value: map[date] }));
 };
 
-// ฟังก์ชันจัดระเบียบประวัติรายปี (เก็บสูงสุด 10 ปี)
-const sanitizeAndPruneYearlyHistory = (histList) => {
-  const map = {};
-  (histList || []).forEach(item => {
-    if (item && item.date && typeof item.value === 'number') {
-      const yr = String(item.date).slice(0, 4);
-      map[yr] = item.value;
-    }
-  });
-  return Object.keys(map)
-    .sort()
-    .slice(-10)
-    .map(date => ({ date, value: map[date] }));
-};
-
 const getBiMonthlySlotDate = () => {
   const now = new Date();
   if (now.getHours() < 23) return null;
@@ -85,19 +70,6 @@ const getBiMonthlySlotDate = () => {
 
   if (slotDate && slotDate < '2026-11-30') return null;
   return slotDate;
-};
-
-// ตรวจสอบวันสิ้นปี (31 ธ.ค. เวลา 23:00 น. ขึ้นไป) สำหรับบันทึกกราฟรายปีอิสระ
-const getYearEndSlotDate = () => {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = now.getMonth() + 1;
-  const d = now.getDate();
-  const h = now.getHours();
-  if (m === 12 && d === 31 && h >= 23) {
-    return `${y}-12-31`;
-  }
-  return null;
 };
 
 function hexToHsl(hex) {
@@ -309,7 +281,6 @@ export default function PortfolioApp() {
   const [holdings, setHoldings] = useState([]);
   const [tradeLogs, setTradeLogs] = useState([]);
   const [history, setHistory] = useState([]);
-  const [yearlyHistory, setYearlyHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [panel, setPanel] = useState(null);
@@ -321,6 +292,7 @@ export default function PortfolioApp() {
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmDeleteTarget, setConfirmDeleteTarget] = useState(null);
   
+  // State สำหรับแก้ไขประวัติซื้อขาย (Edit Log)
   const [editingLog, setEditingLog] = useState(null);
   const [tradeLogForm, setTradeLogForm] = useState({ quantity: '', price: '', fee: '', date: todayStr(), note: '' });
 
@@ -360,12 +332,10 @@ export default function PortfolioApp() {
   const [fetchingFx, setFetchingFx] = useState(false);
   const holdingsRef = useRef(holdings);
   const historyRef = useRef(history);
-  const yearlyHistoryRef = useRef(yearlyHistory);
   const fxRateRef = useRef(fxRate);
   const backendUrlRef = useRef(backendUrl);
   useEffect(() => { holdingsRef.current = holdings; }, [holdings]);
   useEffect(() => { historyRef.current = history; }, [history]);
-  useEffect(() => { yearlyHistoryRef.current = yearlyHistory; }, [yearlyHistory]);
   useEffect(() => { fxRateRef.current = fxRate; }, [fxRate]);
   useEffect(() => { backendUrlRef.current = backendUrl; }, [backendUrl]);
   const [initialCapital, setInitialCapital] = useState(0);
@@ -381,9 +351,15 @@ export default function PortfolioApp() {
   const [ledgerSearchQuery, setLedgerSearchQuery] = useState('');
 
   const [graphModeTotal, setGraphModeTotal] = useState('all');
+  const [graphYearTotal, setGraphYearTotal] = useState(String(new Date().getFullYear()));
   const [graphModeGain, setGraphModeGain] = useState('all');
+  const [graphYearGain, setGraphYearGain] = useState(String(new Date().getFullYear()));
   const [graphModeTh, setGraphModeTh] = useState('all');
+  const [graphYearTh, setGraphYearTh] = useState(String(new Date().getFullYear()));
   const [graphModeUs, setGraphModeUs] = useState('all');
+  const [graphYearUs, setGraphYearUs] = useState(String(new Date().getFullYear()));
+
+  const [dividendGraphMode, setDividendGraphMode] = useState('year');
 
   useEffect(() => { load(); }, []);
 
@@ -417,7 +393,6 @@ export default function PortfolioApp() {
       let h = [];
       let logs = [];
       let hist = [];
-      let yHist = [];
       try {
         const r = await window.storage.get('holdings', false);
         if (r && r.value) h = JSON.parse(r.value);
@@ -430,11 +405,6 @@ export default function PortfolioApp() {
         const r2 = await window.storage.get('portfolio-history', false);
         if (r2 && r2.value) hist = sanitizeAndPruneHistory(JSON.parse(r2.value));
       } catch (e) { /* no data */ }
-      try {
-        const rY = await window.storage.get('portfolio-yearly-history', false);
-        if (rY && rY.value) yHist = sanitizeAndPruneYearlyHistory(JSON.parse(rY.value));
-      } catch (e) { /* no data */ }
-
       let url = '';
       try {
         const r3 = await window.storage.get('backend-url', false);
@@ -460,11 +430,9 @@ export default function PortfolioApp() {
         const r7 = await window.storage.get('excluded-types', false);
         if (r7 && r7.value) excluded = JSON.parse(r7.value);
       } catch (e) { /* not set */ }
-
       setHoldings(Array.isArray(h) ? h : []);
       setTradeLogs(Array.isArray(logs) ? logs : []);
       setHistory(Array.isArray(hist) ? hist : []);
-      setYearlyHistory(Array.isArray(yHist) ? yHist : []);
       setBackendUrl(url);
       setBackendDraft(url);
       setFxRate(isNaN(fx) ? 36.5 : fx);
@@ -497,13 +465,6 @@ export default function PortfolioApp() {
     setHistory(pruned);
     try { await window.storage.set('portfolio-history', JSON.stringify(pruned), false); }
     catch (e) { showToast('บันทึกประวัติไม่สำเร็จ'); }
-  };
-
-  const saveYearlyHistory = async (next) => {
-    const pruned = sanitizeAndPruneYearlyHistory(next);
-    setYearlyHistory(pruned);
-    try { await window.storage.set('portfolio-yearly-history', JSON.stringify(pruned), false); }
-    catch (e) { showToast('บันทึกประวัติรายปีไม่สำเร็จ'); }
   };
 
   const saveLedger = async (next) => {
@@ -746,33 +707,37 @@ export default function PortfolioApp() {
     });
   }, [history, displayTotalValue]);
 
-  // ประวัติรายปีอิสระ (แสดงสูงสุด 10 ปี จาก yearlyHistory)
-  const historyYearlyIndependent = useMemo(() => {
-    const valid = (yearlyHistory || []).filter(h => h && h.date >= '2026-11-30').sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
-    if (valid.length === 0) {
+  const historyYearly = useMemo(() => {
+    const map = {};
+    (history || []).filter(h => h && h.date >= '2026-11-30').forEach(h => {
+      const yr = (h.date || '').slice(0, 4);
+      if (yr) map[yr] = h.value;
+    });
+    const years = Object.keys(map).sort();
+    if (years.length === 0) {
       const currentYr = String(new Date().getFullYear());
       return [{ date: currentYr, value: displayTotalValue }];
     }
-    return valid.slice(-10).map(h => ({
-      date: (h.date || '').slice(0, 4),
-      value: h.value
+    return years.map(yr => ({
+      date: yr,
+      value: map[yr]
     }));
-  }, [yearlyHistory, displayTotalValue]);
+  }, [history, displayTotalValue]);
 
   const chartDataTotal = useMemo(() => {
     const isYearMode = graphModeTotal === 'year';
-    const dataSrc = isYearMode ? historyYearlyIndependent : historyMonthly;
+    const dataSrc = isYearMode ? historyYearly : historyMonthly;
     return dataSrc.map(h => ({ date: h.date, value: h.value, principal: totalCapital }));
-  }, [historyMonthly, historyYearlyIndependent, graphModeTotal, totalCapital]);
+  }, [historyMonthly, historyYearly, graphModeTotal, totalCapital]);
 
   const chartDataGainCard = useMemo(() => {
     const currentValForGainChart = totalInvestedCost + totalGain;
     const isYearMode = graphModeGain === 'year';
-    const dataSrc = isYearMode ? historyYearlyIndependent : historyMonthly;
+    const dataSrc = isYearMode ? historyYearly : historyMonthly;
     const latestVal = dataSrc[dataSrc.length - 1]?.value || currentValForGainChart;
     const ratio = latestVal > 0 ? currentValForGainChart / latestVal : 1;
     return dataSrc.map(h => ({ date: h.date, gain: h.value * ratio, cost: totalInvestedCost }));
-  }, [historyMonthly, historyYearlyIndependent, totalInvestedCost, totalGain, graphModeGain]);
+  }, [historyMonthly, historyYearly, totalInvestedCost, totalGain, graphModeGain]);
 
   const dividendYears = useMemo(() => {
     const y = new Date().getFullYear();
@@ -794,10 +759,22 @@ export default function PortfolioApp() {
     });
   }, [dividendYears, combinedLedger, totalInvestedCost]);
 
-  // ตัดปุ่ม toggle ออก ให้แสดงผลเป็นรายปีถาวรตามข้อ 1
   const dividendChartData = useMemo(() => {
+    if (dividendGraphMode === 'all') {
+      const totalDiv = combinedLedger.filter((e) => e && e.type === 'dividend').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0);
+      const yearsWithDiv = dividendByYear.filter((d) => d && d.dividend > 0);
+      const avgInvested = yearsWithDiv.length
+        ? yearsWithDiv.reduce((s, d) => s + d.invested, 0) / yearsWithDiv.length
+        : totalInvestedCost;
+      return [{
+        year: 'ตั้งแต่เริ่มต้น',
+        dividend: totalDiv,
+        invested: totalDiv > 0 ? avgInvested : 0,
+        yieldPct: totalDiv > 0 && avgInvested > 0 ? (totalDiv / avgInvested) * 100 : 0,
+      }];
+    }
     return dividendByYear;
-  }, [dividendByYear]);
+  }, [dividendGraphMode, dividendByYear, combinedLedger, totalInvestedCost]);
 
   const totalDividendAmount = useMemo(() => {
     return combinedLedger.filter((e) => e && e.type === 'dividend').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0);
@@ -814,22 +791,22 @@ export default function PortfolioApp() {
     const thCost = thHoldings.reduce((s, h) => s + (h?.costValue || 0), 0);
     const thVal = thHoldings.reduce((s, h) => s + (h?.marketValue || 0), 0);
     const isYearMode = graphModeTh === 'year';
-    const dataSrc = isYearMode ? historyYearlyIndependent : historyMonthly;
+    const dataSrc = isYearMode ? historyYearly : historyMonthly;
     const latestVal = dataSrc[dataSrc.length - 1]?.value || (thVal || 1);
     const ratio = latestVal > 0 ? thVal / latestVal : 1;
     return dataSrc.map(h => ({ date: h.date, gain: h.value * ratio, cost: thCost }));
-  }, [historyMonthly, historyYearlyIndependent, graphModeTh, enriched]);
+  }, [historyMonthly, historyYearly, graphModeTh, enriched]);
 
   const chartDataUs = useMemo(() => {
     const usHoldings = enriched.filter((h) => h && h.type === 'foreign_stock');
     const usCost = usHoldings.reduce((s, h) => s + (h?.costValue || 0), 0);
     const usVal = usHoldings.reduce((s, h) => s + (h?.marketValue || 0), 0);
     const isYearMode = graphModeUs === 'year';
-    const dataSrc = isYearMode ? historyYearlyIndependent : historyMonthly;
+    const dataSrc = isYearMode ? historyYearly : historyMonthly;
     const latestVal = dataSrc[dataSrc.length - 1]?.value || (usVal || 1);
     const ratio = latestVal > 0 ? usVal / latestVal : 1;
     return dataSrc.map(h => ({ date: h.date, gain: h.value * ratio, cost: usCost }));
-  }, [historyMonthly, historyYearlyIndependent, graphModeUs, enriched]);
+  }, [historyMonthly, historyYearly, graphModeUs, enriched]);
 
   const openAdd = () => { 
     setForm({ 
@@ -1242,6 +1219,7 @@ export default function PortfolioApp() {
     showToast('ลบรายการแล้ว');
   };
 
+  // ฟังก์ชันลบประวัติซื้อขาย (Trade Log) อย่างอิสระ
   const executeDeleteTradeLog = (logId) => {
     const targetLog = (tradeLogs || []).find(l => l && l.id === logId);
     if (targetLog && targetLog.ledgerFeeId) {
@@ -1253,6 +1231,7 @@ export default function PortfolioApp() {
     showToast('ลบประวัติซื้อขายสำเร็จ');
   };
 
+  // ฟังก์ชันบันทึกการแก้ไขประวัติซื้อขาย (Edit Log)
   const submitEditLog = () => {
     if (!editingLog) return;
     const qty = parseFloat(tradeLogForm.quantity);
@@ -1340,6 +1319,23 @@ export default function PortfolioApp() {
     setPanel('update');
   };
 
+  const fetchFxRateValue = async () => {
+    if (!backendUrl) return null;
+    try {
+      const res = await fetch(backendUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: [{ id: '__fx__', ticker: 'USDTHB', market: 'fx' }] }),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const r = (data.results || []).find((x) => x && x.id === '__fx__');
+      return r && typeof r.price === 'number' ? r.price : null;
+    } catch (e) {
+      return null;
+    }
+  };
+
   const runAutoPriceUpdate = async () => {
     const url = backendUrlRef.current;
     if (!url) return;
@@ -1386,7 +1382,6 @@ export default function PortfolioApp() {
       });
       await saveHoldings(nextHoldings);
 
-      // บันทึกประวัติรายเดือนปกติ
       const slotDate = getBiMonthlySlotDate();
       if (slotDate) {
         const investedVal = nextHoldings.reduce((s, h) => {
@@ -1411,32 +1406,8 @@ export default function PortfolioApp() {
         const histNext = sanitizeAndPruneHistory([...existing, { date: slotDate, value: totalAssetVal }]);
         await saveHistory(histNext);
       }
-
-      // บันทึกประวัติรายปีอิสระเฉพาะวันสิ้นปี เวลา 23.00น. (1 ครั้งต่อปี)
-      const yearEndSlot = getYearEndSlotDate();
-      if (yearEndSlot) {
-        const investedVal = nextHoldings.reduce((s, h) => {
-          if (!h || h.type === 'cash') return s;
-          const currency = h.currency === 'USD' ? 'USD' : 'THB';
-          const isDr = h.instrumentType === 'dr';
-          const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h.type, rate) : 1;
-          return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0) * effRate;
-        }, 0);
-        const investedCostForCash = nextHoldings.filter(h => h && h.type !== 'cash').reduce((s, h) => {
-          const cur = h.currency === 'USD' ? 'USD' : 'THB';
-          const dr = h.instrumentType === 'dr';
-          const fr = (cur === 'USD' && !dr) ? (h.createdFxRate || rate) : 1;
-          return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.avgCost) || 0) * fr;
-        }, 0);
-        const currentComputedCash = totalCapital - investedCostForCash + cashAdjTotal;
-        const totalAssetVal = investedVal + currentComputedCash;
-
-        const existingY = (yearlyHistoryRef.current || []).filter((p) => p && p.date !== yearEndSlot);
-        const yHistNext = sanitizeAndPruneYearlyHistory([...existingY, { date: yearEndSlot, value: totalAssetVal }]);
-        await saveYearlyHistory(yHistNext);
-      }
-
       setFetchIssues(failedNames);
+
       const okCount = Object.keys(priceById).length;
       showToast(`ดึงราคาสำเร็จ จำนวน ${okCount} ตัว`);
     } catch (e) { /* background silent */ }
@@ -1484,13 +1455,6 @@ export default function PortfolioApp() {
     const existing = (history || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-30');
     const histNext = sanitizeAndPruneHistory([...existing, { date: slotDate, value: totalAssetVal }]);
     saveHistory(histNext);
-
-    const yearEndSlot = getYearEndSlotDate();
-    if (yearEndSlot) {
-      const existingY = (yearlyHistory || []).filter((p) => p && p.date !== yearEndSlot);
-      const yHistNext = sanitizeAndPruneYearlyHistory([...existingY, { date: yearEndSlot, value: totalAssetVal }]);
-      saveYearlyHistory(yHistNext);
-    }
 
     showToast(`ดึงราคาสำเร็จ จำนวน ${Object.keys(updateDraft).length} ตัว`);
     closePanel();
@@ -1571,7 +1535,7 @@ export default function PortfolioApp() {
   };
 
   const exportData = () => {
-    const payload = { app: 'portfolio-tracker', version: 2, exportedAt: new Date().toISOString(), holdings, tradeLogs, history, yearlyHistory, fxRate, backendUrl, initialCapital, ledger };
+    const payload = { app: 'portfolio-tracker', version: 2, exportedAt: new Date().toISOString(), holdings, tradeLogs, history, fxRate, backendUrl, initialCapital, ledger };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1609,7 +1573,6 @@ export default function PortfolioApp() {
     await saveHoldings(Array.isArray(pendingImport.holdings) ? pendingImport.holdings : []);
     await saveTradeLogs(Array.isArray(pendingImport.tradeLogs) ? pendingImport.tradeLogs : []);
     await saveHistory(Array.isArray(pendingImport.history) ? sanitizeAndPruneHistory(pendingImport.history) : []);
-    await saveYearlyHistory(Array.isArray(pendingImport.yearlyHistory) ? sanitizeAndPruneYearlyHistory(pendingImport.yearlyHistory) : []);
     
     const fx = typeof pendingImport.fxRate === 'number' && pendingImport.fxRate > 0 ? pendingImport.fxRate : 36.5;
     setFxRate(fx);
@@ -1675,7 +1638,6 @@ export default function PortfolioApp() {
     await saveHoldings([]); 
     await saveTradeLogs([]); 
     await saveHistory([]); 
-    await saveYearlyHistory([]);
     await saveLedger([]);
     setInitialCapital(0);
     setInitialCapitalDraft('');
@@ -1722,30 +1684,6 @@ export default function PortfolioApp() {
       return sum + feeThb;
     }, 0);
   }, [filteredTradeLogs, fxRate]);
-
-  const searchFilteredAssetPnL = useMemo(() => {
-    const q = tradeSearchQuery.trim().toLowerCase();
-    if (!q) return null;
-    const matchingLogs = (tradeLogs || []).filter((log) => log && (log.assetName || '').toLowerCase().includes(q));
-    if (matchingLogs.length === 0) return null;
-    let totalPnlThb = 0;
-    matchingLogs.forEach(l => {
-      if (!l) return;
-      const logFx = (l.currency === 'USD' && l.assetType !== 'th_stock' && l.instrumentType !== 'dr') ? (l.tradeFx ? parseFloat(l.tradeFx) : fxRate) : 1;
-      let pnlVal = l.pnlThb !== undefined ? l.pnlThb : (l.pnl || 0) * logFx;
-      const effInst = getEffectiveInstrumentType(l.assetType, l.instrumentType);
-      const excludeFee = isFeeExcludedFromAssetCost(l.assetType, effInst);
-      if (excludeFee && l.feeThbRecord) {
-        pnlVal -= l.feeThbRecord;
-      }
-      totalPnlThb += pnlVal;
-    });
-    const assetName = matchingLogs[0]?.assetName || '';
-    return { name: assetName, pnl: totalPnlThb, count: matchingLogs.length };
-  }, [tradeLogs, fxRate, tradeSearchQuery]);
-
-  const isDirectFeeType = checkIsDirectFee(form.type, form.instrumentType);
-  const isFeeHiddenForType = form.type === 'crypto';
 
   return (
     <div className="pf-root">
@@ -2062,6 +2000,13 @@ export default function PortfolioApp() {
                             <button className={graphModeTh === 'year' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeTh('year')} style={{ padding: '2px 8px', fontSize: '11px' }}>รายปี</button>
                           </div>
                         </div>
+                        {graphModeTh === 'year' && (
+                          <div className="pf-year-picker" style={{ marginBottom: '8px' }}>
+                            {yearOptions.map((y) => (
+                              <button key={y} className={y === graphYearTh ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphYearTh(y)} style={{ padding: '2px 8px', fontSize: '11px' }}>{y}</button>
+                            ))}
+                          </div>
+                        )}
                         <div className="pf-spark">
                           <ResponsiveContainer width="100%" height="100%">
                             <LineChart data={chartDataTh}>
@@ -2253,6 +2198,13 @@ export default function PortfolioApp() {
                             <button className={graphModeUs === 'year' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeUs('year')} style={{ padding: '2px 8px', fontSize: '11px' }}>รายปี</button>
                           </div>
                         </div>
+                        {graphModeUs === 'year' && (
+                          <div className="pf-year-picker" style={{ marginBottom: '8px' }}>
+                            {yearOptions.map((y) => (
+                              <button key={y} className={y === graphYearUs ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphYearUs(y)} style={{ padding: '2px 8px', fontSize: '11px' }}>{y}</button>
+                            ))}
+                          </div>
+                        )}
                         <div className="pf-spark">
                           <ResponsiveContainer width="100%" height="100%">
                             <LineChart data={chartDataUs}>
@@ -2502,6 +2454,13 @@ export default function PortfolioApp() {
                       <button className={graphModeTotal === 'year' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeTotal('year')} style={{ padding: '2px 8px', fontSize: '11px' }}>รายปี</button>
                     </div>
                   </div>
+                  {graphModeTotal === 'year' && (
+                    <div className="pf-year-picker" style={{ marginBottom: '8px' }}>
+                      {yearOptions.map((y) => (
+                        <button key={y} className={y === graphYearTotal ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphYearTotal(y)} style={{ padding: '2px 8px', fontSize: '11px' }}>{y}</button>
+                      ))}
+                    </div>
+                  )}
                   <div className="pf-spark">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={chartDataTotal}>
@@ -2535,6 +2494,13 @@ export default function PortfolioApp() {
                       <button className={graphModeGain === 'year' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphModeGain('year')} style={{ padding: '2px 8px', fontSize: '11px' }}>รายปี</button>
                     </div>
                   </div>
+                  {graphModeGain === 'year' && (
+                    <div className="pf-year-picker" style={{ marginBottom: '8px' }}>
+                      {yearOptions.map((y) => (
+                        <button key={y} className={y === graphYearGain ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setGraphYearGain(y)} style={{ padding: '2px 8px', fontSize: '11px' }}>{y}</button>
+                      ))}
+                    </div>
+                  )}
                   <div className="pf-spark">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={chartDataGainCard}>
@@ -2549,7 +2515,7 @@ export default function PortfolioApp() {
                 </div>
               </div>
 
-              {/* 5. การ์ดปันผลรวม (ตัดปุ่มตั้งแต่เริ่มต้น/รายปีออกตามข้อ 1) */}
+              {/* 5. การ์ดปันผลรวม */}
               <div className="pf-hero" style={{ border: '2px solid rgba(56, 189, 248, 0.3)', background: 'linear-gradient(135deg, #111827 0%, #0f172a 100%)' }}>
                 <div className="pf-hero-label">ปันผลรวม</div>
                 <div className="pf-hero-value pf-mono" style={{ fontSize: '32px', color: '#34d399' }}>
@@ -2557,7 +2523,11 @@ export default function PortfolioApp() {
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '14px 0 8px', paddingTop: '12px', borderTop: '1px solid var(--divider)' }}>
-                  <div className="pf-hero-label" style={{ margin: 0 }}>กราฟปันผลรายปี / เงินที่ลงทุนไป</div>
+                  <div className="pf-hero-label" style={{ margin: 0 }}>กราฟปันผล / เงินที่ลงทุนไป</div>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button className={dividendGraphMode === 'all' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setDividendGraphMode('all')} style={{ padding: '2px 8px', fontSize: '11px' }}>ตั้งแต่เริ่มต้น</button>
+                    <button className={dividendGraphMode === 'year' ? 'pf-year-pill-active' : 'pf-year-pill'} onClick={() => setDividendGraphMode('year')} style={{ padding: '2px 8px', fontSize: '11px' }}>รายปี</button>
+                  </div>
                 </div>
 
                 <div className="pf-spark" style={{ marginTop: '10px', height: '190px' }}>
@@ -2872,7 +2842,12 @@ export default function PortfolioApp() {
                       </div>
                     </div>
 
-                    {/* ตัดช่องกรอกอัตราแลกเปลี่ยนออกในหน้าต่างซื้อขายตามข้อ 3 */}
+                    {form.currency === 'USD' && (
+                      <div className="pf-field" style={{ marginBottom: '10px' }}>
+                        <label className="pf-label">อัตราแลกเปลี่ยน (1 USD = ? บาท) <span style={{ opacity: 0.6 }}>(ไม่กรอก = ใช้เรทกลางแอพ)</span></label>
+                        <input className="pf-input pf-mono" inputMode="decimal" value={form.tradeFx} onChange={(e) => setForm({ ...form, tradeFx: e.target.value })} placeholder={String(fxRate)} />
+                      </div>
+                    )}
 
                     <div className="pf-row2" style={{ marginBottom: '10px' }}>
                       <div>
