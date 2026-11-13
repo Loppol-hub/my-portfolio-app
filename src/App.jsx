@@ -941,7 +941,7 @@ export default function PortfolioApp() {
           return;
         }
         const subtotal = addQty * addPrice;
-        const customFx = fxRate; // ใช้เรทกลางอัตโนมัติ ไม่เอาช่องกรอก FX ในหน้าซื้อขาย
+        const customFx = fxRate;
         const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
 
         let feeAmount = 0;
@@ -1021,7 +1021,7 @@ export default function PortfolioApp() {
           return;
         }
 
-        const customFx = fxRate; // ใช้เรทกลางอัตโนมัติ
+        const customFx = fxRate;
         const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
         const saleThb = sellQty * sellPrice * (isUsdAsset ? customFx : 1);
         
@@ -2488,7 +2488,6 @@ export default function PortfolioApp() {
               </div>
             )}
 
-            {/* หากอยู่ในโหมดซื้อเพิ่มหรือขายออก ให้ซ่อนฟิลด์รายละเอียดสินทรัพย์ด้านล่างเพื่อไม่ให้สับสนตามข้อ 3 */}
             {form.tradeAction === 'none' && (
               <>
                 <div className="pf-field">
@@ -2593,7 +2592,6 @@ export default function PortfolioApp() {
 
             <div className="pf-panel-actions">
               <button className="pf-btn pf-btn-ghost" onClick={closePanel}>ยกเลิก</button>
-              {/* เปลี่ยนชื่อปุ่มเป็น 'บันทึก' เฉพาะตอนทำรายการซื้อเพิ่ม/ขายออก ตามโจทย์ */}
               <button className="pf-btn pf-btn-primary" onClick={submitForm}>
                 {editingId && form.tradeAction !== 'none' ? 'บันทึก' : (editingId ? 'บันทึกการแก้ไข' : 'เพิ่มสินทรัพย์')}
               </button>
