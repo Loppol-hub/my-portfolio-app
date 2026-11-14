@@ -352,6 +352,15 @@ export default function PortfolioApp() {
   const toggleChartMode = (typeKey) => {
     setChartModeByType((prev) => ({ ...prev, [typeKey]: prev[typeKey] === 'industry' ? 'holding' : 'industry' }));
   };
+
+  const toggleTypeInclusion = (typeKey) => {
+    setExcludedTypes((prev) => {
+      const next = { ...prev, [typeKey]: !prev[typeKey] };
+      window.storage.set('excluded-types', JSON.stringify(next), false).catch(() => {});
+      return next;
+    });
+  };
+
   const [backendUrl, setBackendUrl] = useState('');
   const [backendDraft, setBackendDraft] = useState('');
   const [fetchingPrices, setFetchingPrices] = useState(false);
@@ -378,6 +387,36 @@ export default function PortfolioApp() {
   const [ledgerError, setLedgerError] = useState('');
   const [ledgerNote, setLedgerNote] = useState('');
   const [ledgerDate, setLedgerDate] = useState('');
+
+  const openLedgerForm = (type) => {
+    setLedgerType(type);
+    setLedgerAmount('');
+    setLedgerSign('+');
+    setLedgerError('');
+    setLedgerNote('');
+    setLedgerDate(todayStr());
+    setPanel('ledger');
+  };
+
+  const submitLedger = () => {
+    const amt = parseFloat(ledgerAmount);
+    if (isNaN(amt) || amt <= 0) {
+      setLedgerError('กรอกจำนวนเงินให้ถูกต้อง');
+      return;
+    }
+    const finalAmount = ledgerType === 'rebalance' && ledgerSign === '-' ? -amt : amt;
+    const newEntry = {
+      id: Date.now().toString(),
+      type: ledgerType,
+      amount: ledgerType === 'rebalance' ? finalAmount : Math.abs(finalAmount),
+      date: ledgerDate || todayStr(),
+      note: ledgerNote.trim()
+    };
+    const next = [newEntry, ...(ledger || [])];
+    saveLedger(next);
+    setPanel('cashManage');
+    showToast('บันทึกสำเร็จ');
+  };
 
   const [ledgerSearchQuery, setLedgerSearchQuery] = useState('');
 
@@ -1012,6 +1051,10 @@ export default function PortfolioApp() {
     const isDirectFee = checkIsDirectFee(form.type, form.instrumentType);
     const excludeFeeFromCost = isFeeExcludedFromAssetCost(form.type, instrumentType);
 
+    const isForeignOrGoldOrEtf = form.type === 'foreign_stock' || form.type === 'gold' || instrumentType === 'etf';
+    const enteredTradeFx = parseFloat(form.tradeFx);
+    const customFx = isForeignOrGoldOrEtf && !isNaN(enteredTradeFx) && enteredTradeFx > 0 ? enteredTradeFx : fxRate;
+
     if (editingId) {
       const target = (holdings || []).find((h) => h && h.id === editingId);
       if (!target) return;
@@ -1033,7 +1076,6 @@ export default function PortfolioApp() {
           return;
         }
         const subtotal = addQty * addPrice;
-        const customFx = fxRate;
         const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
 
         let feeAmount = 0;
@@ -1113,7 +1155,6 @@ export default function PortfolioApp() {
           return;
         }
 
-        const customFx = fxRate;
         const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
         const saleThb = sellQty * sellPrice * (isUsdAsset ? customFx : 1);
         
@@ -1192,7 +1233,6 @@ export default function PortfolioApp() {
         currentAvg = avg;
         currentPrice = price;
 
-        const customFx = target.createdFxRate || fxRate;
         const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
         currentTotalCostThb = isCash ? 0 : (qty * avg * (isUsdAsset ? customFx : 1));
       }
@@ -1231,7 +1271,6 @@ export default function PortfolioApp() {
       if (!isCash && (isNaN(price) || price < 0)) { setFormError('ราคาปัจจุบันไม่ถูกต้อง'); return; }
 
       const subtotal = qty * avg;
-      const customFx = form.tradeFx && parseFloat(form.tradeFx) > 0 ? parseFloat(form.tradeFx) : fxRate;
       const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
 
       let feeAmount = 0;
@@ -1357,67 +1396,23 @@ export default function PortfolioApp() {
       return;
     }
 
+    const feeVal = !isNaN(inputFee) ? inputFee : (editingLog.fee || 0);
+    const pnlVal = !isNaN(inputPnl) ? inputPnl : (editingLog.pnl || 0);
+    
     const isUsdAsset = editingLog.currency === 'USD' && editingLog.instrumentType !== 'dr';
     const logFx = isUsdAsset ? (parseFloat(editingLog.tradeFx) || fxRate) : 1;
-    
-    let updatedPnl = editingLog.pnl;
-    let updatedPnlThb = editingLog.pnlThb;
-    
-    // คงค่าธรรมเนียมเดิมไว้ถ้าไม่ได้กรอกใหม่
-    let updatedFee = !isNaN(inputFee) ? inputFee : (editingLog.fee || 0);
-    let updatedFeeThbRecord = editingLog.feeThbRecord;
 
-    if (editingLog.action === 'sell') {
-      const costThbSold = editingLog.totalCostThb || 0;
-      const saleThb = qty * price * (isUsdAsset ? logFx : 1);
-      const effInst = getEffectiveInstrumentType(editingLog.assetType, editingLog.instrumentType);
-      const excludeFee = isFeeExcludedFromAssetCost(editingLog.assetType, effInst);
-      
-      let feeThb = 0;
-      if (!isNaN(inputFee)) {
-        if (editingLog.assetType === 'th_stock' && effInst === 'stock') {
-          feeThb = (saleThb * inputFee) / 100;
-        } else if (checkIsDirectFee(editingLog.assetType, effInst)) {
-          feeThb = editingLog.currency === 'USD' ? (inputFee * logFx) : inputFee;
-        } else {
-          feeThb = (saleThb * inputFee) / 100;
-        }
-        updatedFeeThbRecord = feeThb;
-      } else {
-        feeThb = editingLog.feeThbRecord || 0;
-      }
-
-      if (!isNaN(inputPnl)) {
-        updatedPnlThb = inputPnl;
-        updatedPnl = isUsdAsset && logFx > 0 ? inputPnl / logFx : inputPnl;
-      } else {
-        if (excludeFee) {
-          updatedPnlThb = saleThb - costThbSold;
-        } else {
-          updatedPnlThb = saleThb - costThbSold - feeThb;
-        }
-        updatedPnl = isUsdAsset && logFx > 0 ? updatedPnlThb / logFx : updatedPnlThb;
-      }
-    } else {
-      const subtotal = qty * price;
-      const effInst = getEffectiveInstrumentType(editingLog.assetType, editingLog.instrumentType);
-      const isDirect = checkIsDirectFee(editingLog.assetType, effInst);
-      if (!isNaN(inputFee)) {
-        if (isDirect) {
-          updatedFeeThbRecord = editingLog.currency === 'USD' ? inputFee * logFx : inputFee;
-        } else {
-          updatedFeeThbRecord = isUsdAsset ? ((subtotal * inputFee) / 100) * logFx : (subtotal * inputFee) / 100;
-        }
-      }
-    }
+    // บันทึกค่าตามที่กรอกตรงๆ โดยไม่มีการคำนวณสูตรเปอร์เซ็นต์ซ้ำซ้อน
+    const updatedFeeThbRecord = isUsdAsset ? feeVal * logFx : feeVal;
+    const updatedPnlThb = isUsdAsset ? pnlVal * logFx : pnlVal;
 
     const nextLogs = (tradeLogs || []).map(l => l && l.id === editingLog.id ? {
       ...l,
       quantity: qty,
       price: price,
-      fee: updatedFee,
+      fee: feeVal,
       feeThbRecord: updatedFeeThbRecord,
-      pnl: updatedPnl,
+      pnl: pnlVal,
       pnlThb: updatedPnlThb,
       date: tradeLogForm.date,
       note: tradeLogForm.note.trim()
@@ -1756,6 +1751,7 @@ export default function PortfolioApp() {
 
   const isDirectFeeType = checkIsDirectFee(form.type, form.instrumentType);
   const isFeeHiddenForType = form.type === 'crypto';
+  const showTradeFxField = form.type === 'foreign_stock' || form.type === 'gold' || form.instrumentType === 'etf';
 
   return (
     <div className="pf-root">
@@ -2882,6 +2878,13 @@ export default function PortfolioApp() {
                       </div>
                     </div>
 
+                    {showTradeFxField && (
+                      <div className="pf-field" style={{ marginBottom: '10px' }}>
+                        <label className="pf-label">อัตราแลกเปลี่ยน (1 USD = ? บาท; ไม่กรอกใช้เรทกลาง)</label>
+                        <input className="pf-input pf-mono" inputMode="decimal" value={form.tradeFx} onChange={(e) => setForm({ ...form, tradeFx: e.target.value })} placeholder={String(fxRate)} />
+                      </div>
+                    )}
+
                     <div className="pf-row2" style={{ marginBottom: '10px' }}>
                       <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
@@ -3374,14 +3377,11 @@ export default function PortfolioApp() {
                           <span className="pf-mono" style={{ fontSize: '12px', color: 'var(--muted)' }}>{thaiDateAD(log.date)}</span>
                           <button style={{ background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: '2px' }} onClick={() => {
                             setEditingLog(log);
-                            const currentUsd = log.currency === 'USD' && log.instrumentType !== 'dr';
-                            const currentFx = currentUsd ? (log.tradeFx ? parseFloat(log.tradeFx) : fxRate) : 1;
-                            const defaultPnl = log.pnlThb !== undefined ? log.pnlThb : (log.pnl !== undefined ? log.pnl * currentFx : '');
                             setTradeLogForm({
-                              quantity: String(log.quantity || ''),
-                              price: String(log.price || ''),
-                              fee: String(log.fee || ''),
-                              pnl: String(defaultPnl !== '' ? defaultPnl : ''),
+                              quantity: String(log.quantity ?? ''),
+                              price: String(log.price ?? ''),
+                              fee: String(log.fee ?? ''),
+                              pnl: String(log.pnl ?? ''),
                               date: log.date || todayStr(),
                               note: log.note || ''
                             });
