@@ -8,8 +8,8 @@ export default function MoonAssistantChat() {
   const [activeTab, setActiveTab] = useState('chat');
   const [menuOpen, setMenuOpen] = useState(false);
   
-  // สถานะสำหรับเปิดดูรายชื่อหุ้นย่อยในหมวดสินทรัพย์
   const [assetSubView, setAssetSubView] = useState(null); // null, 'th', 'global'
+  const [portfolioHoldings, setPortfolioHoldings] = useState([]); // เก็บรายชื่อหุ้นจากพอร์ตจริง
 
   const [watchlist, setWatchlist] = useState([]);
   const [newAsset, setNewAsset] = useState({ name: '', price: '', reason: '' });
@@ -19,6 +19,38 @@ export default function MoonAssistantChat() {
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+
+  // ดึงข้อมูลพอร์ตจริงจาก window.storage (ตามโครงสร้าง App.jsx) เมื่อเปิดหน้าต่างแชท
+  useEffect(() => {
+    const fetchHoldingsAsync = async () => {
+      try {
+        if (window.storage && typeof window.storage.get === 'function') {
+          const r = await window.storage.get('holdings', false);
+          if (r && r.value) {
+            const parsed = JSON.parse(r.value);
+            if (Array.isArray(parsed)) {
+              setPortfolioHoldings(parsed);
+              return;
+            }
+          }
+        }
+        // Fallback เผื่อกรณีเก็บใน localStorage
+        const stored = localStorage.getItem('holdings');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            setPortfolioHoldings(parsed);
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+
+    if (isOpen) {
+      fetchHoldingsAsync();
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     let startX = 0;
@@ -101,24 +133,12 @@ export default function MoonAssistantChat() {
 
   const getPortfolioData = () => {
     try {
-      const holdings = localStorage.getItem('holdings') ? JSON.parse(localStorage.getItem('holdings')) : null;
+      const holdings = portfolioHoldings.length > 0 ? portfolioHoldings : (localStorage.getItem('holdings') ? JSON.parse(localStorage.getItem('holdings')) : null);
       const tradeLogs = localStorage.getItem('trade-logs') ? JSON.parse(localStorage.getItem('trade-logs')) : null;
       const cashLedger = localStorage.getItem('cash-ledger') ? JSON.parse(localStorage.getItem('cash-ledger')) : null;
       return { holdings, tradeLogs, cashLedger };
     } catch (e) {
       return { note: 'ไม่สามารถดึงข้อมูล Storage โดยตรงได้' };
-    }
-  };
-
-  // ฟังก์ชันดึงรายชื่อหุ้นจากพอร์ตจริงตามโครงสร้าง App.jsx
-  const getHoldingsList = () => {
-    try {
-      const stored = localStorage.getItem('holdings');
-      if (!stored) return [];
-      const parsed = JSON.parse(stored);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (e) {
-      return [];
     }
   };
 
@@ -201,9 +221,9 @@ export default function MoonAssistantChat() {
 
   if (!isOpen) return null;
 
-  const allHoldings = getHoldingsList();
-  const thStocks = allHoldings.filter(h => h && h.type === 'th_stock' && h.instrumentType !== 'dr');
-  const globalStocks = allHoldings.filter(h => h && (h.type === 'foreign_stock' || h.instrumentType === 'dr'));
+  // กรองหุ้นตามโครงสร้าง App.jsx
+  const thStocks = portfolioHoldings.filter(h => h && h.type === 'th_stock' && h.instrumentType !== 'dr');
+  const globalStocks = portfolioHoldings.filter(h => h && (h.type === 'foreign_stock' || h.instrumentType === 'dr'));
 
   return (
     <div style={{
@@ -211,7 +231,7 @@ export default function MoonAssistantChat() {
       top: 0,
       left: 0,
       width: '100vw',
-      height: '100dvh', // แก้ปัญหาช่องแชทหลุดจอในมือถือ
+      height: '100dvh', // แก้ปัญหาจอพับ/จอมือถือหลุดขอบ
       zIndex: 99999,
       backgroundColor: '#030712',
       display: 'flex',
