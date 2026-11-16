@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Pencil, Trash2, RefreshCw, X, TrendingUp, TrendingDown, Inbox, Zap, Wallet, ChevronRight, ArrowUpDown, PlusCircle, MinusCircle, Gift, Sliders, Home, LayoutGrid, BarChart3, Settings, Search, History, Calendar, ChevronRight as ChevronRightIcon } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, LabelList } from 'recharts';
+import MoonAssistantChat from './MoonAssistantChat';
 
 const ASSET_TYPES = [
   { key: 'th_stock', label: 'หุ้นไทย', color: '#C7A344', market: 'th', defaultCurrency: 'THB' },
@@ -1252,7 +1253,7 @@ export default function PortfolioApp() {
           type: form.type, 
           quantity: currentQty, 
           avgCost: Number(currentAvg), 
-          currentPrice: currentPrice, 
+          currentPrice: price, 
           currency, 
           industry, 
           instrumentType,
@@ -1402,7 +1403,6 @@ export default function PortfolioApp() {
     const isUsdAsset = editingLog.currency === 'USD' && editingLog.instrumentType !== 'dr';
     const logFx = isUsdAsset ? (parseFloat(editingLog.tradeFx) || fxRate) : 1;
 
-    // บันทึกค่าตามที่กรอกตรงๆ โดยไม่มีการคำนวณสูตรเปอร์เซ็นต์ซ้ำซ้อน
     const updatedFeeThbRecord = isUsdAsset ? feeVal * logFx : feeVal;
     const updatedPnlThb = isUsdAsset ? pnlVal * logFx : pnlVal;
 
@@ -3468,6 +3468,9 @@ export default function PortfolioApp() {
       )}
 
       {toast && <div className="pf-toast">{toast}</div>}
+
+      {/* เพิ่มคอมโพเนนต์แชทผู้ช่วย AI ตรงนี้เพื่อดักจับคลิกนักบินอวกาศ */}
+      <MoonAssistantChat />
     </div>
   );
 }
