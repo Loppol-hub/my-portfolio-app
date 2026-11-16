@@ -19,6 +19,7 @@ export default function MoonAssistantChat() {
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const importFileRef = useRef(null);
 
   useEffect(() => {
     const fetchHoldingsAsync = async () => {
@@ -217,6 +218,50 @@ export default function MoonAssistantChat() {
     ]);
   };
 
+  // ฟังก์ชันส่งออกข้อมูลแชทและ Watchlist
+  const handleExportData = () => {
+    const backupData = {
+      chat_history: JSON.parse(localStorage.getItem('moon_chat_history') || '[]'),
+      watchlist: JSON.parse(localStorage.getItem('moon_watchlist') || '[]'),
+      custom_prompt: localStorage.getItem('moon_custom_prompt') || ''
+    };
+    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `assistant-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // ฟังก์ชันนำเข้าข้อมูลแชทและ Watchlist
+  const handleImportData = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const parsed = JSON.parse(event.target.result);
+        if (parsed.chat_history) {
+          localStorage.setItem('moon_chat_history', JSON.stringify(parsed.chat_history));
+          setMessages(parsed.chat_history);
+        }
+        if (parsed.watchlist) {
+          localStorage.setItem('moon_watchlist', JSON.stringify(parsed.watchlist));
+          setWatchlist(parsed.watchlist);
+        }
+        if (parsed.custom_prompt !== undefined) {
+          localStorage.setItem('moon_custom_prompt', parsed.custom_prompt);
+          setCustomPrompt(parsed.custom_prompt);
+        }
+        alert('นำเข้าข้อมูลสำเร็จเรียบร้อยครับ!');
+      } catch (err) {
+        alert('ไฟล์ไม่ถูกต้อง หรือรูปแบบ JSON เสียหาย');
+      }
+    };
+    reader.readAsText(file);
+  };
+
   if (!isOpen) return null;
 
   const thStocks = portfolioHoldings.filter(h => h && h.type === 'th_stock' && h.instrumentType !== 'dr');
@@ -345,7 +390,7 @@ export default function MoonAssistantChat() {
               { key: 'assets', label: 'สินทรัพย์' },
               { key: 'news', label: 'ข่าวสาร' },
               { key: 'watchlist', label: 'Watchlist' },
-              { key: 'skills', label: 'สกิล AI' }
+              { key: 'skills', label: 'ตั้งค่า' }
             ].map((tab) => (
               <button
                 key={tab.key}
@@ -430,7 +475,6 @@ export default function MoonAssistantChat() {
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '8px', width: '100%', maxWidth: '500px' }}>
             <h4 style={{ color: '#fbbf24', fontSize: '14px', fontWeight: 500, marginBottom: '4px' }}>วิเคราะห์สินทรัพย์</h4>
 
-            {/* หากกดเลือก "หุ้นไทย" */}
             {assetSubView === 'th' ? (
               <>
                 <button onClick={() => setAssetSubView(null)} style={{ textAlign: 'left', background: 'transparent', color: '#94a3b8', border: 'none', cursor: 'pointer', fontSize: '13px', padding: '4px 0', marginBottom: '4px' }}>
@@ -459,7 +503,6 @@ export default function MoonAssistantChat() {
                 )}
               </>
             ) : assetSubView === 'global' ? (
-              /* หากกดเลือก "หุ้นนอก & DR" */
               <>
                 <button onClick={() => setAssetSubView(null)} style={{ textAlign: 'left', background: 'transparent', color: '#94a3b8', border: 'none', cursor: 'pointer', fontSize: '13px', padding: '4px 0', marginBottom: '4px' }}>
                   ← กลับ
@@ -487,7 +530,6 @@ export default function MoonAssistantChat() {
                 )}
               </>
             ) : assetSubView === 'crypto' ? (
-              /* หากกดเลือก "คริปโตเคอร์เรนซี" */
               <>
                 <button onClick={() => setAssetSubView(null)} style={{ textAlign: 'left', background: 'transparent', color: '#94a3b8', border: 'none', cursor: 'pointer', fontSize: '13px', padding: '4px 0', marginBottom: '4px' }}>
                   ← กลับ
@@ -515,7 +557,6 @@ export default function MoonAssistantChat() {
                 )}
               </>
             ) : (
-              /* เมนูหลักสินทรัพย์ */
               <>
                 <button onClick={() => setAssetSubView('th')} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
                   หุ้นไทย ({thStocks.length})
@@ -575,7 +616,7 @@ export default function MoonAssistantChat() {
 
         {activeTab === 'skills' && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '10px', width: '100%', maxWidth: '500px' }}>
-            <h4 style={{ color: '#fbbf24', fontSize: '14px', fontWeight: 500 }}>สกิล AI</h4>
+            <h4 style={{ color: '#fbbf24', fontSize: '14px', fontWeight: 500 }}>ตั้งค่า</h4>
             <div style={{ padding: '12px', width: '100%', backgroundColor: 'transparent', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }}>
               <span style={{ color: '#cbd5e1', fontSize: '12.5px' }}>อัปโหลดไฟล์ข้อมูล:</span>
               <input type="file" onChange={handleFileSelect} style={{ color: '#94a3b8', fontSize: '12px' }} />
@@ -585,6 +626,18 @@ export default function MoonAssistantChat() {
               <span style={{ color: '#cbd5e1', fontSize: '12.5px' }}>Custom Prompt:</span>
               <textarea rows="3" placeholder="ระบุสไตล์การตอบ..." value={customPrompt} onChange={(e) => { setCustomPrompt(e.target.value); localStorage.setItem('moon_custom_prompt', e.target.value); }} style={{ padding: '10px', backgroundColor: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff', fontSize: '13px', width: '100%' }} />
             </div>
+
+            {/* ปุ่มส่งออกข้อมูล และ นำเข้าข้อมูล */}
+            <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+              <button onClick={handleExportData} style={{ flex: 1, padding: '10px', backgroundColor: 'transparent', color: '#34d399', border: '1px solid rgba(52, 211, 153, 0.4)', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 500 }}>
+                ส่งออกข้อมูล
+              </button>
+              <button onClick={() => importFileRef.current?.click()} style={{ flex: 1, padding: '10px', backgroundColor: 'transparent', color: '#60a5fa', border: '1px solid rgba(96, 165, 250, 0.4)', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 500 }}>
+                นำเข้าข้อมูล
+              </button>
+              <input type="file" ref={importFileRef} onChange={handleImportData} style={{ display: 'none' }} accept=".json" />
+            </div>
+
             <button onClick={() => { localStorage.removeItem('moon_chat_history'); setMessages([]); alert('เคลียร์ประวัติแชทเรียบร้อยแล้ว!'); }} style={{ padding: '10px 14px', backgroundColor: 'transparent', color: '#fca5a5', border: '1px solid rgba(239, 68, 68, 0.4)', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', width: '100%' }}>
               เคลียร์ประวัติแชททั้งหมด
             </button>
