@@ -8,6 +8,7 @@ export default function MoonAssistantChat() {
   const [activeTab, setActiveTab] = useState('chat');
   const [menuOpen, setMenuOpen] = useState(false);
   
+  // สถานะสำหรับเปิดดูรายชื่อหุ้นย่อยในหมวดสินทรัพย์
   const [assetSubView, setAssetSubView] = useState(null); // null, 'th', 'global'
 
   const [watchlist, setWatchlist] = useState([]);
@@ -109,45 +110,13 @@ export default function MoonAssistantChat() {
     }
   };
 
-  // ฟังก์ชันดึงรายชื่อหุ้นแบบครอบจักรวาล รองรับทั้ง Array, Object และคีย์สำรอง
+  // ฟังก์ชันดึงรายชื่อหุ้นจากพอร์ตจริงตามโครงสร้าง App.jsx
   const getHoldingsList = () => {
     try {
-      let rawData = null;
-      const keysToCheck = ['holdings', 'portfolio', 'assets', 'stocks'];
-      
-      for (const key of keysToCheck) {
-        const stored = localStorage.getItem(key);
-        if (stored) {
-          try {
-            rawData = JSON.parse(stored);
-            break;
-          } catch (err) {}
-        }
-      }
-
-      if (!rawData && window.storage && typeof window.storage.get === 'function') {
-        rawData = window.storage.get('holdings');
-      }
-
-      if (!rawData) return [];
-
-      // ถ้าเป็น Array อยู่แล้ว คืนค่าได้ทันที
-      if (Array.isArray(rawData)) return rawData;
-
-      // ถ้าเป็น Object ให้พยายามแกะค่าข้างในออกมาเป็น Array
-      if (typeof rawData === 'object') {
-        if (Array.isArray(rawData.holdings)) return rawData.holdings;
-        if (Array.isArray(rawData.items)) return rawData.items;
-        if (Array.isArray(rawData.data)) return rawData.data;
-        
-        // แปลง Object เช่น { ptt: {...}, scb: {...} } ให้เป็น Array
-        const values = Object.values(rawData);
-        if (values.length > 0) {
-          return values.filter(item => item && typeof item === 'object');
-        }
-      }
-
-      return [];
+      const stored = localStorage.getItem('holdings');
+      if (!stored) return [];
+      const parsed = JSON.parse(stored);
+      return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
       return [];
     }
@@ -233,19 +202,8 @@ export default function MoonAssistantChat() {
   if (!isOpen) return null;
 
   const allHoldings = getHoldingsList();
-
-  // จัดกลุ่มหุ้นแบบยืดหยุ่น (ถ้ามีข้อมูล ดึงมาแสดงทั้งหมดทันที)
-  const thStocks = allHoldings.filter(h => {
-    if (!h) return false;
-    const t = String(h.type || h.market || h.category || h.assetType || '').toLowerCase();
-    return !t.includes('foreign') && !t.includes('global') && !t.includes('crypto') && !t.includes('gold');
-  });
-
-  const globalStocks = allHoldings.filter(h => {
-    if (!h) return false;
-    const t = String(h.type || h.market || h.category || h.assetType || '').toLowerCase();
-    return t.includes('foreign') || t.includes('global') || t.includes('dr') || t.includes('etf');
-  });
+  const thStocks = allHoldings.filter(h => h && h.type === 'th_stock' && h.instrumentType !== 'dr');
+  const globalStocks = allHoldings.filter(h => h && (h.type === 'foreign_stock' || h.instrumentType === 'dr'));
 
   return (
     <div style={{
@@ -253,7 +211,7 @@ export default function MoonAssistantChat() {
       top: 0,
       left: 0,
       width: '100vw',
-      height: '100dvh',
+      height: '100dvh', // แก้ปัญหาช่องแชทหลุดจอในมือถือ
       zIndex: 99999,
       backgroundColor: '#030712',
       display: 'flex',
@@ -440,60 +398,54 @@ export default function MoonAssistantChat() {
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '8px', width: '100%', maxWidth: '500px' }}>
             <h4 style={{ color: '#fbbf24', fontSize: '14px', fontWeight: 500, marginBottom: '4px' }}>วิเคราะห์สินทรัพย์</h4>
 
-            {/* แสดงรายชื่อหุ้นไทย หากกดเลือก */}
+            {/* หากกดเลือก "หุ้นไทยรายตัว" */}
             {assetSubView === 'th' ? (
               <>
                 <button onClick={() => setAssetSubView(null)} style={{ textAlign: 'left', background: 'transparent', color: '#94a3b8', border: 'none', cursor: 'pointer', fontSize: '13px', padding: '4px 0', marginBottom: '4px' }}>
-                  ← กลับหมวดหลัก
+                  ← กลับ
                 </button>
-                <span style={{ fontSize: '12.5px', color: '#fbbf24', marginBottom: '4px' }}>เลือกหุ้นในพอร์ต ({thStocks.length}):</span>
+                <span style={{ fontSize: '12.5px', color: '#fbbf24', marginBottom: '4px' }}>เลือกหุ้นไทยในพอร์ต ({thStocks.length}):</span>
                 {thStocks.length === 0 ? (
-                  <span style={{ fontSize: '13px', color: '#64748b' }}>ไม่พบข้อมูลหุ้นในพอร์ต</span>
+                  <span style={{ fontSize: '13px', color: '#64748b' }}>ไม่มีหุ้นไทยในพอร์ต</span>
                 ) : (
-                  thStocks.map((stock, idx) => {
-                    const stockName = stock.name || stock.symbol || stock.ticker || stock.stock || `หุ้นตัวที่ ${idx + 1}`;
-                    return (
-                      <button 
-                        key={idx} 
-                        onClick={() => { 
-                          setActiveTab('chat'); 
-                          setAssetSubView(null);
-                          triggerBackendAction('asset_analysis', `วิเคราะห์หุ้น ${stockName} ในพอร์ตให้หน่อยครับ`); 
-                        }} 
-                        style={{ textAlign: 'left', width: '100%', padding: '10px 14px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', cursor: 'pointer', fontSize: '13px' }}
-                      >
-                        {stockName} {stock.shares ? `(จำนวน: ${stock.shares})` : ''}
-                      </button>
-                    );
-                  })
+                  thStocks.map((stock, idx) => (
+                    <button 
+                      key={stock.id || idx} 
+                      onClick={() => { 
+                        setActiveTab('chat'); 
+                        setAssetSubView(null);
+                        triggerBackendAction('asset_analysis', `วิเคราะห์หุ้นไทย ${stock.name} (${stock.ticker || ''}) ในพอร์ตให้หน่อยครับ`); 
+                      }} 
+                      style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}
+                    >
+                      {stock.name} {stock.ticker ? `(${stock.ticker})` : ''}
+                    </button>
+                  ))
                 )}
               </>
             ) : assetSubView === 'global' ? (
-              /* แสดงรายชื่อหุ้นนอก & DR หากกดเลือก */
+              /* หากกดเลือก "หุ้นนอก & DR" */
               <>
                 <button onClick={() => setAssetSubView(null)} style={{ textAlign: 'left', background: 'transparent', color: '#94a3b8', border: 'none', cursor: 'pointer', fontSize: '13px', padding: '4px 0', marginBottom: '4px' }}>
-                  ← กลับหมวดหลัก
+                  ← กลับ
                 </button>
                 <span style={{ fontSize: '12.5px', color: '#fbbf24', marginBottom: '4px' }}>เลือกหุ้นนอก & DR ในพอร์ต ({globalStocks.length}):</span>
                 {globalStocks.length === 0 ? (
                   <span style={{ fontSize: '13px', color: '#64748b' }}>ไม่มีหุ้นนอก/DR ในพอร์ต</span>
                 ) : (
-                  globalStocks.map((stock, idx) => {
-                    const stockName = stock.name || stock.symbol || stock.ticker || `หุ้นนอกตัวที่ ${idx + 1}`;
-                    return (
-                      <button 
-                        key={idx} 
-                        onClick={() => { 
-                          setActiveTab('chat'); 
-                          setAssetSubView(null);
-                          triggerBackendAction('asset_analysis', `วิเคราะห์หุ้นต่างประเทศหรือ DR ${stockName} ในพอร์ตให้หน่อยครับ`); 
-                        }} 
-                        style={{ textAlign: 'left', width: '100%', padding: '10px 14px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', cursor: 'pointer', fontSize: '13px' }}
-                      >
-                        {stockName}
-                      </button>
-                    );
-                  })
+                  globalStocks.map((stock, idx) => (
+                    <button 
+                      key={stock.id || idx} 
+                      onClick={() => { 
+                        setActiveTab('chat'); 
+                        setAssetSubView(null);
+                        triggerBackendAction('asset_analysis', `วิเคราะห์หุ้นต่างประเทศหรือ DR ${stock.name} (${stock.ticker || ''}) ในพอร์ตให้หน่อยครับ`); 
+                      }} 
+                      style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}
+                    >
+                      {stock.name} {stock.ticker ? `(${stock.ticker})` : ''}
+                    </button>
+                  ))
                 )}
               </>
             ) : (
