@@ -8,8 +8,8 @@ export default function MoonAssistantChat() {
   const [activeTab, setActiveTab] = useState('chat');
   const [menuOpen, setMenuOpen] = useState(false);
   
-  const [assetSubView, setAssetSubView] = useState(null); // null, 'th', 'global'
-  const [portfolioHoldings, setPortfolioHoldings] = useState([]); // เก็บรายชื่อหุ้นจากพอร์ตจริง
+  const [assetSubView, setAssetSubView] = useState(null); // null, 'th', 'global', 'crypto'
+  const [portfolioHoldings, setPortfolioHoldings] = useState([]);
 
   const [watchlist, setWatchlist] = useState([]);
   const [newAsset, setNewAsset] = useState({ name: '', price: '', reason: '' });
@@ -20,7 +20,6 @@ export default function MoonAssistantChat() {
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // ดึงข้อมูลพอร์ตจริงจาก window.storage (ตามโครงสร้าง App.jsx) เมื่อเปิดหน้าต่างแชท
   useEffect(() => {
     const fetchHoldingsAsync = async () => {
       try {
@@ -34,7 +33,6 @@ export default function MoonAssistantChat() {
             }
           }
         }
-        // Fallback เผื่อกรณีเก็บใน localStorage
         const stored = localStorage.getItem('holdings');
         if (stored) {
           const parsed = JSON.parse(stored);
@@ -221,9 +219,27 @@ export default function MoonAssistantChat() {
 
   if (!isOpen) return null;
 
-  // กรองหุ้นตามโครงสร้าง App.jsx
   const thStocks = portfolioHoldings.filter(h => h && h.type === 'th_stock' && h.instrumentType !== 'dr');
   const globalStocks = portfolioHoldings.filter(h => h && (h.type === 'foreign_stock' || h.instrumentType === 'dr'));
+  const cryptoStocks = portfolioHoldings.filter(h => h && h.type === 'crypto');
+
+  // ฟังก์ชันป้องกันชื่อซ้ำซ้อน และแปลงเป็นตัวพิมพ์ใหญ่ทั้งหมด (UPPERCASE)
+  const formatStockLabel = (stock) => {
+    const name = String(stock.name || '').trim();
+    const ticker = String(stock.ticker || '').trim();
+    
+    if (!ticker) return name.toUpperCase();
+    if (!name) return ticker.toUpperCase();
+    
+    if (name.toLowerCase() === ticker.toLowerCase()) {
+      return ticker.toUpperCase();
+    }
+    if (name.toLowerCase().includes(ticker.toLowerCase())) {
+      return name.toUpperCase();
+    }
+    
+    return `${name} (${ticker})`.toUpperCase();
+  };
 
   return (
     <div style={{
@@ -231,7 +247,7 @@ export default function MoonAssistantChat() {
       top: 0,
       left: 0,
       width: '100vw',
-      height: '100dvh', // แก้ปัญหาจอพับ/จอมือถือหลุดขอบ
+      height: '100dvh',
       zIndex: 99999,
       backgroundColor: '#030712',
       display: 'flex',
@@ -253,7 +269,6 @@ export default function MoonAssistantChat() {
         flexShrink: 0,
         position: 'relative'
       }}>
-        {/* ซ้าย: ปุ่ม 3 ขีด + ข้อความ "สถานะ" ตามด้วยจุดไฟ */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <button
             onClick={() => setMenuOpen(!menuOpen)}
@@ -288,7 +303,6 @@ export default function MoonAssistantChat() {
           </div>
         </div>
 
-        {/* ขวา: ปุ่มกากบาท (X) ปิดหน้าจอ */}
         <button 
           onClick={() => setIsOpen(false)}
           style={{
@@ -310,7 +324,6 @@ export default function MoonAssistantChat() {
           ✕
         </button>
 
-        {/* เมนูดรอปดาวน์แบบมินิมอล (เปิดลงมาจากปุ่ม 3 ขีดด้านซ้าย) */}
         {menuOpen && (
           <div style={{
             position: 'absolute',
@@ -418,7 +431,7 @@ export default function MoonAssistantChat() {
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '8px', width: '100%', maxWidth: '500px' }}>
             <h4 style={{ color: '#fbbf24', fontSize: '14px', fontWeight: 500, marginBottom: '4px' }}>วิเคราะห์สินทรัพย์</h4>
 
-            {/* หากกดเลือก "หุ้นไทยรายตัว" */}
+            {/* หากกดเลือก "หุ้นไทย" */}
             {assetSubView === 'th' ? (
               <>
                 <button onClick={() => setAssetSubView(null)} style={{ textAlign: 'left', background: 'transparent', color: '#94a3b8', border: 'none', cursor: 'pointer', fontSize: '13px', padding: '4px 0', marginBottom: '4px' }}>
@@ -428,19 +441,22 @@ export default function MoonAssistantChat() {
                 {thStocks.length === 0 ? (
                   <span style={{ fontSize: '13px', color: '#64748b' }}>ไม่มีหุ้นไทยในพอร์ต</span>
                 ) : (
-                  thStocks.map((stock, idx) => (
-                    <button 
-                      key={stock.id || idx} 
-                      onClick={() => { 
-                        setActiveTab('chat'); 
-                        setAssetSubView(null);
-                        triggerBackendAction('asset_analysis', `วิเคราะห์หุ้นไทย ${stock.name} (${stock.ticker || ''}) ในพอร์ตให้หน่อยครับ`); 
-                      }} 
-                      style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}
-                    >
-                      {stock.name} {stock.ticker ? `(${stock.ticker})` : ''}
-                    </button>
-                  ))
+                  thStocks.map((stock, idx) => {
+                    const labelText = formatStockLabel(stock);
+                    return (
+                      <button 
+                        key={stock.id || idx} 
+                        onClick={() => { 
+                          setActiveTab('chat'); 
+                          setAssetSubView(null);
+                          triggerBackendAction('asset_analysis', `วิเคราะห์หุ้นไทย ${labelText} ในพอร์ตให้หน่อยครับ`); 
+                        }} 
+                        style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}
+                      >
+                        {labelText}
+                      </button>
+                    );
+                  })
                 )}
               </>
             ) : assetSubView === 'global' ? (
@@ -453,35 +469,66 @@ export default function MoonAssistantChat() {
                 {globalStocks.length === 0 ? (
                   <span style={{ fontSize: '13px', color: '#64748b' }}>ไม่มีหุ้นนอก/DR ในพอร์ต</span>
                 ) : (
-                  globalStocks.map((stock, idx) => (
-                    <button 
-                      key={stock.id || idx} 
-                      onClick={() => { 
-                        setActiveTab('chat'); 
-                        setAssetSubView(null);
-                        triggerBackendAction('asset_analysis', `วิเคราะห์หุ้นต่างประเทศหรือ DR ${stock.name} (${stock.ticker || ''}) ในพอร์ตให้หน่อยครับ`); 
-                      }} 
-                      style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}
-                    >
-                      {stock.name} {stock.ticker ? `(${stock.ticker})` : ''}
-                    </button>
-                  ))
+                  globalStocks.map((stock, idx) => {
+                    const labelText = formatStockLabel(stock);
+                    return (
+                      <button 
+                        key={stock.id || idx} 
+                        onClick={() => { 
+                          setActiveTab('chat'); 
+                          setAssetSubView(null);
+                          triggerBackendAction('asset_analysis', `วิเคราะห์หุ้นต่างประเทศหรือ DR ${labelText} ในพอร์ตให้หน่อยครับ`); 
+                        }} 
+                        style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}
+                      >
+                        {labelText}
+                      </button>
+                    );
+                  })
+                )}
+              </>
+            ) : assetSubView === 'crypto' ? (
+              /* หากกดเลือก "คริปโตเคอร์เรนซี" */
+              <>
+                <button onClick={() => setAssetSubView(null)} style={{ textAlign: 'left', background: 'transparent', color: '#94a3b8', border: 'none', cursor: 'pointer', fontSize: '13px', padding: '4px 0', marginBottom: '4px' }}>
+                  ← กลับ
+                </button>
+                <span style={{ fontSize: '12.5px', color: '#fbbf24', marginBottom: '4px' }}>เลือกคริปโตในพอร์ต ({cryptoStocks.length}):</span>
+                {cryptoStocks.length === 0 ? (
+                  <span style={{ fontSize: '13px', color: '#64748b' }}>ไม่มีคริปโตในพอร์ต</span>
+                ) : (
+                  cryptoStocks.map((stock, idx) => {
+                    const labelText = formatStockLabel(stock);
+                    return (
+                      <button 
+                        key={stock.id || idx} 
+                        onClick={() => { 
+                          setActiveTab('chat'); 
+                          setAssetSubView(null);
+                          triggerBackendAction('asset_analysis', `วิเคราะห์คริปโต ${labelText} ในพอร์ตให้หน่อยครับ`); 
+                        }} 
+                        style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}
+                      >
+                        {labelText}
+                      </button>
+                    );
+                  })
                 )}
               </>
             ) : (
-              /* เมนูหลักสินทรัพย์ */
+              /* เมนูหลักสินทรัพย์: หุ้นไทย, หุ้นนอก & DR, คริปโตเคอร์เรนซี, ทองคำ */
               <>
                 <button onClick={() => setAssetSubView('th')} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
-                  หุ้นไทยรายตัว ({thStocks.length})
+                  หุ้นไทย ({thStocks.length})
                 </button>
                 <button onClick={() => setAssetSubView('global')} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
                   หุ้นนอก & DR ({globalStocks.length})
                 </button>
-                <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์ทิศทางราคาทองคำ แนวรับ แนวต้าน'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
-                  ทองคำ (แนวรับ-แนวต้าน)
+                <button onClick={() => setAssetSubView('crypto')} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
+                  คริปโตเคอร์เรนซี ({cryptoStocks.length})
                 </button>
-                <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์คริปโตในพอร์ต ทิศทางราคา'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
-                  คริปโตเคอร์เรนซี
+                <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์ทิศทางราคาทองคำ'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
+                  ทองคำ
                 </button>
               </>
             )}
