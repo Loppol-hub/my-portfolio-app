@@ -180,50 +180,120 @@ export default function MoonAssistantChat() {
 
   if (!isOpen) return null;
 
+  // ใช้ Inline Styles ควบคุมหน้าจอทั้งหมด เพื่อป้องกันปัญหาคลาส Tailwind ไม่คอมไพล์
   return (
-    <div className="fixed inset-0 z-50 bg-[#02040a] flex flex-col text-slate-100 h-screen w-screen overflow-hidden">
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      width: '100vw',
+      height: '100vh',
+      zIndex: 99999,
+      backgroundColor: '#02040a',
+      display: 'flex',
+      flexDirection: 'column',
+      color: '#EDF1F5',
+      overflow: 'hidden',
+      fontFamily: 'Inter, sans-serif'
+    }}>
       
       {/* Header เต็มจอ */}
-      <div className="px-4 py-3 bg-slate-800/85 border-b border-slate-700 flex items-center justify-between shrink-0">
-        <div className="flex items-center space-x-3">
-          <span className="text-2xl">👨‍🚀</span>
+      <div style={{
+        padding: '12px 16px',
+        backgroundColor: 'rgba(30, 41, 59, 0.9)',
+        borderBottom: '1px solid rgba(56, 189, 248, 0.2)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexShrink: 0
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <span style={{ fontSize: '24px' }}>👨‍🚀</span>
           <div>
-            <h3 className="font-semibold text-amber-400 text-base">ผู้ช่วยนักบินอวกาศ AI</h3>
-            <p className="text-xs text-slate-400">สถานะ: เชื่อมต่อพอร์ตพร้อมปฏิบัติการ</p>
+            <h3 style={{ fontWeight: 600, color: '#fbbf24', fontSize: '15px', margin: 0 }}>ผู้ช่วยนักบินอวกาศ AI</h3>
+            <p style={{ fontSize: '11px', color: '#94a3b8', margin: 0 }}>สถานะ: เชื่อมต่อพอร์ตพร้อมปฏิบัติการ</p>
           </div>
         </div>
         <button 
           onClick={() => setIsOpen(false)}
-          className="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-xl text-xs font-semibold transition shadow"
+          style={{
+            backgroundColor: '#334155',
+            color: '#fff',
+            border: 'none',
+            padding: '6px 12px',
+            borderRadius: '10px',
+            fontSize: '12px',
+            fontWeight: 600,
+            cursor: 'pointer'
+          }}
         >
           ← กลับหน้าพอร์ต
         </button>
       </div>
 
       {/* แถบเมนูด่วน 5 หมวดหลัก */}
-      <div className="flex overflow-x-auto space-x-2 p-2.5 bg-slate-950/90 border-b border-slate-800 text-xs shrink-0 scrollbar-none">
-        <button onClick={() => setActiveTab('chat')} className={`px-4 py-2 rounded-xl whitespace-nowrap transition ${activeTab === 'chat' ? 'bg-amber-500 text-slate-950 font-bold shadow' : 'bg-slate-800/80 text-slate-300'}`}>💬 แชททั่วไป</button>
-        <button onClick={() => setActiveTab('health')} className={`px-4 py-2 rounded-xl whitespace-nowrap transition ${activeTab === 'health' ? 'bg-amber-500 text-slate-950 font-bold shadow' : 'bg-slate-800/80 text-slate-300'}`}>📊 สุขภาพพอร์ต</button>
-        <button onClick={() => setActiveTab('assets')} className={`px-4 py-2 rounded-xl whitespace-nowrap transition ${activeTab === 'assets' ? 'bg-amber-500 text-slate-950 font-bold shadow' : 'bg-slate-800/80 text-slate-300'}`}>🪙 สินทรัพย์</button>
-        <button onClick={() => setActiveTab('news')} className={`px-4 py-2 rounded-xl whitespace-nowrap transition ${activeTab === 'news' ? 'bg-amber-500 text-slate-950 font-bold shadow' : 'bg-slate-800/80 text-slate-300'}`}>📰 ข่าวสาร</button>
-        <button onClick={() => setActiveTab('watchlist')} className={`px-4 py-2 rounded-xl whitespace-nowrap transition ${activeTab === 'watchlist' ? 'bg-amber-500 text-slate-950 font-bold shadow' : 'bg-slate-800/80 text-slate-300'}`}>🎯 Watchlist</button>
-        <button onClick={() => setActiveTab('skills')} className={`px-4 py-2 rounded-xl whitespace-nowrap transition ${activeTab === 'skills' ? 'bg-amber-500 text-slate-950 font-bold shadow' : 'bg-slate-800/80 text-slate-300'}`}>⚙️ สกิล AI</button>
+      <div style={{
+        display: 'flex',
+        overflowX: 'auto',
+        gap: '8px',
+        padding: '10px',
+        backgroundColor: 'rgba(3, 7, 18, 0.95)',
+        borderBottom: '1px solid rgba(56, 189, 248, 0.15)',
+        flexShrink: 0
+      }}>
+        {[
+          { key: 'chat', label: '💬 แชททั่วไป' },
+          { key: 'health', label: '📊 สุขภาพพอร์ต' },
+          { key: 'assets', label: '🪙 สินทรัพย์' },
+          { key: 'news', label: '📰 ข่าวสาร' },
+          { key: 'watchlist', label: '🎯 Watchlist' },
+          { key: 'skills', label: '⚙️ สกิล AI' }
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            style={{
+              padding: '6px 14px',
+              borderRadius: '10px',
+              fontSize: '12px',
+              fontWeight: activeTab === tab.key ? 700 : 500,
+              backgroundColor: activeTab === tab.key ? '#fbbf24' : '#1e293b',
+              color: activeTab === tab.key ? '#030712' : '#cbd5e1',
+              border: 'none',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {/* เนื้อหาภายในแท็บ (เต็มจอ) */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 max-w-3xl w-full mx-auto">
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '700px', width: '100%', margin: '0 auto' }}>
         {activeTab === 'chat' && (
           <>
             {messages.map((msg, index) => (
-              <div key={index} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] sm:max-w-[75%] p-3.5 rounded-2xl text-sm sm:text-base leading-relaxed ${msg.sender === 'user' ? 'bg-amber-600 text-white rounded-br-none' : 'bg-slate-800 text-slate-200 border border-slate-700/80 rounded-bl-none shadow'}`}>
+              <div key={index} style={{ display: 'flex', justifyContent: msg.sender === 'user' ? 'flex-end' : 'flex-start' }}>
+                <div style={{
+                  maxWidth: '85%',
+                  padding: '12px 16px',
+                  borderRadius: '16px',
+                  fontSize: '14px',
+                  lineHeight: 1.5,
+                  backgroundColor: msg.sender === 'user' ? '#d97706' : '#1e293b',
+                  color: '#fff',
+                  borderBottomRightRadius: msg.sender === 'user' ? '4px' : '16px',
+                  borderBottomLeftRadius: msg.sender === 'user' ? '16px' : '4px',
+                  border: msg.sender === 'ai' ? '1px solid rgba(56, 189, 248, 0.2)' : 'none'
+                }}>
                   {msg.text}
                 </div>
               </div>
             ))}
             {loading && (
-              <div className="flex justify-start">
-                <div className="bg-slate-800 text-amber-400 p-3.5 rounded-2xl text-xs sm:text-sm animate-pulse border border-slate-700">
+              <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                <div style={{ backgroundColor: '#1e293b', color: '#fbbf24', padding: '12px 16px', borderRadius: '16px', fontSize: '13px', border: '1px solid rgba(56, 189, 248, 0.2)' }}>
                   👨‍🚀 กำลังคำนวณและวิเคราะห์ข้อมูลในห้วงอวกาศ...
                 </div>
               </div>
@@ -233,85 +303,72 @@ export default function MoonAssistantChat() {
         )}
 
         {activeTab === 'health' && (
-          <div className="space-y-3 max-w-xl mx-auto pt-4">
-            <h4 className="font-semibold text-amber-400 text-base mb-2">📊 เครื่องมือวิเคราะห์สุขภาพพอร์ต</h4>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('deep_analysis', 'วิเคราะห์พอร์ตการลงทุนเชิงลึกให้หน่อยครับ'); }} className="w-full text-left p-4 bg-slate-800/90 hover:bg-slate-800 rounded-2xl border border-slate-700 text-sm sm:text-base transition shadow">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '500px', width: '100%', margin: 'auto' }}>
+            <h4 style={{ color: '#fbbf24', fontSize: '15px', marginBottom: '6px' }}>📊 เครื่องมือวิเคราะห์สุขภาพพอร์ต</h4>
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('deep_analysis', 'วิเคราะห์พอร์ตการลงทุนเชิงลึกให้หน่อยครับ'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
               🔍 วิเคราะห์พอร์ตเชิงลึก (จุดแข็ง/ความเสี่ยง/คำแนะนำ)
             </button>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('portfolio_summary', 'สรุปภาพรวมพอร์ตในเดือนนี้ให้หน่อยครับ'); }} className="w-full text-left p-4 bg-slate-800/90 hover:bg-slate-800 rounded-2xl border border-slate-700 text-sm sm:text-base transition shadow">
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('portfolio_summary', 'สรุปภาพรวมพอร์ตในเดือนนี้ให้หน่อยครับ'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
               📈 สรุปภาพรวมการซื้อขาย กำไร/ขาดทุนประจำเดือน
             </button>
           </div>
         )}
 
         {activeTab === 'assets' && (
-          <div className="space-y-3 max-w-xl mx-auto pt-4">
-            <h4 className="font-semibold text-amber-400 text-base mb-2">🪙 วิเคราะห์สินทรัพย์รายหมวด</h4>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์หุ้นไทยในพอร์ตและให้คำแนะนำทีครับ'); }} className="w-full text-left p-4 bg-slate-800/90 hover:bg-slate-800 rounded-2xl border border-slate-700 text-sm sm:text-base transition shadow">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '500px', width: '100%', margin: 'auto' }}>
+            <h4 style={{ color: '#fbbf24', fontSize: '15px', marginBottom: '6px' }}>🪙 วิเคราะห์สินทรัพย์รายหมวด</h4>
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์หุ้นไทยในพอร์ตและให้คำแนะนำทีครับ'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
               🇹🇭 หุ้นไทย (วิเคราะห์รายตัวในพอร์ต)
             </button>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์หุ้นต่างประเทศและ DR (เช่น CATL01 จากบริษัทแม่) ให้หน่อยครับ'); }} className="w-full text-left p-4 bg-slate-800/90 hover:bg-slate-800 rounded-2xl border border-slate-700 text-sm sm:text-base transition shadow">
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์หุ้นต่างประเทศและ DR (เช่น CATL01 จากบริษัทแม่) ให้หน่อยครับ'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
               🌐 หุ้นนอก & DR (วิเคราะห์เจาะลึกธุรกิจบริษัทแม่)
             </button>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์ทิศทางราคาทองคำ แนวรับ แนวต้าน สำหรับเก็งกำไรระยะสั้น'); }} className="w-full text-left p-4 bg-slate-800/90 hover:bg-slate-800 rounded-2xl border border-slate-700 text-sm sm:text-base transition shadow">
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์ทิศทางราคาทองคำ แนวรับ แนวต้าน สำหรับเก็งกำไรระยะสั้น'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
               🥇 ทองคำ (วิเคราะห์แนวรับ-แนวต้าน เก็งกำไร)
             </button>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์คริปโตในพอร์ต ทิศทางราคา แนวรับ แนวต้าน สำหรับเก็งกำไร'); }} className="w-full text-left p-4 bg-slate-800/90 hover:bg-slate-800 rounded-2xl border border-slate-700 text-sm sm:text-base transition shadow">
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์คริปโตในพอร์ต ทิศทางราคา แนวรับ แนวต้าน สำหรับเก็งกำไร'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
               🚀 คริปโตเคอร์เรนซี (เก็งกำไร แนวรับ-แนวต้าน)
             </button>
           </div>
         )}
 
         {activeTab === 'news' && (
-          <div className="space-y-3 max-w-xl mx-auto pt-4">
-            <h4 className="font-semibold text-amber-400 text-base mb-2">📰 ข่าวสารและสถานการณ์ส่งผลต่อพอร์ต</h4>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์ภูมิรัฐศาสตร์โลก (อเมริกา จีน เวียดนาม ไทย) ที่มีผลต่อพอร์ต'); }} className="w-full text-left p-4 bg-slate-800/90 hover:bg-slate-800 rounded-2xl border border-slate-700 text-sm sm:text-base transition shadow">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '500px', width: '100%', margin: 'auto' }}>
+            <h4 style={{ color: '#fbbf24', fontSize: '15px', marginBottom: '6px' }}>📰 ข่าวสารและสถานการณ์ส่งผลต่อพอร์ต</h4>
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์ภูมิรัฐศาสตร์โลก (อเมริกา จีน เวียดนาม ไทย) ที่มีผลต่อพอร์ต'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
               🌍 ภูมิรัฐศาสตร์โลก (สหรัฐ, จีน, เวียดนาม, ไทย)
             </button>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์เศรษฐกิจมหภาค โลก-ไทย ที่มีผลต่อพอร์ต'); }} className="w-full text-left p-4 bg-slate-800/90 hover:bg-slate-800 rounded-2xl border border-slate-700 text-sm sm:text-base transition shadow">
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์เศรษฐกิจมหภาค โลก-ไทย ที่มีผลต่อพอร์ต'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
               📉 เศรษฐกิจโลกและไทย
             </button>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('news_analysis', 'มีข่าวหุ้นรายตัวตัวไหนในพอร์ตที่ต้องแอคชันด่วนไหม'); }} className="w-full text-left p-4 bg-slate-800/90 hover:bg-slate-800 rounded-2xl border border-slate-700 text-sm sm:text-base transition shadow">
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('news_analysis', 'มีข่าวหุ้นรายตัวตัวไหนในพอร์ตที่ต้องแอคชันด่วนไหม'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
               ⚡ ข่าวหุ้นรายตัวที่ต้องแอคชัน
             </button>
           </div>
         )}
 
         {activeTab === 'watchlist' && (
-          <div className="space-y-4 max-w-xl mx-auto pt-4">
-            <h4 className="font-semibold text-amber-400 text-base">🎯 เรดาร์ตั้งเตือนราคา (Watchlist)</h4>
-            <form onSubmit={handleAddWatchlist} className="space-y-3 bg-slate-800/60 p-4 rounded-2xl border border-slate-700 shadow">
-              <input 
-                type="text" placeholder="ชื่อสินทรัพย์ (เช่น BTC, PTT)" value={newAsset.name} 
-                onChange={(e) => setNewAsset({...newAsset, name: e.target.value})} 
-                className="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-white text-sm" required 
-              />
-              <input 
-                type="number" placeholder="ราคาเป้าหมายแจ้งเตือน" value={newAsset.price} 
-                onChange={(e) => setNewAsset({...newAsset, price: e.target.value})} 
-                className="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-white text-sm" required 
-              />
-              <input 
-                type="text" placeholder="เหตุผลที่เฝ้าระวัง" value={newAsset.reason} 
-                onChange={(e) => setNewAsset({...newAsset, reason: e.target.value})} 
-                className="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-white text-sm" 
-              />
-              <button type="submit" className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-sm transition">เพิ่มเข้าเรดาร์เตือนภัย</button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '500px', width: '100%', margin: 'auto' }}>
+            <h4 style={{ color: '#fbbf24', fontSize: '15px' }}>🎯 เรดาร์ตั้งเตือนราคา (Watchlist)</h4>
+            <form onSubmit={handleAddWatchlist} style={{ display: 'flex', flexDirection: 'column', gap: '8px', backgroundColor: '#1e293b', padding: '14px', borderRadius: '12px', border: '1px solid #334155' }}>
+              <input type="text" placeholder="ชื่อสินทรัพย์ (เช่น BTC, PTT)" value={newAsset.name} onChange={(e) => setNewAsset({...newAsset, name: e.target.value})} style={{ padding: '10px', backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', color: '#fff', fontSize: '13px' }} required />
+              <input type="number" placeholder="ราคาเป้าหมายแจ้งเตือน" value={newAsset.price} onChange={(e) => setNewAsset({...newAsset, price: e.target.value})} style={{ padding: '10px', backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', color: '#fff', fontSize: '13px' }} required />
+              <input type="text" placeholder="เหตุผลที่เฝ้าระวัง" value={newAsset.reason} onChange={(e) => setNewAsset({...newAsset, reason: e.target.value})} style={{ padding: '10px', backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', color: '#fff', fontSize: '13px' }} />
+              <button type="submit" style={{ padding: '10px', backgroundColor: '#fbbf24', color: '#030712', fontWeight: 'bold', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px' }}>เพิ่มเข้าเรดาร์เตือนภัย</button>
             </form>
-
-            <div className="space-y-2">
-              <span className="text-slate-400 font-semibold text-sm">รายการที่กำลังเฝ้าระวัง:</span>
-              {watchlist.length === 0 ? <p className="text-slate-500 text-sm">ยังไม่มีรายการเรดาร์</p> : watchlist.map((item, idx) => (
-                <div key={idx} className="p-3 bg-slate-800 rounded-xl flex justify-between items-center text-sm border border-slate-700/50">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <span style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 'bold' }}>รายการที่กำลังเฝ้าระวัง:</span>
+              {watchlist.length === 0 ? <p style={{ color: '#64748b', fontSize: '12px' }}>ยังไม่มีรายการเรดาร์</p> : watchlist.map((item, idx) => (
+                <div key={idx} style={{ padding: '10px', backgroundColor: '#1e293b', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #334155' }}>
                   <div>
-                    <span className="font-bold text-amber-300">{item.name}</span> (เป้า: {item.price})
-                    <p className="text-slate-400 text-xs mt-0.5">{item.reason}</p>
+                    <span style={{ fontWeight: 'bold', color: '#fde047', fontSize: '13px' }}>{item.name}</span> <span style={{ fontSize: '12px', color: '#cbd5e1' }}>(เป้า: {item.price})</span>
+                    <p style={{ color: '#94a3b8', fontSize: '11px', margin: '2px 0 0 0' }}>{item.reason}</p>
                   </div>
                   <button onClick={() => {
                     const filtered = watchlist.filter((_, i) => i !== idx);
                     setWatchlist(filtered);
                     localStorage.setItem('moon_watchlist', JSON.stringify(filtered));
-                  }} className="text-red-400 text-xs px-2 py-1 bg-red-500/10 rounded-lg hover:bg-red-500/20">ลบ</button>
+                  }} style={{ color: '#fca5a5', background: 'rgba(239, 68, 68, 0.1)', border: 'none', padding: '4px 8px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer' }}>ลบ</button>
                 </div>
               ))}
             </div>
@@ -319,55 +376,36 @@ export default function MoonAssistantChat() {
         )}
 
         {activeTab === 'skills' && (
-          <div className="space-y-4 max-w-xl mx-auto pt-4">
-            <h4 className="font-semibold text-amber-400 text-base">⚙️ ปรับแต่งสกิลและกฎระเบียบ AI</h4>
-            
-            <div className="p-4 bg-slate-800/60 rounded-2xl border border-slate-700 space-y-2.5 shadow">
-              <span className="font-semibold text-slate-300 text-sm">📁 อัปโหลดไฟล์ให้ AI เรียนรู้เพิ่มเติม:</span>
-              <input type="file" onChange={handleFileUpload} className="w-full text-slate-400 text-xs file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:bg-amber-500 file:text-slate-950 file:font-bold file:cursor-pointer" />
-              {uploadedFileName && <p className="text-green-400 text-xs">โหลดแล้ว: {uploadedFileName}</p>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '500px', width: '100%', margin: 'auto' }}>
+            <h4 style={{ color: '#fbbf24', fontSize: '15px' }}>⚙️ ปรับแต่งสกิลและกฎระเบียบ AI</h4>
+            <div style={{ padding: '14px', backgroundColor: '#1e293b', borderRadius: '12px', border: '1px solid #334155', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <span style={{ color: '#cbd5e1', fontSize: '13px' }}>📁 อัปโหลดไฟล์ให้ AI เรียนรู้เพิ่มเติม:</span>
+              <input type="file" onChange={handleFileUpload} style={{ color: '#94a3b8', fontSize: '12px' }} />
+              {uploadedFileName && <p style={{ color: '#4ade80', fontSize: '12px', margin: 0 }}>โหลดแล้ว: {uploadedFileName}</p>}
             </div>
-
-            <div className="p-4 bg-slate-800/60 rounded-2xl border border-slate-700 space-y-2.5 shadow">
-              <span className="font-semibold text-slate-300 text-sm">📝 กำหนด Custom Prompt (กฎกติกา AI):</span>
-              <textarea 
-                rows="4" placeholder="ระบุสไตล์การตอบ เช่น ขอแบบทางการ หรือเน้นเซฟโซน..." 
-                value={customPrompt} 
-                onChange={(e) => {
-                  setCustomPrompt(e.target.value);
-                  localStorage.setItem('moon_custom_prompt', e.target.value);
-                }}
-                className="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-white text-sm"
-              />
+            <div style={{ padding: '14px', backgroundColor: '#1e293b', borderRadius: '12px', border: '1px solid #334155', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <span style={{ color: '#cbd5e1', fontSize: '13px' }}>📝 กำหนด Custom Prompt (กฎกติกา AI):</span>
+              <textarea rows="4" placeholder="ระบุสไตล์การตอบ เช่น ขอแบบทางการ หรือเน้นเซฟโซน..." value={customPrompt} onChange={(e) => { setCustomPrompt(e.target.value); localStorage.setItem('moon_custom_prompt', e.target.value); }} style={{ padding: '10px', backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', color: '#fff', fontSize: '13px', width: '100%' }} />
             </div>
-
-            <button 
-              onClick={() => {
-                localStorage.removeItem('moon_chat_history');
-                setMessages([]);
-                alert('เคลียร์ประวัติแชทเรียบร้อยแล้ว!');
-              }} 
-              className="w-full py-3 bg-red-600/80 hover:bg-red-600 text-white rounded-xl font-bold text-sm transition shadow"
-            >
+            <button onClick={() => { localStorage.removeItem('moon_chat_history'); setMessages([]); alert('เคลียร์ประวัติแชทเรียบร้อยแล้ว!'); }} style={{ padding: '12px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}>
               🗑️ เคลียร์ประวัติแชททั้งหมด
             </button>
           </div>
         )}
-
       </div>
 
-      {/* ช่องพิมพ์ข้อความด้านล่าง (แสดงเฉพาะตอนอยู่หน้า Chat) */}
+      {/* ช่องพิมพ์ข้อความด้านล่าง */}
       {activeTab === 'chat' && (
-        <div className="p-3 sm:p-4 bg-slate-900/90 border-t border-slate-800 shrink-0">
-          <form onSubmit={handleSendMessage} className="max-w-3xl w-full mx-auto flex gap-2">
+        <div style={{ padding: '12px 16px', backgroundColor: '#0f172a', borderTop: '1px solid rgba(56, 189, 248, 0.2)', flexShrink: 0 }}>
+          <form onSubmit={handleSendMessage} style={{ maxWidth: '700px', width: '100%', margin: '0 auto', display: 'flex', gap: '8px' }}>
             <input 
               type="text" 
               value={inputMessage} 
               onChange={(e) => setInputMessage(e.target.value)} 
               placeholder="พิมพ์ข้อความคุยกับผู้ช่วยอวกาศ..." 
-              className="flex-1 bg-slate-950 border border-slate-700 rounded-2xl px-4 py-3 text-sm sm:text-base text-white focus:outline-none focus:border-amber-500 shadow-inner"
+              style={{ flex: 1, backgroundColor: '#02040a', border: '1px solid #334155', borderRadius: '14px', padding: '12px 16px', fontSize: '14px', color: '#fff', outline: 'none' }}
             />
-            <button type="submit" className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-6 py-3 rounded-2xl text-sm sm:text-base transition shadow">
+            <button type="submit" style={{ backgroundColor: '#fbbf24', color: '#030712', fontWeight: 'bold', border: 'none', padding: '0 20px', borderRadius: '14px', cursor: 'pointer', fontSize: '14px' }}>
               ส่ง
             </button>
           </form>
