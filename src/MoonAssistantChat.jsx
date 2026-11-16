@@ -109,17 +109,45 @@ export default function MoonAssistantChat() {
     }
   };
 
-  // ดึงรายชื่อหุ้นจากพอร์ตจริง (รองรับทั้ง localStorage และ window.storage)
+  // ฟังก์ชันดึงรายชื่อหุ้นแบบครอบจักรวาล รองรับทั้ง Array, Object และคีย์สำรอง
   const getHoldingsList = () => {
     try {
-      let parsed = null;
-      const stored = localStorage.getItem('holdings');
-      if (stored) {
-        parsed = JSON.parse(stored);
-      } else if (window.storage && typeof window.storage.get === 'function') {
-        parsed = window.storage.get('holdings');
+      let rawData = null;
+      const keysToCheck = ['holdings', 'portfolio', 'assets', 'stocks'];
+      
+      for (const key of keysToCheck) {
+        const stored = localStorage.getItem(key);
+        if (stored) {
+          try {
+            rawData = JSON.parse(stored);
+            break;
+          } catch (err) {}
+        }
       }
-      return Array.isArray(parsed) ? parsed : [];
+
+      if (!rawData && window.storage && typeof window.storage.get === 'function') {
+        rawData = window.storage.get('holdings');
+      }
+
+      if (!rawData) return [];
+
+      // ถ้าเป็น Array อยู่แล้ว คืนค่าได้ทันที
+      if (Array.isArray(rawData)) return rawData;
+
+      // ถ้าเป็น Object ให้พยายามแกะค่าข้างในออกมาเป็น Array
+      if (typeof rawData === 'object') {
+        if (Array.isArray(rawData.holdings)) return rawData.holdings;
+        if (Array.isArray(rawData.items)) return rawData.items;
+        if (Array.isArray(rawData.data)) return rawData.data;
+        
+        // แปลง Object เช่น { ptt: {...}, scb: {...} } ให้เป็น Array
+        const values = Object.values(rawData);
+        if (values.length > 0) {
+          return values.filter(item => item && typeof item === 'object');
+        }
+      }
+
+      return [];
     } catch (e) {
       return [];
     }
@@ -205,12 +233,12 @@ export default function MoonAssistantChat() {
   if (!isOpen) return null;
 
   const allHoldings = getHoldingsList();
-  
-  // ระบบกรองหุ้นแบบยืดหยุ่น (หากพอร์ตมีข้อมูลแต่ไม่ระบุ type จะดึงมารวมกันอัตโนมัติ)
+
+  // จัดกลุ่มหุ้นแบบยืดหยุ่น (ถ้ามีข้อมูล ดึงมาแสดงทั้งหมดทันที)
   const thStocks = allHoldings.filter(h => {
     if (!h) return false;
     const t = String(h.type || h.market || h.category || h.assetType || '').toLowerCase();
-    return t.includes('th') || t.includes('set') || t.includes('หุ้นไทย') || (!t && !t.includes('foreign') && !t.includes('global') && !t.includes('crypto') && !t.includes('gold'));
+    return !t.includes('foreign') && !t.includes('global') && !t.includes('crypto') && !t.includes('gold');
   });
 
   const globalStocks = allHoldings.filter(h => {
@@ -219,16 +247,13 @@ export default function MoonAssistantChat() {
     return t.includes('foreign') || t.includes('global') || t.includes('dr') || t.includes('etf');
   });
 
-  // Fallback สำรอง: ถ้าช่องกรองแยกแล้วว่าง แต่ในพอร์ตมีหุ้นอยู่ ให้นำมาแสดงที่หุ้นไทยทั้งหมดเพื่อความสะดวก
-  const effectiveThStocks = (thStocks.length === 0 && globalStocks.length === 0 && allHoldings.length > 0) ? allHoldings : thStocks;
-
   return (
     <div style={{
       position: 'fixed',
       top: 0,
       left: 0,
       width: '100vw',
-      height: '100dvh', // แก้ปัญหาจอบนมือถือด้วย dvh
+      height: '100dvh',
       zIndex: 99999,
       backgroundColor: '#030712',
       display: 'flex',
@@ -421,12 +446,12 @@ export default function MoonAssistantChat() {
                 <button onClick={() => setAssetSubView(null)} style={{ textAlign: 'left', background: 'transparent', color: '#94a3b8', border: 'none', cursor: 'pointer', fontSize: '13px', padding: '4px 0', marginBottom: '4px' }}>
                   ← กลับหมวดหลัก
                 </button>
-                <span style={{ fontSize: '12.5px', color: '#fbbf24', marginBottom: '4px' }}>เลือกหุ้นในพอร์ต:</span>
-                {effectiveThStocks.length === 0 ? (
+                <span style={{ fontSize: '12.5px', color: '#fbbf24', marginBottom: '4px' }}>เลือกหุ้นในพอร์ต ({thStocks.length}):</span>
+                {thStocks.length === 0 ? (
                   <span style={{ fontSize: '13px', color: '#64748b' }}>ไม่พบข้อมูลหุ้นในพอร์ต</span>
                 ) : (
-                  effectiveThStocks.map((stock, idx) => {
-                    const stockName = stock.name || stock.symbol || stock.ticker || `หุ้นตัวที่ ${idx + 1}`;
+                  thStocks.map((stock, idx) => {
+                    const stockName = stock.name || stock.symbol || stock.ticker || stock.stock || `หุ้นตัวที่ ${idx + 1}`;
                     return (
                       <button 
                         key={idx} 
@@ -449,7 +474,7 @@ export default function MoonAssistantChat() {
                 <button onClick={() => setAssetSubView(null)} style={{ textAlign: 'left', background: 'transparent', color: '#94a3b8', border: 'none', cursor: 'pointer', fontSize: '13px', padding: '4px 0', marginBottom: '4px' }}>
                   ← กลับหมวดหลัก
                 </button>
-                <span style={{ fontSize: '12.5px', color: '#fbbf24', marginBottom: '4px' }}>เลือกหุ้นนอก & DR ในพอร์ต:</span>
+                <span style={{ fontSize: '12.5px', color: '#fbbf24', marginBottom: '4px' }}>เลือกหุ้นนอก & DR ในพอร์ต ({globalStocks.length}):</span>
                 {globalStocks.length === 0 ? (
                   <span style={{ fontSize: '13px', color: '#64748b' }}>ไม่มีหุ้นนอก/DR ในพอร์ต</span>
                 ) : (
@@ -475,7 +500,7 @@ export default function MoonAssistantChat() {
               /* เมนูหลักสินทรัพย์ */
               <>
                 <button onClick={() => setAssetSubView('th')} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
-                  หุ้นไทยรายตัว ({effectiveThStocks.length})
+                  หุ้นไทยรายตัว ({thStocks.length})
                 </button>
                 <button onClick={() => setAssetSubView('global')} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
                   หุ้นนอก & DR ({globalStocks.length})
