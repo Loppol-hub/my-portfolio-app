@@ -422,7 +422,7 @@ export default function MoonAssistantChat() {
               วิเคราะห์พอร์ตเชิงลึก
             </button>
             <button onClick={() => { setActiveTab('chat'); triggerBackendAction('portfolio_summary', 'สรุปภาพรวมพอร์ตในเดือนนี้ให้หน่อยครับ'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
-              สรุปภาพรวมกำไร/ขาดทุนประจำเดือน
+              สรุปภาพรวมประจำเดือน
             </button>
           </div>
         )}
