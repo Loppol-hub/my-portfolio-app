@@ -205,22 +205,10 @@ export default function MoonAssistantChat() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        flexShrink: 0
+        flexShrink: 0,
+        position: 'relative'
       }}>
-        {/* ซ้าย: สถานะ พร้อมจุดไฟ */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{
-            width: '8px',
-            height: '8px',
-            borderRadius: '50%',
-            backgroundColor: '#34d399', // เขียว (พร้อม) หรือ #fca5a5 (แดง)
-            boxShadow: '0 0 6px #34d399',
-            display: 'inline-block'
-          }} />
-          <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 400, letterSpacing: '0.3px' }}>สถานะ</span>
-        </div>
-
-        {/* ขวา: ปุ่ม 3 ขีด + ปุ่มกากบาท (X) */}
+        {/* ซ้าย: ปุ่ม 3 ขีด + ข้อความ "สถานะ" ตามด้วยจุดไฟ */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <button
             onClick={() => setMenuOpen(!menuOpen)}
@@ -242,76 +230,89 @@ export default function MoonAssistantChat() {
             ☰
           </button>
 
-          <button 
-            onClick={() => setIsOpen(false)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#94a3b8',
-              width: '32px',
-              height: '32px',
-              borderRadius: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              fontSize: '16px',
-              transition: 'color 0.2s'
-            }}
-            title="ปิด"
-          >
-            ✕
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 400, letterSpacing: '0.3px' }}>สถานะ</span>
+            <span style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: '#34d399', // เขียว (พร้อม) หรือ #fca5a5 (แดง)
+              boxShadow: '0 0 6px #34d399',
+              display: 'inline-block'
+            }} />
+          </div>
         </div>
+
+        {/* ขวา: ปุ่มกากบาท (X) ปิดหน้าจอ */}
+        <button 
+          onClick={() => setIsOpen(false)}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: '#94a3b8',
+            width: '32px',
+            height: '32px',
+            borderRadius: '8px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            fontSize: '16px',
+            transition: 'color 0.2s'
+          }}
+          title="ปิด"
+        >
+          ✕
+        </button>
+
+        {/* เมนูดรอปดาวน์แบบมินิมอล (เปิดลงมาจากปุ่ม 3 ขีดด้านซ้าย) */}
+        {menuOpen && (
+          <div style={{
+            position: 'absolute',
+            top: '60px',
+            left: '18px',
+            backgroundColor: '#111827',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: '12px',
+            padding: '8px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '4px',
+            zIndex: 100,
+            boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
+            minWidth: '160px'
+          }}>
+            {[
+              { key: 'chat', label: 'แชททั่วไป' },
+              { key: 'health', label: 'สุขภาพพอร์ต' },
+              { key: 'assets', label: 'สินทรัพย์' },
+              { key: 'news', label: 'ข่าวสาร' },
+              { key: 'watchlist', label: 'Watchlist' },
+              { key: 'skills', label: 'สกิล AI' }
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => { setActiveTab(tab.key); setMenuOpen(false); }}
+                style={{
+                  textAlign: 'left',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: activeTab === tab.key ? 500 : 400,
+                  backgroundColor: activeTab === tab.key ? 'rgba(251, 191, 36, 0.1)' : 'transparent',
+                  color: activeTab === tab.key ? '#fbbf24' : '#cbd5e1',
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* เมนูดรอปดาวน์แบบมินิมอล (มุมขวาบน) */}
-      {menuOpen && (
-        <div style={{
-          position: 'absolute',
-          top: '60px',
-          right: '16px',
-          backgroundColor: '#111827',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          borderRadius: '12px',
-          padding: '8px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '4px',
-          zIndex: 100,
-          boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
-          minWidth: '160px'
-        }}>
-          {[
-            { key: 'chat', label: 'แชททั่วไป' },
-            { key: 'health', label: 'สุขภาพพอร์ต' },
-            { key: 'assets', label: 'สินทรัพย์' },
-            { key: 'news', label: 'ข่าวสาร' },
-            { key: 'watchlist', label: 'Watchlist' },
-            { key: 'skills', label: 'สกิล AI' }
-          ].map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => { setActiveTab(tab.key); setMenuOpen(false); }}
-              style={{
-                textAlign: 'left',
-                padding: '8px 12px',
-                borderRadius: '8px',
-                fontSize: '13px',
-                fontWeight: activeTab === tab.key ? 500 : 400,
-                backgroundColor: activeTab === tab.key ? 'rgba(251, 191, 36, 0.1)' : 'transparent',
-                color: activeTab === tab.key ? '#fbbf24' : '#cbd5e1',
-                border: 'none',
-                cursor: 'pointer'
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* เนื้อหาภายในแท็บ */}
+      {/* เนื้อหาภายในแท็บ (จัดวางชิดซ้ายบน มินิมอล ไม่มีพื้นหลังเทา) */}
       <div style={{
         flex: 1,
         minHeight: 0,
@@ -357,60 +358,60 @@ export default function MoonAssistantChat() {
         )}
 
         {activeTab === 'health' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '500px', width: '100%', margin: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '8px', width: '100%', maxWidth: '500px' }}>
             <h4 style={{ color: '#fbbf24', fontSize: '14px', fontWeight: 500, marginBottom: '4px' }}>สุขภาพพอร์ต</h4>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('deep_analysis', 'วิเคราะห์พอร์ตการลงทุนเชิงลึกให้หน่อยครับ'); }} style={{ textAlign: 'left', padding: '12px 16px', backgroundColor: '#111827', color: '#fff', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('deep_analysis', 'วิเคราะห์พอร์ตการลงทุนเชิงลึกให้หน่อยครับ'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
               วิเคราะห์พอร์ตเชิงลึก
             </button>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('portfolio_summary', 'สรุปภาพรวมพอร์ตในเดือนนี้ให้หน่อยครับ'); }} style={{ textAlign: 'left', padding: '12px 16px', backgroundColor: '#111827', color: '#fff', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('portfolio_summary', 'สรุปภาพรวมพอร์ตในเดือนนี้ให้หน่อยครับ'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
               สรุปภาพรวมกำไร/ขาดทุนประจำเดือน
             </button>
           </div>
         )}
 
         {activeTab === 'assets' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '500px', width: '100%', margin: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '8px', width: '100%', maxWidth: '500px' }}>
             <h4 style={{ color: '#fbbf24', fontSize: '14px', fontWeight: 500, marginBottom: '4px' }}>วิเคราะห์สินทรัพย์</h4>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์หุ้นไทยในพอร์ตและให้คำแนะนำทีครับ'); }} style={{ textAlign: 'left', padding: '12px 16px', backgroundColor: '#111827', color: '#fff', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์หุ้นไทยในพอร์ตและให้คำแนะนำทีครับ'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
               หุ้นไทยรายตัว
             </button>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์หุ้นต่างประเทศและ DR ให้หน่อยครับ'); }} style={{ textAlign: 'left', padding: '12px 16px', backgroundColor: '#111827', color: '#fff', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์หุ้นต่างประเทศและ DR ให้หน่อยครับ'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
               หุ้นนอก & DR
             </button>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์ทิศทางราคาทองคำ แนวรับ แนวต้าน'); }} style={{ textAlign: 'left', padding: '12px 16px', backgroundColor: '#111827', color: '#fff', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์ทิศทางราคาทองคำ แนวรับ แนวต้าน'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
               ทองคำ (แนวรับ-แนวต้าน)
             </button>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์คริปโตในพอร์ต ทิศทางราคา'); }} style={{ textAlign: 'left', padding: '12px 16px', backgroundColor: '#111827', color: '#fff', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์คริปโตในพอร์ต ทิศทางราคา'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
               คริปโตเคอร์เรนซี
             </button>
           </div>
         )}
 
         {activeTab === 'news' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '500px', width: '100%', margin: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '8px', width: '100%', maxWidth: '500px' }}>
             <h4 style={{ color: '#fbbf24', fontSize: '14px', fontWeight: 500, marginBottom: '4px' }}>ข่าวสารพอร์ต</h4>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์ภูมิรัฐศาสตร์โลกที่มีผลต่อพอร์ต'); }} style={{ textAlign: 'left', padding: '12px 16px', backgroundColor: '#111827', color: '#fff', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์ภูมิรัฐศาสตร์โลกที่มีผลต่อพอร์ต'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
               ภูมิรัฐศาสตร์โลก
             </button>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์เศรษฐกิจมหภาค โลก-ไทย'); }} style={{ textAlign: 'left', padding: '12px 16px', backgroundColor: '#111827', color: '#fff', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์เศรษฐกิจมหภาค โลก-ไทย'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
               เศรษฐกิจมหภาค
             </button>
           </div>
         )}
 
         {activeTab === 'watchlist' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '500px', width: '100%', margin: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '10px', width: '100%', maxWidth: '500px' }}>
             <h4 style={{ color: '#fbbf24', fontSize: '14px', fontWeight: 500 }}>Watchlist</h4>
-            <form onSubmit={handleAddWatchlist} style={{ display: 'flex', flexDirection: 'column', gap: '8px', backgroundColor: '#111827', padding: '12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <input type="text" placeholder="ชื่อสินทรัพย์ (เช่น BTC)" value={newAsset.name} onChange={(e) => setNewAsset({...newAsset, name: e.target.value})} style={{ padding: '8px 10px', backgroundColor: '#030712', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', color: '#fff', fontSize: '13px' }} required />
-              <input type="number" placeholder="ราคาเป้าหมาย" value={newAsset.price} onChange={(e) => setNewAsset({...newAsset, price: e.target.value})} style={{ padding: '8px 10px', backgroundColor: '#030712', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', color: '#fff', fontSize: '13px' }} required />
-              <input type="text" placeholder="เหตุผล" value={newAsset.reason} onChange={(e) => setNewAsset({...newAsset, reason: e.target.value})} style={{ padding: '8px 10px', backgroundColor: '#030712', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', color: '#fff', fontSize: '13px' }} />
-              <button type="submit" style={{ padding: '8px', backgroundColor: '#fbbf24', color: '#030712', fontWeight: 600, border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>เพิ่มรายการ</button>
+            <form onSubmit={handleAddWatchlist} style={{ display: 'flex', flexDirection: 'column', gap: '8px', backgroundColor: 'transparent', padding: '0', width: '100%' }}>
+              <input type="text" placeholder="ชื่อสินทรัพย์ (เช่น BTC)" value={newAsset.name} onChange={(e) => setNewAsset({...newAsset, name: e.target.value})} style={{ padding: '10px 12px', backgroundColor: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff', fontSize: '13px', width: '100%' }} required />
+              <input type="number" placeholder="ราคาเป้าหมาย" value={newAsset.price} onChange={(e) => setNewAsset({...newAsset, price: e.target.value})} style={{ padding: '10px 12px', backgroundColor: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff', fontSize: '13px', width: '100%' }} required />
+              <input type="text" placeholder="เหตุผล" value={newAsset.reason} onChange={(e) => setNewAsset({...newAsset, reason: e.target.value})} style={{ padding: '10px 12px', backgroundColor: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff', fontSize: '13px', width: '100%' }} />
+              <button type="submit" style={{ padding: '10px', backgroundColor: 'transparent', color: '#fbbf24', fontWeight: 600, border: '1px solid rgba(251, 191, 36, 0.4)', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', width: '100%' }}>เพิ่มรายการ</button>
             </form>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px', width: '100%', marginTop: '6px' }}>
               <span style={{ color: '#94a3b8', fontSize: '12px' }}>รายการเฝ้าระวัง:</span>
               {watchlist.length === 0 ? <p style={{ color: '#64748b', fontSize: '12px' }}>ยังไม่มีรายการ</p> : watchlist.map((item, idx) => (
-                <div key={idx} style={{ padding: '8px 10px', backgroundColor: '#111827', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div key={idx} style={{ padding: '10px 12px', backgroundColor: 'transparent', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid rgba(255,255,255,0.08)', width: '100%' }}>
                   <div>
                     <span style={{ fontWeight: 500, color: '#fde047', fontSize: '13px' }}>{item.name}</span> <span style={{ fontSize: '12px', color: '#cbd5e1' }}>(เป้า: {item.price})</span>
                   </div>
@@ -426,18 +427,18 @@ export default function MoonAssistantChat() {
         )}
 
         {activeTab === 'skills' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '500px', width: '100%', margin: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '10px', width: '100%', maxWidth: '500px' }}>
             <h4 style={{ color: '#fbbf24', fontSize: '14px', fontWeight: 500 }}>สกิล AI</h4>
-            <div style={{ padding: '12px', backgroundColor: '#111827', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <div style={{ padding: '12px', width: '100%', backgroundColor: 'transparent', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }}>
               <span style={{ color: '#cbd5e1', fontSize: '12.5px' }}>อัปโหลดไฟล์ข้อมูล:</span>
               <input type="file" onChange={handleFileUpload} style={{ color: '#94a3b8', fontSize: '12px' }} />
               {uploadedFileName && <p style={{ color: '#4ade80', fontSize: '12px', margin: 0 }}>{uploadedFileName}</p>}
             </div>
-            <div style={{ padding: '12px', backgroundColor: '#111827', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <div style={{ padding: '12px', width: '100%', backgroundColor: 'transparent', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }}>
               <span style={{ color: '#cbd5e1', fontSize: '12.5px' }}>Custom Prompt:</span>
-              <textarea rows="3" placeholder="ระบุสไตล์การตอบ..." value={customPrompt} onChange={(e) => { setCustomPrompt(e.target.value); localStorage.setItem('moon_custom_prompt', e.target.value); }} style={{ padding: '8px', backgroundColor: '#030712', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', color: '#fff', fontSize: '13px', width: '100%' }} />
+              <textarea rows="3" placeholder="ระบุสไตล์การตอบ..." value={customPrompt} onChange={(e) => { setCustomPrompt(e.target.value); localStorage.setItem('moon_custom_prompt', e.target.value); }} style={{ padding: '10px', backgroundColor: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff', fontSize: '13px', width: '100%' }} />
             </div>
-            <button onClick={() => { localStorage.removeItem('moon_chat_history'); setMessages([]); alert('เคลียร์ประวัติแชทเรียบร้อยแล้ว!'); }} style={{ padding: '10px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px' }}>
+            <button onClick={() => { localStorage.removeItem('moon_chat_history'); setMessages([]); alert('เคลียร์ประวัติแชทเรียบร้อยแล้ว!'); }} style={{ padding: '10px 14px', backgroundColor: 'transparent', color: '#fca5a5', border: '1px solid rgba(239, 68, 68, 0.4)', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', width: '100%' }}>
               เคลียร์ประวัติแชททั้งหมด
             </button>
           </div>
