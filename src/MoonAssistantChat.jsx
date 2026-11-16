@@ -6,6 +6,7 @@ export default function MoonAssistantChat() {
   const [inputMessage, setInputMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('chat');
+  const [menuOpen, setMenuOpen] = useState(false); // ควบคุมการเปิด-ปิดเมนูขีด 3 ขีด
   
   const [watchlist, setWatchlist] = useState([]);
   const [newAsset, setNewAsset] = useState({ name: '', price: '', reason: '' });
@@ -180,7 +181,6 @@ export default function MoonAssistantChat() {
 
   if (!isOpen) return null;
 
-  // ใช้ Inline Styles ควบคุมหน้าจอทั้งหมด เพื่อป้องกันปัญหาคลาส Tailwind ไม่คอมไพล์
   return (
     <div style={{
       position: 'fixed',
@@ -189,7 +189,7 @@ export default function MoonAssistantChat() {
       width: '100vw',
       height: '100vh',
       zIndex: 99999,
-      backgroundColor: '#02040a',
+      backgroundColor: '#030712',
       display: 'flex',
       flexDirection: 'column',
       color: '#EDF1F5',
@@ -197,80 +197,131 @@ export default function MoonAssistantChat() {
       fontFamily: 'Inter, sans-serif'
     }}>
       
-      {/* Header เต็มจอ */}
+      {/* Header มินิมอลอบอุ่น */}
       <div style={{
-        padding: '12px 16px',
-        backgroundColor: 'rgba(30, 41, 59, 0.9)',
-        borderBottom: '1px solid rgba(56, 189, 248, 0.2)',
+        padding: '14px 18px',
+        backgroundColor: 'rgba(17, 24, 39, 0.85)',
+        backdropFilter: 'blur(10px)',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexShrink: 0
       }}>
+        {/* ซ้าย: ปุ่มเมนู 3 ขีด + สถานะจุดไฟสีเขียว/แดง */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <span style={{ fontSize: '24px' }}>👨‍🚀</span>
-          <div>
-            <h3 style={{ fontWeight: 600, color: '#fbbf24', fontSize: '15px', margin: 0 }}>ผู้ช่วยนักบินอวกาศ AI</h3>
-            <p style={{ fontSize: '11px', color: '#94a3b8', margin: 0 }}>สถานะ: เชื่อมต่อพอร์ตพร้อมปฏิบัติการ</p>
+          <button
+            onClick={() => setMenuOpen(!menuOpen)}
+            style={{
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              color: '#fbbf24',
+              width: '36px',
+              height: '36px',
+              borderRadius: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              fontSize: '18px'
+            }}
+            title="เมนูเครื่องมือ"
+          >
+            ☰
+          </button>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{
+              width: '9px',
+              height: '9px',
+              borderRadius: '50%',
+              backgroundColor: '#34d399', // เขียว (พร้อมปฏิบัติการ) ถ้าไม่พร้อมใช้ #fca5a5 (แดง)
+              boxShadow: '0 0 8px #34d399',
+              display: 'inline-block'
+            }} />
+            <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 500 }}>ระบบพร้อมปฏิบัติการ</span>
           </div>
         </div>
+
+        {/* ขวา: ปุ่มกากบาท (X) ปิดหน้าจอ */}
         <button 
           onClick={() => setIsOpen(false)}
           style={{
-            backgroundColor: '#334155',
-            color: '#fff',
-            border: 'none',
-            padding: '6px 12px',
+            background: 'rgba(255, 255, 255, 0.05)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            color: '#94a3b8',
+            width: '36px',
+            height: '36px',
             borderRadius: '10px',
-            fontSize: '12px',
-            fontWeight: 600,
-            cursor: 'pointer'
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            fontSize: '16px',
+            transition: 'all 0.2s'
           }}
+          title="ปิดหน้าต่าง"
         >
-          ← กลับหน้าพอร์ต
+          ✕
         </button>
       </div>
 
-      {/* แถบเมนูด่วน 5 หมวดหลัก */}
-      <div style={{
-        display: 'flex',
-        overflowX: 'auto',
-        gap: '8px',
-        padding: '10px',
-        backgroundColor: 'rgba(3, 7, 18, 0.95)',
-        borderBottom: '1px solid rgba(56, 189, 248, 0.15)',
-        flexShrink: 0
-      }}>
-        {[
-          { key: 'chat', label: '💬 แชททั่วไป' },
-          { key: 'health', label: '📊 สุขภาพพอร์ต' },
-          { key: 'assets', label: '🪙 สินทรัพย์' },
-          { key: 'news', label: '📰 ข่าวสาร' },
-          { key: 'watchlist', label: '🎯 Watchlist' },
-          { key: 'skills', label: '⚙️ สกิล AI' }
-        ].map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            style={{
-              padding: '6px 14px',
-              borderRadius: '10px',
-              fontSize: '12px',
-              fontWeight: activeTab === tab.key ? 700 : 500,
-              backgroundColor: activeTab === tab.key ? '#fbbf24' : '#1e293b',
-              color: activeTab === tab.key ? '#030712' : '#cbd5e1',
-              border: 'none',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap'
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      {/* เมนูดรอปดาวน์แบบกางออก (Dropdown Menu) จากปุ่ม 3 ขีด */}
+      {menuOpen && (
+        <div style={{
+          backgroundColor: '#111827',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+          padding: '10px 16px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '6px',
+          flexShrink: 0,
+          boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+          animation: 'fadeIn 0.2s ease-in-out'
+        }}>
+          {[
+            { key: 'chat', label: '💬 แชททั่วไป' },
+            { key: 'health', label: '📊 สุขภาพพอร์ต' },
+            { key: 'assets', label: '🪙 สินทรัพย์' },
+            { key: 'news', label: '📰 ข่าวสาร' },
+            { key: 'watchlist', label: '🎯 Watchlist' },
+            { key: 'skills', label: '⚙️ สกิล AI' }
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => { setActiveTab(tab.key); setMenuOpen(false); }}
+              style={{
+                textAlign: 'left',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: activeTab === tab.key ? 600 : 400,
+                backgroundColor: activeTab === tab.key ? 'rgba(251, 191, 36, 0.15)' : 'transparent',
+                color: activeTab === tab.key ? '#fbbf24' : '#cbd5e1',
+                border: 'none',
+                cursor: 'pointer',
+                transition: 'background 0.2s'
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {/* เนื้อหาภายในแท็บ (เต็มจอ) */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '700px', width: '100%', margin: '0 auto' }}>
+      {/* เนื้อหาภายในแท็บ (จัดสไตล์ให้ยืดหยุ่นเต็มที่ ป้องกันอาการช่องแชทหาย) */}
+      <div style={{
+        flex: 1,
+        minHeight: 0,
+        overflowY: 'auto',
+        padding: '20px 16px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '14px',
+        maxWidth: '700px',
+        width: '100%',
+        margin: '0 auto'
+      }}>
         {activeTab === 'chat' && (
           <>
             {messages.map((msg, index) => (
@@ -281,11 +332,12 @@ export default function MoonAssistantChat() {
                   borderRadius: '16px',
                   fontSize: '14px',
                   lineHeight: 1.5,
-                  backgroundColor: msg.sender === 'user' ? '#d97706' : '#1e293b',
+                  backgroundColor: msg.sender === 'user' ? '#d97706' : '#111827',
                   color: '#fff',
                   borderBottomRightRadius: msg.sender === 'user' ? '4px' : '16px',
                   borderBottomLeftRadius: msg.sender === 'user' ? '16px' : '4px',
-                  border: msg.sender === 'ai' ? '1px solid rgba(56, 189, 248, 0.2)' : 'none'
+                  border: msg.sender === 'ai' ? '1px solid rgba(255, 255, 255, 0.08)' : 'none',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
                 }}>
                   {msg.text}
                 </div>
@@ -293,8 +345,8 @@ export default function MoonAssistantChat() {
             ))}
             {loading && (
               <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                <div style={{ backgroundColor: '#1e293b', color: '#fbbf24', padding: '12px 16px', borderRadius: '16px', fontSize: '13px', border: '1px solid rgba(56, 189, 248, 0.2)' }}>
-                  👨‍🚀 กำลังคำนวณและวิเคราะห์ข้อมูลในห้วงอวกาศ...
+                <div style={{ backgroundColor: '#111827', color: '#fbbf24', padding: '12px 16px', borderRadius: '16px', fontSize: '13px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                  ✨ กำลังประมวลผลข้อมูลในห้วงอวกาศ...
                 </div>
               </div>
             )}
@@ -305,10 +357,10 @@ export default function MoonAssistantChat() {
         {activeTab === 'health' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '500px', width: '100%', margin: 'auto' }}>
             <h4 style={{ color: '#fbbf24', fontSize: '15px', marginBottom: '6px' }}>📊 เครื่องมือวิเคราะห์สุขภาพพอร์ต</h4>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('deep_analysis', 'วิเคราะห์พอร์ตการลงทุนเชิงลึกให้หน่อยครับ'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('deep_analysis', 'วิเคราะห์พอร์ตการลงทุนเชิงลึกให้หน่อยครับ'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#111827', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
               🔍 วิเคราะห์พอร์ตเชิงลึก (จุดแข็ง/ความเสี่ยง/คำแนะนำ)
             </button>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('portfolio_summary', 'สรุปภาพรวมพอร์ตในเดือนนี้ให้หน่อยครับ'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('portfolio_summary', 'สรุปภาพรวมพอร์ตในเดือนนี้ให้หน่อยครับ'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#111827', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
               📈 สรุปภาพรวมการซื้อขาย กำไร/ขาดทุนประจำเดือน
             </button>
           </div>
@@ -317,16 +369,16 @@ export default function MoonAssistantChat() {
         {activeTab === 'assets' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '500px', width: '100%', margin: 'auto' }}>
             <h4 style={{ color: '#fbbf24', fontSize: '15px', marginBottom: '6px' }}>🪙 วิเคราะห์สินทรัพย์รายหมวด</h4>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์หุ้นไทยในพอร์ตและให้คำแนะนำทีครับ'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์หุ้นไทยในพอร์ตและให้คำแนะนำทีครับ'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#111827', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
               🇹🇭 หุ้นไทย (วิเคราะห์รายตัวในพอร์ต)
             </button>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์หุ้นต่างประเทศและ DR (เช่น CATL01 จากบริษัทแม่) ให้หน่อยครับ'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์หุ้นต่างประเทศและ DR (เช่น CATL01 จากบริษัทแม่) ให้หน่อยครับ'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#111827', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
               🌐 หุ้นนอก & DR (วิเคราะห์เจาะลึกธุรกิจบริษัทแม่)
             </button>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์ทิศทางราคาทองคำ แนวรับ แนวต้าน สำหรับเก็งกำไรระยะสั้น'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์ทิศทางราคาทองคำ แนวรับ แนวต้าน สำหรับเก็งกำไรระยะสั้น'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#111827', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
               🥇 ทองคำ (วิเคราะห์แนวรับ-แนวต้าน เก็งกำไร)
             </button>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์คริปโตในพอร์ต ทิศทางราคา แนวรับ แนวต้าน สำหรับเก็งกำไร'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์คริปโตในพอร์ต ทิศทางราคา แนวรับ แนวต้าน สำหรับเก็งกำไร'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#111827', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
               🚀 คริปโตเคอร์เรนซี (เก็งกำไร แนวรับ-แนวต้าน)
             </button>
           </div>
@@ -335,13 +387,13 @@ export default function MoonAssistantChat() {
         {activeTab === 'news' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '500px', width: '100%', margin: 'auto' }}>
             <h4 style={{ color: '#fbbf24', fontSize: '15px', marginBottom: '6px' }}>📰 ข่าวสารและสถานการณ์ส่งผลต่อพอร์ต</h4>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์ภูมิรัฐศาสตร์โลก (อเมริกา จีน เวียดนาม ไทย) ที่มีผลต่อพอร์ต'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์ภูมิรัฐศาสตร์โลก (อเมริกา จีน เวียดนาม ไทย) ที่มีผลต่อพอร์ต'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#111827', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
               🌍 ภูมิรัฐศาสตร์โลก (สหรัฐ, จีน, เวียดนาม, ไทย)
             </button>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์เศรษฐกิจมหภาค โลก-ไทย ที่มีผลต่อพอร์ต'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์เศรษฐกิจมหภาค โลก-ไทย ที่มีผลต่อพอร์ต'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#111827', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
               📉 เศรษฐกิจโลกและไทย
             </button>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('news_analysis', 'มีข่าวหุ้นรายตัวตัวไหนในพอร์ตที่ต้องแอคชันด่วนไหม'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
+            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('news_analysis', 'มีข่าวหุ้นรายตัวตัวไหนในพอร์ตที่ต้องแอคชันด่วนไหม'); }} style={{ textAlign: 'left', padding: '14px', backgroundColor: '#111827', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', cursor: 'pointer', fontSize: '14px' }}>
               ⚡ ข่าวหุ้นรายตัวที่ต้องแอคชัน
             </button>
           </div>
@@ -350,16 +402,16 @@ export default function MoonAssistantChat() {
         {activeTab === 'watchlist' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '500px', width: '100%', margin: 'auto' }}>
             <h4 style={{ color: '#fbbf24', fontSize: '15px' }}>🎯 เรดาร์ตั้งเตือนราคา (Watchlist)</h4>
-            <form onSubmit={handleAddWatchlist} style={{ display: 'flex', flexDirection: 'column', gap: '8px', backgroundColor: '#1e293b', padding: '14px', borderRadius: '12px', border: '1px solid #334155' }}>
-              <input type="text" placeholder="ชื่อสินทรัพย์ (เช่น BTC, PTT)" value={newAsset.name} onChange={(e) => setNewAsset({...newAsset, name: e.target.value})} style={{ padding: '10px', backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', color: '#fff', fontSize: '13px' }} required />
-              <input type="number" placeholder="ราคาเป้าหมายแจ้งเตือน" value={newAsset.price} onChange={(e) => setNewAsset({...newAsset, price: e.target.value})} style={{ padding: '10px', backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', color: '#fff', fontSize: '13px' }} required />
-              <input type="text" placeholder="เหตุผลที่เฝ้าระวัง" value={newAsset.reason} onChange={(e) => setNewAsset({...newAsset, reason: e.target.value})} style={{ padding: '10px', backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', color: '#fff', fontSize: '13px' }} />
+            <form onSubmit={handleAddWatchlist} style={{ display: 'flex', flexDirection: 'column', gap: '8px', backgroundColor: '#111827', padding: '14px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <input type="text" placeholder="ชื่อสินทรัพย์ (เช่น BTC, PTT)" value={newAsset.name} onChange={(e) => setNewAsset({...newAsset, name: e.target.value})} style={{ padding: '10px', backgroundColor: '#030712', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff', fontSize: '13px' }} required />
+              <input type="number" placeholder="ราคาเป้าหมายแจ้งเตือน" value={newAsset.price} onChange={(e) => setNewAsset({...newAsset, price: e.target.value})} style={{ padding: '10px', backgroundColor: '#030712', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff', fontSize: '13px' }} required />
+              <input type="text" placeholder="เหตุผลที่เฝ้าระวัง" value={newAsset.reason} onChange={(e) => setNewAsset({...newAsset, reason: e.target.value})} style={{ padding: '10px', backgroundColor: '#030712', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff', fontSize: '13px' }} />
               <button type="submit" style={{ padding: '10px', backgroundColor: '#fbbf24', color: '#030712', fontWeight: 'bold', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px' }}>เพิ่มเข้าเรดาร์เตือนภัย</button>
             </form>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <span style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 'bold' }}>รายการที่กำลังเฝ้าระวัง:</span>
               {watchlist.length === 0 ? <p style={{ color: '#64748b', fontSize: '12px' }}>ยังไม่มีรายการเรดาร์</p> : watchlist.map((item, idx) => (
-                <div key={idx} style={{ padding: '10px', backgroundColor: '#1e293b', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #334155' }}>
+                <div key={idx} style={{ padding: '10px', backgroundColor: '#111827', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid rgba(255,255,255,0.08)' }}>
                   <div>
                     <span style={{ fontWeight: 'bold', color: '#fde047', fontSize: '13px' }}>{item.name}</span> <span style={{ fontSize: '12px', color: '#cbd5e1' }}>(เป้า: {item.price})</span>
                     <p style={{ color: '#94a3b8', fontSize: '11px', margin: '2px 0 0 0' }}>{item.reason}</p>
@@ -378,14 +430,14 @@ export default function MoonAssistantChat() {
         {activeTab === 'skills' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '500px', width: '100%', margin: 'auto' }}>
             <h4 style={{ color: '#fbbf24', fontSize: '15px' }}>⚙️ ปรับแต่งสกิลและกฎระเบียบ AI</h4>
-            <div style={{ padding: '14px', backgroundColor: '#1e293b', borderRadius: '12px', border: '1px solid #334155', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ padding: '14px', backgroundColor: '#111827', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <span style={{ color: '#cbd5e1', fontSize: '13px' }}>📁 อัปโหลดไฟล์ให้ AI เรียนรู้เพิ่มเติม:</span>
               <input type="file" onChange={handleFileUpload} style={{ color: '#94a3b8', fontSize: '12px' }} />
               {uploadedFileName && <p style={{ color: '#4ade80', fontSize: '12px', margin: 0 }}>โหลดแล้ว: {uploadedFileName}</p>}
             </div>
-            <div style={{ padding: '14px', backgroundColor: '#1e293b', borderRadius: '12px', border: '1px solid #334155', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ padding: '14px', backgroundColor: '#111827', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <span style={{ color: '#cbd5e1', fontSize: '13px' }}>📝 กำหนด Custom Prompt (กฎกติกา AI):</span>
-              <textarea rows="4" placeholder="ระบุสไตล์การตอบ เช่น ขอแบบทางการ หรือเน้นเซฟโซน..." value={customPrompt} onChange={(e) => { setCustomPrompt(e.target.value); localStorage.setItem('moon_custom_prompt', e.target.value); }} style={{ padding: '10px', backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', color: '#fff', fontSize: '13px', width: '100%' }} />
+              <textarea rows="4" placeholder="ระบุสไตล์การตอบ เช่น ขอแบบทางการ หรือเน้นเซฟโซน..." value={customPrompt} onChange={(e) => { setCustomPrompt(e.target.value); localStorage.setItem('moon_custom_prompt', e.target.value); }} style={{ padding: '10px', backgroundColor: '#030712', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff', fontSize: '13px', width: '100%' }} />
             </div>
             <button onClick={() => { localStorage.removeItem('moon_chat_history'); setMessages([]); alert('เคลียร์ประวัติแชทเรียบร้อยแล้ว!'); }} style={{ padding: '12px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}>
               🗑️ เคลียร์ประวัติแชททั้งหมด
@@ -394,18 +446,41 @@ export default function MoonAssistantChat() {
         )}
       </div>
 
-      {/* ช่องพิมพ์ข้อความด้านล่าง */}
+      {/* ช่องพิมพ์ข้อความด้านล่างสุด (ถูกตรึงไว้ด้วย flex-shrink: 0 เพื่อไม่ให้หายไปไหน) */}
       {activeTab === 'chat' && (
-        <div style={{ padding: '12px 16px', backgroundColor: '#0f172a', borderTop: '1px solid rgba(56, 189, 248, 0.2)', flexShrink: 0 }}>
+        <div style={{
+          padding: '12px 16px',
+          backgroundColor: '#111827',
+          borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+          flexShrink: 0
+        }}>
           <form onSubmit={handleSendMessage} style={{ maxWidth: '700px', width: '100%', margin: '0 auto', display: 'flex', gap: '8px' }}>
             <input 
               type="text" 
               value={inputMessage} 
               onChange={(e) => setInputMessage(e.target.value)} 
               placeholder="พิมพ์ข้อความคุยกับผู้ช่วยอวกาศ..." 
-              style={{ flex: 1, backgroundColor: '#02040a', border: '1px solid #334155', borderRadius: '14px', padding: '12px 16px', fontSize: '14px', color: '#fff', outline: 'none' }}
+              style={{
+                flex: 1,
+                backgroundColor: '#030712',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '12px',
+                padding: '12px 16px',
+                fontSize: '14px',
+                color: '#fff',
+                outline: 'none'
+              }}
             />
-            <button type="submit" style={{ backgroundColor: '#fbbf24', color: '#030712', fontWeight: 'bold', border: 'none', padding: '0 20px', borderRadius: '14px', cursor: 'pointer', fontSize: '14px' }}>
+            <button type="submit" style={{
+              backgroundColor: '#fbbf24',
+              color: '#030712',
+              fontWeight: 'bold',
+              border: 'none',
+              padding: '0 20px',
+              borderRadius: '12px',
+              cursor: 'pointer',
+              fontSize: '14px'
+            }}>
               ส่ง
             </button>
           </form>
