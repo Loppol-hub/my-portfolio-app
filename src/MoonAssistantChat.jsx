@@ -223,7 +223,6 @@ export default function MoonAssistantChat() {
   const globalStocks = portfolioHoldings.filter(h => h && (h.type === 'foreign_stock' || h.instrumentType === 'dr'));
   const cryptoStocks = portfolioHoldings.filter(h => h && h.type === 'crypto');
 
-  // ฟังก์ชันป้องกันชื่อซ้ำซ้อน และแปลงเป็นตัวพิมพ์ใหญ่ทั้งหมด (UPPERCASE)
   const formatStockLabel = (stock) => {
     const name = String(stock.name || '').trim();
     const ticker = String(stock.ticker || '').trim();
@@ -516,7 +515,7 @@ export default function MoonAssistantChat() {
                 )}
               </>
             ) : (
-              /* เมนูหลักสินทรัพย์: หุ้นไทย, หุ้นนอก & DR, คริปโตเคอร์เรนซี, ทองคำ */
+              /* เมนูหลักสินทรัพย์ */
               <>
                 <button onClick={() => setAssetSubView('th')} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
                   หุ้นไทย ({thStocks.length})
