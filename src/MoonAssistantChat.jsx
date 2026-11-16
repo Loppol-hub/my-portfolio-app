@@ -15,17 +15,6 @@ export default function MoonAssistantChat() {
 
   const messagesEndRef = useRef(null);
 
-  // ควบคุมการซ่อน/แสดงหน้าจอพอร์ตหลัก (pf-root) อัตโนมัติ
-  useEffect(() => {
-    const pfRoot = document.querySelector('.pf-root');
-    if (isOpen) {
-      if (pfRoot) pfRoot.style.display = 'none';
-      window.scrollTo(0, 0);
-    } else {
-      if (pfRoot) pfRoot.style.display = 'block';
-    }
-  }, [isOpen]);
-
   // ระบบดักจับคลิกตัวนักบินอวกาศ
   useEffect(() => {
     let startX = 0;
