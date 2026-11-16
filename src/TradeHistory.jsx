@@ -1,664 +1,161 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
+import { Plus, Minus, Trash2, ChevronDown, ChevronUp, Calendar, FileText, DollarSign } from 'lucide-react';
 
-export default function MoonAssistantChat() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState([]);
-  const [inputMessage, setInputMessage] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('chat');
-  const [menuOpen, setMenuOpen] = useState(false);
-  
-  const [assetSubView, setAssetSubView] = useState(null); // null, 'th', 'global', 'crypto'
-  const [portfolioHoldings, setPortfolioHoldings] = useState([]);
+export default function TradeHistory({ holding, trades = [], onTradeAction, fxRate = 36.5 }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [tradeType, setTradeType] = useState('buy'); // 'buy', 'sell', 'initial'
+  const [form, setForm] = useState({
+    quantity: '',
+    price: '',
+    feePct: '0.15', // ค่าธรรมเนียมเริ่มต้น 0.15%
+    date: new Date().toISOString().slice(0, 10),
+    note: '',
+  });
+  const [error, setError] = useState('');
 
-  const [watchlist, setWatchlist] = useState([]);
-  const [newAsset, setNewAsset] = useState({ name: '', price: '', reason: '' });
-  const [customPrompt, setCustomPrompt] = useState('');
-  const [uploadedFileName, setUploadedFileName] = useState('');
-  const [fileContent, setFileContent] = useState('');
+  // กรองประวัติเฉพาะของสินทรัพย์ตัวนี้
+  const itemTrades = trades.filter((t) => t.holdingId === holding.id);
 
-  const messagesEndRef = useRef(null);
-  const fileInputRef = useRef(null);
+  // คำนวณค่าธรรมเนียมรวมทั้งหมดของสินทรัพย์ตัวนี้
+  const totalFee = itemTrades.reduce((sum, t) => sum + (parseFloat(t.feeAmount) || 0), 0);
 
-  useEffect(() => {
-    const fetchHoldingsAsync = async () => {
-      try {
-        if (window.storage && typeof window.storage.get === 'function') {
-          const r = await window.storage.get('holdings', false);
-          if (r && r.value) {
-            const parsed = JSON.parse(r.value);
-            if (Array.isArray(parsed)) {
-              setPortfolioHoldings(parsed);
-              return;
-            }
-          }
-        }
-        const stored = localStorage.getItem('holdings');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed)) {
-            setPortfolioHoldings(parsed);
-          }
-        }
-      } catch (e) {
-        // ignore
-      }
-    };
-
-    if (isOpen) {
-      fetchHoldingsAsync();
-    }
-  }, [isOpen]);
-
-  useEffect(() => {
-    let startX = 0;
-    let startY = 0;
-
-    const handleMouseDown = (e) => {
-      startX = e.clientX || (e.touches ? e.touches[0].clientX : 0);
-      startY = e.clientY || (e.touches ? e.touches[0].clientY : 0);
-    };
-
-    const handleMouseUp = (e) => {
-      const endX = e.clientX || (e.changedTouches ? e.changedTouches[0].clientX : 0);
-      const endY = e.clientY || (e.changedTouches ? e.changedTouches[0].clientY : 0);
-      const distance = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
-
-      if (distance < 5) {
-        setIsOpen(true);
-      }
-    };
-
-    const astronautEl = document.querySelector('.moon-float');
-    if (astronautEl) {
-      astronautEl.addEventListener('mousedown', handleMouseDown);
-      astronautEl.addEventListener('mouseup', handleMouseUp);
-      astronautEl.addEventListener('touchstart', handleMouseDown);
-      astronautEl.addEventListener('touchend', handleMouseUp);
-    }
-
-    return () => {
-      if (astronautEl) {
-        astronautEl.removeEventListener('mousedown', handleMouseDown);
-        astronautEl.removeEventListener('mouseup', handleMouseUp);
-        astronautEl.removeEventListener('touchstart', handleMouseDown);
-        astronautEl.removeEventListener('touchend', handleMouseUp);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    const savedChat = localStorage.getItem('moon_chat_history');
-    const savedTime = localStorage.getItem('moon_chat_timestamp');
-    const now = new Date().getTime();
-
-    if (savedChat && savedTime) {
-      const thirtyDays = 30 * 24 * 60 * 60 * 1000;
-      if (now - parseInt(savedTime) < thirtyDays) {
-        setMessages(JSON.parse(savedChat));
-      } else {
-        localStorage.removeItem('moon_chat_history');
-        localStorage.removeItem('moon_chat_timestamp');
-      }
-    }
-
-    const savedWatchlist = localStorage.getItem('moon_watchlist');
-    if (savedWatchlist) setWatchlist(JSON.parse(savedWatchlist));
-
-    const savedPrompt = localStorage.getItem('moon_custom_prompt');
-    if (savedPrompt) setCustomPrompt(savedPrompt);
-
-    checkFirstOpenToday();
-  }, []);
-
-  useEffect(() => {
-    if (messages.length > 0) {
-      localStorage.setItem('moon_chat_history', JSON.stringify(messages));
-      localStorage.setItem('moon_chat_timestamp', new Date().getTime().toString());
-    }
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  const checkFirstOpenToday = async () => {
-    const lastGreeting = localStorage.getItem('moon_last_greeting');
-    const today = new Date().toDateString();
-
-    if (lastGreeting !== today) {
-      localStorage.setItem('moon_last_greeting', today);
-      await triggerBackendAction('greeting', 'สวัสดีครับผู้การ! เปิดระบบผู้ช่วยเรียบร้อยแล้ว รายงานสถานะพอร์ตสั้นๆ ให้ฟังหน่อยครับ');
-    }
+  const handleOpenModal = (type) => {
+    setTradeType(type);
+    setForm({
+      quantity: '',
+      price: type === 'initial' ? String(holding.avgCost || '') : String(holding.currentPrice || ''),
+      feePct: '0.15',
+      date: new Date().toISOString().slice(0, 10),
+      note: type === 'initial' ? 'ยอดยกมา' : '',
+    });
+    setError('');
+    setShowModal(true);
   };
 
-  const getPortfolioData = () => {
-    try {
-      const holdings = portfolioHoldings.length > 0 ? portfolioHoldings : (localStorage.getItem('holdings') ? JSON.parse(localStorage.getItem('holdings')) : null);
-      const tradeLogs = localStorage.getItem('trade-logs') ? JSON.parse(localStorage.getItem('trade-logs')) : null;
-      const cashLedger = localStorage.getItem('cash-ledger') ? JSON.parse(localStorage.getItem('cash-ledger')) : null;
-      return { holdings, tradeLogs, cashLedger };
-    } catch (e) {
-      return { note: 'ไม่สามารถดึงข้อมูล Storage โดยตรงได้' };
+  const handleSubmit = () => {
+    const qty = parseFloat(form.quantity);
+    const price = parseFloat(form.price);
+    const feePct = parseFloat(form.feePct) || 0;
+
+    if (isNaN(qty) || qty <= 0) {
+      setError('กรอกจำนวนให้ถูกต้อง');
+      return;
     }
-  };
-
-  const triggerBackendAction = async (actionType, customText = '') => {
-    setLoading(true);
-    const portfolio = getPortfolioData();
-    const backendUrl = (window.storage && window.storage.get('backend-url')) || '/api/apianalyze';
-
-    try {
-      const response = await fetch(backendUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: actionType,
-          portfolio,
-          userMessage: customText || inputMessage,
-          customPrompt,
-          fileContent
-        }),
-      });
-
-      const data = await response.json();
-      const aiReply = data.analysis || 'สัญญาณขาดหาย ไม่ได้รับข้อมูลจากฐานทัพครับ';
-
-      setMessages((prev) => [
-        ...prev,
-        { sender: 'user', text: customText || inputMessage || `[เรียกใช้งานหมวด: ${actionType}]` },
-        { sender: 'ai', text: aiReply }
-      ]);
-    } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        { sender: 'ai', text: '⚠️ เกิดข้อผิดพลาดในการเชื่อมต่อกับระบบ AI หลังบ้านครับ' }
-      ]);
-    } finally {
-      setLoading(false);
-      setInputMessage('');
+    if (tradeType !== 'initial' && (isNaN(price) || price < 0)) {
+      setError('กรอกราคาให้ถูกต้อง');
+      return;
     }
-  };
 
-  const handleSendMessage = (e) => {
-    e.preventDefault();
-    if (!inputMessage.trim() && !fileContent) return;
-    triggerBackendAction('chat');
-  };
+    // คำนวณมูลค่าและค่าธรรมเนียม
+    const subtotal = qty * price;
+    const feeAmount = (subtotal * feePct) / 100;
 
-  const handleFileSelect = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setUploadedFileName(file.name);
+    // ส่งข้อมูลกลับไปจัดการที่ App หลัก
+    onTradeAction({
+      holdingId: holding.id,
+      type: tradeType, // 'buy', 'sell', 'initial'
+      quantity: qty,
+      price: price,
+      feePct: feePct,
+      feeAmount: feeAmount,
+      date: form.date,
+      note: form.note.trim(),
+    });
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setFileContent(event.target.result);
-      setMessages((prev) => [
-        ...prev,
-        { sender: 'ai', text: `📁 แนบไฟล์/รูปภาพ "${file.name}" เรียบร้อยแล้ว พิมพ์ข้อความสั่งการต่อได้เลยครับ!` }
-      ]);
-    };
-
-    if (file.type.startsWith('image/')) {
-      reader.readAsDataURL(file);
-    } else {
-      reader.readAsText(file);
-    }
-  };
-
-  const handleAddWatchlist = (e) => {
-    e.preventDefault();
-    if (!newAsset.name || !newAsset.price) return;
-    const updated = [...watchlist, newAsset];
-    setWatchlist(updated);
-    localStorage.setItem('moon_watchlist', JSON.stringify(updated));
-    setNewAsset({ name: '', price: '', reason: '' });
-    setMessages((prev) => [
-      ...prev,
-      { sender: 'ai', text: `🎯 ตั้งระบบเรดาร์ติดตามราคา ${newAsset.name} ที่ราคา ${newAsset.price} เรียบร้อยครับ!` }
-    ]);
-  };
-
-  if (!isOpen) return null;
-
-  const thStocks = portfolioHoldings.filter(h => h && h.type === 'th_stock' && h.instrumentType !== 'dr');
-  const globalStocks = portfolioHoldings.filter(h => h && (h.type === 'foreign_stock' || h.instrumentType === 'dr'));
-  const cryptoStocks = portfolioHoldings.filter(h => h && h.type === 'crypto');
-
-  // ฟังก์ชันจัดรูปแบบชื่อหุ้นให้ไม่ซ้ำซ้อน และเป็นตัวพิมพ์ใหญ่ทั้งหมด (Uppercase)
-  const formatStockLabel = (stock) => {
-    const name = String(stock.name || '').trim();
-    const ticker = String(stock.ticker || '').trim();
-    
-    if (ticker && name.toLowerCase() !== ticker.toLowerCase()) {
-      return `${name} (${ticker})`.toUpperCase();
-    }
-    return (ticker || name).toUpperCase();
+    setShowModal(false);
   };
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      width: '100vw',
-      height: '100dvh',
-      zIndex: 99999,
-      backgroundColor: '#030712',
-      display: 'flex',
-      flexDirection: 'column',
-      color: '#EDF1F5',
-      overflow: 'hidden',
-      fontFamily: 'Inter, sans-serif'
-    }}>
-      
-      {/* Header มินิมอล */}
-      <div style={{
-        padding: '14px 18px',
-        backgroundColor: 'rgba(17, 24, 39, 0.9)',
-        backdropFilter: 'blur(12px)',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexShrink: 0,
-        position: 'relative'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <button
-            onClick={() => setMenuOpen(!menuOpen)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#cbd5e1',
-              width: '32px',
-              height: '32px',
-              borderRadius: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              fontSize: '18px'
-            }}
-            title="เมนู"
-          >
-            ☰
-          </button>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 400, letterSpacing: '0.3px' }}>สถานะ</span>
-            <span style={{
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              backgroundColor: '#34d399',
-              boxShadow: '0 0 6px #34d399',
-              display: 'inline-block'
-            }} />
+    <div className="pf-trade-container" style={{ background: 'var(--surface-alt)', borderRadius: '12px', border: '1px solid var(--divider)', margin: '8px 0', overflow: 'hidden' }}>
+      {/* ส่วนหัวแถวหุ้น แตะเพื่อกางออก (Condition 4) */}
+      <div 
+        onClick={() => setIsExpanded(!isExpanded)} 
+        style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+      >
+        <div>
+          <div style={{ fontWeight: '600', fontSize: '14px' }}>{holding.name}</div>
+          <div style={{ fontSize: '11.5px', color: 'var(--muted)' }} className="pf-mono">
+            ถืออยู่: {holding.quantity} | ทุน: {holding.avgCost} | ค่าคอมสะสม: ฿{totalFee.toFixed(2)}
           </div>
         </div>
-
-        <button 
-          onClick={() => setIsOpen(false)}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            color: '#94a3b8',
-            width: '32px',
-            height: '32px',
-            borderRadius: '8px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            fontSize: '16px',
-            transition: 'color 0.2s'
-          }}
-          title="ปิด"
-        >
-          ✕
-        </button>
-
-        {menuOpen && (
-          <div style={{
-            position: 'absolute',
-            top: '60px',
-            left: '18px',
-            backgroundColor: '#111827',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            borderRadius: '12px',
-            padding: '8px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '4px',
-            zIndex: 100,
-            boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
-            minWidth: '160px'
-          }}>
-            {[
-              { key: 'chat', label: 'แชททั่วไป' },
-              { key: 'health', label: 'สุขภาพพอร์ต' },
-              { key: 'assets', label: 'สินทรัพย์' },
-              { key: 'news', label: 'ข่าวสาร' },
-              { key: 'watchlist', label: 'Watchlist' },
-              { key: 'skills', label: 'สกิล AI' }
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => { setActiveTab(tab.key); setMenuOpen(false); setAssetSubView(null); }}
-                style={{
-                  textAlign: 'left',
-                  padding: '8px 12px',
-                  borderRadius: '8px',
-                  fontSize: '13px',
-                  fontWeight: activeTab === tab.key ? 500 : 400,
-                  backgroundColor: activeTab === tab.key ? 'rgba(251, 191, 36, 0.1)' : 'transparent',
-                  color: activeTab === tab.key ? '#fbbf24' : '#cbd5e1',
-                  border: 'none',
-                  cursor: 'pointer'
-                }}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button 
+            className="pf-btn pf-btn-primary" 
+            style={{ padding: '4px 10px', fontSize: '11.5px' }}
+            onClick={(e) => { e.stopPropagation(); handleOpenModal('buy'); }}
+          >
+            ซื้อ/ขาย
+          </button>
+          {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        </div>
       </div>
 
-      {/* เนื้อหาภายในแท็บ */}
-      <div style={{
-        flex: 1,
-        minHeight: 0,
-        overflowY: 'auto',
-        padding: '20px 16px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '14px',
-        maxWidth: '700px',
-        width: '100%',
-        margin: '0 auto'
-      }}>
-        {activeTab === 'chat' && (
-          <>
-            {messages.map((msg, index) => (
-              <div key={index} style={{ display: 'flex', justifyContent: msg.sender === 'user' ? 'flex-end' : 'flex-start' }}>
-                <div style={{
-                  maxWidth: '85%',
-                  padding: '12px 16px',
-                  borderRadius: '14px',
-                  fontSize: '13.5px',
-                  lineHeight: 1.5,
-                  backgroundColor: msg.sender === 'user' ? '#d97706' : '#111827',
-                  color: '#fff',
-                  borderBottomRightRadius: msg.sender === 'user' ? '4px' : '14px',
-                  borderBottomLeftRadius: msg.sender === 'user' ? '14px' : '4px',
-                  border: msg.sender === 'ai' ? '1px solid rgba(255, 255, 255, 0.06)' : 'none',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
-                }}>
-                  {msg.text}
+      {/* ส่วนกางประวัติ (Accordion) */}
+      {isExpanded && (
+        <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--divider)' }}>
+          <div style={{ fontSize: '12px', color: 'var(--muted)', margin: '10px 0 6px' }}>ประวัติการทำรายการ ({itemTrades.length})</div>
+          {itemTrades.length === 0 ? (
+            <div style={{ fontSize: '12px', color: 'var(--muted)', fontStyle: 'italic' }}>ยังไม่มีประวัติการซื้อขาย</div>
+          ) : (
+            itemTrades.map((t) => (
+              <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }} className="pf-mono">
+                <div>
+                  <span style={{ color: t.type === 'buy' ? 'var(--pos)' : 'var(--neg)', fontWeight: '600' }}>
+                    {t.type === 'buy' ? 'ซื้อ' : t.type === 'sell' ? 'ขาย' : 'ยอดยกมา'}
+                  </span>{' '}
+                  {t.quantity} หุ้น @ {t.price} (คอม: ฿{t.feeAmount?.toFixed(2)})
                 </div>
+                <div style={{ color: 'var(--muted)' }}>{t.date}</div>
               </div>
-            ))}
-            {loading && (
-              <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                <div style={{ backgroundColor: '#111827', color: '#fbbf24', padding: '10px 14px', borderRadius: '12px', fontSize: '13px', border: '1px solid rgba(255, 255, 255, 0.06)' }}>
-                  กำลังประมวลผล...
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </>
-        )}
-
-        {activeTab === 'health' && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '8px', width: '100%', maxWidth: '500px' }}>
-            <h4 style={{ color: '#fbbf24', fontSize: '14px', fontWeight: 500, marginBottom: '4px' }}>สุขภาพพอร์ต</h4>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('deep_analysis', 'วิเคราะห์พอร์ตการลงทุนเชิงลึกให้หน่อยครับ'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
-              วิเคราะห์พอร์ตเชิงลึก
-            </button>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('portfolio_summary', 'สรุปภาพรวมพอร์ตในเดือนนี้ให้หน่อยครับ'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
-              สรุปภาพรวมกำไร/ขาดทุนประจำเดือน
-            </button>
-          </div>
-        )}
-
-        {activeTab === 'assets' && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '8px', width: '100%', maxWidth: '500px' }}>
-            <h4 style={{ color: '#fbbf24', fontSize: '14px', fontWeight: 500, marginBottom: '4px' }}>วิเคราะห์สินทรัพย์</h4>
-
-            {/* หากกดเลือก "หุ้นไทย" */}
-            {assetSubView === 'th' ? (
-              <>
-                <button onClick={() => setAssetSubView(null)} style={{ textAlign: 'left', background: 'transparent', color: '#94a3b8', border: 'none', cursor: 'pointer', fontSize: '13px', padding: '4px 0', marginBottom: '4px' }}>
-                  ← กลับ
-                </button>
-                <span style={{ fontSize: '12.5px', color: '#fbbf24', marginBottom: '4px' }}>เลือกหุ้นไทยในพอร์ต ({thStocks.length}):</span>
-                {thStocks.length === 0 ? (
-                  <span style={{ fontSize: '13px', color: '#64748b' }}>ไม่มีหุ้นไทยในพอร์ต</span>
-                ) : (
-                  thStocks.map((stock, idx) => {
-                    const labelText = formatStockLabel(stock);
-                    return (
-                      <button 
-                        key={stock.id || idx} 
-                        onClick={() => { 
-                          setActiveTab('chat'); 
-                          setAssetSubView(null);
-                          triggerBackendAction('asset_analysis', `วิเคราะห์หุ้นไทย ${labelText} ในพอร์ตให้หน่อยครับ`); 
-                        }} 
-                        style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}
-                      >
-                        {labelText}
-                      </button>
-                    );
-                  })
-                )}
-              </>
-            ) : assetSubView === 'global' ? (
-              /* หากกดเลือก "หุ้นนอก & DR" */
-              <>
-                <button onClick={() => setAssetSubView(null)} style={{ textAlign: 'left', background: 'transparent', color: '#94a3b8', border: 'none', cursor: 'pointer', fontSize: '13px', padding: '4px 0', marginBottom: '4px' }}>
-                  ← กลับ
-                </button>
-                <span style={{ fontSize: '12.5px', color: '#fbbf24', marginBottom: '4px' }}>เลือกหุ้นนอก & DR ในพอร์ต ({globalStocks.length}):</span>
-                {globalStocks.length === 0 ? (
-                  <span style={{ fontSize: '13px', color: '#64748b' }}>ไม่มีหุ้นนอก/DR ในพอร์ต</span>
-                ) : (
-                  globalStocks.map((stock, idx) => {
-                    const labelText = formatStockLabel(stock);
-                    return (
-                      <button 
-                        key={stock.id || idx} 
-                        onClick={() => { 
-                          setActiveTab('chat'); 
-                          setAssetSubView(null);
-                          triggerBackendAction('asset_analysis', `วิเคราะห์หุ้นต่างประเทศหรือ DR ${labelText} ในพอร์ตให้หน่อยครับ`); 
-                        }} 
-                        style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}
-                      >
-                        {labelText}
-                      </button>
-                    );
-                  })
-                )}
-              </>
-            ) : assetSubView === 'crypto' ? (
-              /* หากกดเลือก "คริปโตเคอร์เรนซี" */
-              <>
-                <button onClick={() => setAssetSubView(null)} style={{ textAlign: 'left', background: 'transparent', color: '#94a3b8', border: 'none', cursor: 'pointer', fontSize: '13px', padding: '4px 0', marginBottom: '4px' }}>
-                  ← กลับ
-                </button>
-                <span style={{ fontSize: '12.5px', color: '#fbbf24', marginBottom: '4px' }}>เลือกคริปโตในพอร์ต ({cryptoStocks.length}):</span>
-                {cryptoStocks.length === 0 ? (
-                  <span style={{ fontSize: '13px', color: '#64748b' }}>ไม่มีคริปโตในพอร์ต</span>
-                ) : (
-                  cryptoStocks.map((stock, idx) => {
-                    const labelText = formatStockLabel(stock);
-                    return (
-                      <button 
-                        key={stock.id || idx} 
-                        onClick={() => { 
-                          setActiveTab('chat'); 
-                          setAssetSubView(null);
-                          triggerBackendAction('asset_analysis', `วิเคราะห์คริปโต ${labelText} ในพอร์ตให้หน่อยครับ`); 
-                        }} 
-                        style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}
-                      >
-                        {labelText}
-                      </button>
-                    );
-                  })
-                )}
-              </>
-            ) : (
-              /* เมนูหลักสินทรัพย์ (สลับคริปโตขึ้นก่อนทองคำ และเปลี่ยนชื่อหุ้นไทยรายตัวเป็นหุ้นไทย และตัดวงเล็บทองคำออก) */
-              <>
-                <button onClick={() => setAssetSubView('th')} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
-                  หุ้นไทย ({thStocks.length})
-                </button>
-                <button onClick={() => setAssetSubView('global')} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
-                  หุ้นนอก & DR ({globalStocks.length})
-                </button>
-                <button onClick={() => setAssetSubView('crypto')} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
-                  คริปโตเคอร์เรนซี ({cryptoStocks.length})
-                </button>
-                <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์ทิศทางราคาทองคำ'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
-                  ทองคำ
-                </button>
-              </>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'news' && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '8px', width: '100%', maxWidth: '500px' }}>
-            <h4 style={{ color: '#fbbf24', fontSize: '14px', fontWeight: 500, marginBottom: '4px' }}>ข่าวสารพอร์ต</h4>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์ภูมิรัฐศาสตร์โลกที่มีผลต่อพอร์ต'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
-              ภูมิรัฐศาสตร์โลก
-            </button>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์เศรษฐกิจมหภาค โลก-ไทย'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
-              เศรษฐกิจมหภาค
-            </button>
-          </div>
-        )}
-
-        {activeTab === 'watchlist' && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '10px', width: '100%', maxWidth: '500px' }}>
-            <h4 style={{ color: '#fbbf24', fontSize: '14px', fontWeight: 500 }}>Watchlist</h4>
-            <form onSubmit={handleAddWatchlist} style={{ display: 'flex', flexDirection: 'column', gap: '8px', backgroundColor: 'transparent', padding: '0', width: '100%' }}>
-              <input type="text" placeholder="ชื่อสินทรัพย์ (เช่น BTC)" value={newAsset.name} onChange={(e) => setNewAsset({...newAsset, name: e.target.value})} style={{ padding: '10px 12px', backgroundColor: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff', fontSize: '13px', width: '100%' }} required />
-              <input type="number" placeholder="ราคาเป้าหมาย" value={newAsset.price} onChange={(e) => setNewAsset({...newAsset, price: e.target.value})} style={{ padding: '10px 12px', backgroundColor: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff', fontSize: '13px', width: '100%' }} required />
-              <input type="text" placeholder="เหตุผล" value={newAsset.reason} onChange={(e) => setNewAsset({...newAsset, reason: e.target.value})} style={{ padding: '10px 12px', backgroundColor: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff', fontSize: '13px', width: '100%' }} />
-              <button type="submit" style={{ padding: '10px', backgroundColor: 'transparent', color: '#fbbf24', fontWeight: 600, border: '1px solid rgba(251, 191, 36, 0.4)', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', width: '100%' }}>เพิ่มรายการ</button>
-            </form>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px', width: '100%', marginTop: '6px' }}>
-              <span style={{ color: '#94a3b8', fontSize: '12px' }}>รายการเฝ้าระวัง:</span>
-              {watchlist.length === 0 ? <p style={{ color: '#64748b', fontSize: '12px' }}>ยังไม่มีรายการ</p> : watchlist.map((item, idx) => (
-                <div key={idx} style={{ padding: '10px 12px', backgroundColor: 'transparent', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid rgba(255,255,255,0.08)', width: '100%' }}>
-                  <div>
-                    <span style={{ fontWeight: 500, color: '#fde047', fontSize: '13px' }}>{item.name}</span> <span style={{ fontSize: '12px', color: '#cbd5e1' }}>(เป้า: {item.price})</span>
-                  </div>
-                  <button onClick={() => {
-                    const filtered = watchlist.filter((_, i) => i !== idx);
-                    setWatchlist(filtered);
-                    localStorage.setItem('moon_watchlist', JSON.stringify(filtered));
-                  }} style={{ color: '#fca5a5', background: 'transparent', border: 'none', fontSize: '12px', cursor: 'pointer' }}>ลบ</button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'skills' && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '10px', width: '100%', maxWidth: '500px' }}>
-            <h4 style={{ color: '#fbbf24', fontSize: '14px', fontWeight: 500 }}>สกิล AI</h4>
-            <div style={{ padding: '12px', width: '100%', backgroundColor: 'transparent', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }}>
-              <span style={{ color: '#cbd5e1', fontSize: '12.5px' }}>อัปโหลดไฟล์ข้อมูล:</span>
-              <input type="file" onChange={handleFileSelect} style={{ color: '#94a3b8', fontSize: '12px' }} />
-              {uploadedFileName && <p style={{ color: '#4ade80', fontSize: '12px', margin: 0 }}>{uploadedFileName}</p>}
-            </div>
-            <div style={{ padding: '12px', width: '100%', backgroundColor: 'transparent', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }}>
-              <span style={{ color: '#cbd5e1', fontSize: '12.5px' }}>Custom Prompt:</span>
-              <textarea rows="3" placeholder="ระบุสไตล์การตอบ..." value={customPrompt} onChange={(e) => { setCustomPrompt(e.target.value); localStorage.setItem('moon_custom_prompt', e.target.value); }} style={{ padding: '10px', backgroundColor: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff', fontSize: '13px', width: '100%' }} />
-            </div>
-            <button onClick={() => { localStorage.removeItem('moon_chat_history'); setMessages([]); alert('เคลียร์ประวัติแชทเรียบร้อยแล้ว!'); }} style={{ padding: '10px 14px', backgroundColor: 'transparent', color: '#fca5a5', border: '1px solid rgba(239, 68, 68, 0.4)', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', width: '100%' }}>
-              เคลียร์ประวัติแชททั้งหมด
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* ช่องพิมพ์ข้อความด้านล่าง พร้อมปุ่ม + แนบไฟล์/รูปภาพ */}
-      {activeTab === 'chat' && (
-        <div style={{
-          padding: '12px 16px',
-          backgroundColor: 'rgba(17, 24, 39, 0.9)',
-          borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-          flexShrink: 0
-        }}>
-          <form onSubmit={handleSendMessage} style={{ maxWidth: '700px', width: '100%', margin: '0 auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <input 
-              type="file" 
-              ref={fileInputRef}
-              onChange={handleFileSelect}
-              style={{ display: 'none' }} 
-              accept="image/*,.pdf,.txt,.csv"
-            />
-            <button 
-              type="button" 
-              onClick={() => fileInputRef.current?.click()}
-              style={{
-                background: 'transparent',
-                border: '1px solid rgba(255, 255, 255, 0.15)',
-                color: '#fbbf24',
-                width: '40px',
-                height: '40px',
-                borderRadius: '10px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                fontSize: '20px',
-                flexShrink: 0
-              }}
-              title="แนบรูปหรือไฟล์"
-            >
-              +
-            </button>
-
-            <input 
-              type="text" 
-              value={inputMessage} 
-              onChange={(e) => setInputMessage(e.target.value)} 
-              placeholder={uploadedFileName ? `แนบไฟล์ (${uploadedFileName}) แล้ว...` : "พิมพ์ข้อความ..."} 
-              style={{
-                flex: 1,
-                backgroundColor: '#030712',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                borderRadius: '10px',
-                padding: '10px 14px',
-                fontSize: '13.5px',
-                color: '#fff',
-                outline: 'none'
-              }}
-            />
-            
-            <button type="submit" style={{
-              backgroundColor: '#fbbf24',
-              color: '#030712',
-              fontWeight: 600,
-              border: 'none',
-              padding: '0 16px',
-              height: '40px',
-              borderRadius: '10px',
-              cursor: 'pointer',
-              fontSize: '13.5px',
-              flexShrink: 0
-            }}>
-              ส่ง
-            </button>
-          </form>
+            ))
+          )}
         </div>
       )}
 
+      {/* Modal สำหรับบันทึก ซื้อ/ขาย */}
+      {showModal && (
+        <div className="pf-modal-overlay" onClick={() => setShowModal(false)}>
+          <div className="pf-confirm-modal" onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontWeight: '600', marginBottom: '12px' }}>
+              {tradeType === 'buy' ? 'บันทึกซื้อเพิ่ม' : tradeType === 'sell' ? 'บันทึกขายออก' : 'ตั้งค่ายอดยกมา'}
+            </div>
+            {error && <div className="pf-error">{error}</div>}
+            
+            <div className="pf-field">
+              <label className="pf-label">จำนวนหุ้น</label>
+              <input className="pf-input pf-mono" type="number" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} placeholder="0" />
+            </div>
+
+            {tradeType !== 'initial' && (
+              <div className="pf-field">
+                <label className="pf-label">ราคาซื้อ/ขายต่อหน่วย</label>
+                <input className="pf-input pf-mono" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="0.00" />
+              </div>
+            )}
+
+            <div className="pf-field">
+              <label className="pf-label">ค่าธรรมเนียม (%)</label>
+              <input className="pf-input pf-mono" type="number" value={form.feePct} onChange={(e) => setForm({ ...form, feePct: e.target.value })} placeholder="0.15" />
+            </div>
+
+            <div className="pf-field">
+              <label className="pf-label">วันที่</label>
+              <input className="pf-input pf-mono" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+            </div>
+
+            <div className="pf-field">
+              <label className="pf-label">หมายเหตุ</label>
+              <input className="pf-input" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="เช่น เติมพอร์ตเพิ่ม" />
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+              <button className="pf-btn pf-btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setShowModal(false)}>ยกเลิก</button>
+              <button className="pf-btn pf-btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={handleSubmit}>บันทึก</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
