@@ -21,7 +21,7 @@ export default function MoonAssistantChat() {
   const fileInputRef = useRef(null);
   const importFileRef = useRef(null);
 
-  // ฟังก์ชันตรวจสอบราคา Watchlist โดยดึงจาก API ภายนอกโดยตรง
+  // ฟังก์ชันตรวจสอบราคา Watchlist พร้อมระบบจับคู่ยืดหยุ่น (รองรับ .BK และตัวพิมพ์ใหญ่/เล็ก)
   const checkWatchlistAlerts = async (currentWatchlist) => {
     if (!currentWatchlist || currentWatchlist.length === 0) return currentWatchlist;
     try {
@@ -46,7 +46,23 @@ export default function MoonAssistantChat() {
 
       const updatedWatchlist = currentWatchlist.map(item => {
         const itemName = String(item.name || '').trim().toUpperCase();
-        const currentPrice = priceMap[itemName] || 0;
+        
+        // ค้นหาราคาแบบยืดหยุ่น (รองรับกรณีมีหรือไม่มี .BK ต่อท้าย)
+        let currentPrice = 0;
+        if (priceMap[itemName] !== undefined) {
+          currentPrice = priceMap[itemName];
+        } else if (priceMap[itemName + '.BK'] !== undefined) {
+          currentPrice = priceMap[itemName + '.BK'];
+        } else {
+          const foundKey = Object.keys(priceMap).find(k => 
+            k === itemName || 
+            k === itemName + '.BK' || 
+            k.replace('.BK', '') === itemName
+          );
+          if (foundKey) {
+            currentPrice = priceMap[foundKey];
+          }
+        }
         
         if (currentPrice > 0) {
           const targetPrice = parseFloat(item.price || 0);
