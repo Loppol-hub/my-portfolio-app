@@ -12,10 +12,9 @@ export default function MoonAssistantChat() {
   const [portfolioHoldings, setPortfolioHoldings] = useState([]);
 
   const [watchlist, setWatchlist] = useState([]);
-  const [newAsset, setNewAsset] = useState({ name: '', condition: '<=', price: '', reason: '' });
+  const [newAsset, setNewAsset] = useState({ name: '', market: 'th', condition: '<=', price: '', reason: '' });
   const [customPrompt, setCustomPrompt] = useState('');
   
-  // เพิ่ม State สำหรับตั้งค่า API Endpoint และ API Key ภายในแชท
   const [apiEndpoint, setApiEndpoint] = useState('https://portfolio-price-backend.vercel.app/api/prices');
   const [apiKeyInput, setApiKeyInput] = useState('da5u6l1r01qg0j89hjm0da5u6l1r01qg0j89hjmg');
 
@@ -26,7 +25,6 @@ export default function MoonAssistantChat() {
   const fileInputRef = useRef(null);
   const importFileRef = useRef(null);
 
-  // โหลดการตั้งค่า API จาก localStorage เมื่อเริ่มระบบ
   useEffect(() => {
     const savedEndpoint = localStorage.getItem('moon_api_endpoint') || localStorage.getItem('backend-url');
     if (savedEndpoint) setApiEndpoint(savedEndpoint);
@@ -35,7 +33,6 @@ export default function MoonAssistantChat() {
     if (savedKey) setApiKeyInput(savedKey);
   }, []);
 
-  // ฟังก์ชันดึงค่า API Config
   const getApiConfig = () => {
     return {
       endpoint: apiEndpoint || 'https://portfolio-price-backend.vercel.app/api/prices',
@@ -43,7 +40,7 @@ export default function MoonAssistantChat() {
     };
   };
 
-  // ฟังก์ชันตรวจสอบราคา Watchlist
+  // ฟังก์ชันตรวจสอบราคา Watchlist แบบ POST พร้อมส่ง items ไปยัง Backend
   const checkWatchlistAlerts = async (currentWatchlist) => {
     if (!currentWatchlist || currentWatchlist.length === 0) return currentWatchlist;
     try {
@@ -52,34 +49,36 @@ export default function MoonAssistantChat() {
       if (targetUrl.startsWith('/')) {
         targetUrl = window.location.origin + targetUrl;
       }
-      if (apiKey) {
-        if (!targetUrl.includes('?')) {
-          targetUrl += `?key=${apiKey}`;
-        } else if (!targetUrl.includes('key=')) {
-          targetUrl += `&key=${apiKey}`;
-        }
-      }
 
-      const headers = {};
+      // เตรียมรายการสินค้าส่งให้ Backend ตามโครงสร้างพอร์ตหลัก
+      const payloadItems = currentWatchlist.map(item => ({
+        id: item.name,
+        ticker: item.name,
+        market: item.market || 'th'
+      }));
+
+      const headers = {
+        'Content-Type': 'application/json'
+      };
       if (apiKey) {
         headers['x-api-key'] = apiKey;
         headers['Authorization'] = `Bearer ${apiKey}`;
       }
 
-      const response = await fetch(targetUrl, { headers });
+      const response = await fetch(targetUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ items: payloadItems })
+      });
       const data = await response.json();
       
       let priceMap = {};
-      const itemsList = Array.isArray(data) ? data : (data.prices || data.data || Object.values(data));
-      if (Array.isArray(itemsList)) {
-        itemsList.forEach(item => {
-          const key = String(item.symbol || item.ticker || item.name || item.code || '').trim().toUpperCase();
+      const results = data.results || data.prices || (Array.isArray(data) ? data : []);
+      if (Array.isArray(results)) {
+        results.forEach(item => {
+          const key = String(item.id || item.symbol || item.ticker || '').trim().toUpperCase();
           const val = parseFloat(item.price || item.currentPrice || item.close || item.lastPrice || 0);
           if (key) priceMap[key] = val;
-        });
-      } else if (data && typeof data === 'object') {
-        Object.keys(data).forEach(k => {
-          priceMap[k.trim().toUpperCase()] = parseFloat(data[k]);
         });
       }
 
@@ -88,22 +87,7 @@ export default function MoonAssistantChat() {
 
       const updatedWatchlist = currentWatchlist.map(item => {
         const itemName = String(item.name || '').trim().toUpperCase();
-        
-        let currentPrice = 0;
-        if (priceMap[itemName] !== undefined) {
-          currentPrice = priceMap[itemName];
-        } else if (priceMap[itemName + '.BK'] !== undefined) {
-          currentPrice = priceMap[itemName + '.BK'];
-        } else {
-          const foundKey = Object.keys(priceMap).find(k => 
-            k === itemName || 
-            k === itemName + '.BK' || 
-            k.replace('.BK', '') === itemName
-          );
-          if (foundKey) {
-            currentPrice = priceMap[foundKey];
-          }
-        }
+        const currentPrice = priceMap[itemName] || 0;
         
         if (currentPrice > 0) {
           const targetPrice = parseFloat(item.price || 0);
@@ -149,11 +133,11 @@ export default function MoonAssistantChat() {
       }
       return updatedWatchlist;
     } catch (err) {
+      console.error('[Watchlist Error]', err);
       return currentWatchlist;
     }
   };
 
-  // ตรวจสอบทันทีที่เปิดแอปหรือรีเฟรช
   useEffect(() => {
     const savedWatchlist = localStorage.getItem('moon_watchlist');
     if (savedWatchlist) {
@@ -163,7 +147,6 @@ export default function MoonAssistantChat() {
     }
   }, []);
 
-  // ระบบตั้งเวลาตรวจสอบราคาอัตโนมัติทุกๆ 30 วินาที
   useEffect(() => {
     const interval = setInterval(() => {
       const currentWL = JSON.parse(localStorage.getItem('moon_watchlist') || '[]');
@@ -363,7 +346,7 @@ export default function MoonAssistantChat() {
     const updated = [...watchlist, { ...newAsset, name: newAsset.name.toUpperCase(), alerted: false, triggered: false }];
     setWatchlist(updated);
     localStorage.setItem('moon_watchlist', JSON.stringify(updated));
-    setNewAsset({ name: '', condition: '<=', price: '', reason: '' });
+    setNewAsset({ name: '', market: 'th', condition: '<=', price: '', reason: '' });
     setMessages((prev) => [
       ...prev,
       { sender: 'ai', text: `🎯 ตั้งระบบเรดาร์ติดตามราคา ${newAsset.name.toUpperCase()} (${newAsset.condition} ${newAsset.price}) เรียบร้อยครับ!` }
@@ -761,7 +744,7 @@ export default function MoonAssistantChat() {
             <form onSubmit={handleAddWatchlist} style={{ display: 'flex', flexDirection: 'column', gap: '8px', backgroundColor: 'transparent', padding: '0', width: '100%' }}>
               <input 
                 type="text" 
-                placeholder="ชื่อสินทรัพย์ (เช่น BTC)" 
+                placeholder="ชื่อสินทรัพย์ (เช่น PTT หรือ BTC)" 
                 value={newAsset.name} 
                 onChange={(e) => setNewAsset({...newAsset, name: e.target.value.toUpperCase()})} 
                 style={{ padding: '10px 12px', backgroundColor: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff', fontSize: '13px', width: '100%' }} 
@@ -770,6 +753,17 @@ export default function MoonAssistantChat() {
               
               <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
                 <select 
+                  value={newAsset.market} 
+                  onChange={(e) => setNewAsset({...newAsset, market: e.target.value})}
+                  style={{ padding: '10px 8px', backgroundColor: '#030712', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fbbf24', fontSize: '13px' }}
+                >
+                  <option value="th">หุ้นไทย (TH)</option>
+                  <option value="us">หุ้นนอก (US)</option>
+                  <option value="crypto">คริปโต (Crypto)</option>
+                  <option value="gold">ทองคำ (Gold)</option>
+                </select>
+
+                <select 
                   value={newAsset.condition} 
                   onChange={(e) => setNewAsset({...newAsset, condition: e.target.value})}
                   style={{ padding: '10px 8px', backgroundColor: '#030712', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fbbf24', fontSize: '13px' }}
@@ -777,6 +771,7 @@ export default function MoonAssistantChat() {
                   <option value="<=">&le; (น้อยกว่า/เท่ากับ)</option>
                   <option value=">=">&ge; (มากกว่า/เท่ากับ)</option>
                 </select>
+
                 <input 
                   type="number" 
                   placeholder="ราคาเป้าหมาย" 
@@ -804,6 +799,7 @@ export default function MoonAssistantChat() {
                   <div style={{ fontSize: '12.5px', color: '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
                     {item.triggered && <span style={{ fontSize: '14px' }} title="แจ้งเตือนราคาถึงเป้าหมาย">🔔</span>}
                     <span style={{ fontWeight: 600, color: '#fde047' }}>{item.name}</span>
+                    <span style={{ color: '#94a3b8' }}>({item.market?.toUpperCase() || 'TH'})</span>
                     <span style={{ color: '#94a3b8' }}>({item.condition || '<='} {item.price})</span>
                     {item.reason && <span style={{ color: '#94a3b8' }}>- {item.reason}</span>}
                   </div>
@@ -926,7 +922,7 @@ export default function MoonAssistantChat() {
               type="text" 
               value={inputMessage} 
               onChange={(e) => setInputMessage(e.target.value)} 
-              placeholder={uploadedFileName ? `แนบไฟล์ (${uploadedFileName}) แล้ว...` : "พิมพ์ข้อความ..."} 
+              placeholder={uploadedFileName ? `แนบไฟล์ (${uploadedFileName})แล้ว...` : "พิมพ์ข้อความ..."} 
               style={{
                 flex: 1,
                 backgroundColor: '#030712',
