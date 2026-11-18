@@ -23,7 +23,7 @@ export default function MoonAssistantChat() {
 
   // ฟังก์ชันตรวจสอบราคา Watchlist โดยดึงจาก API ภายนอกโดยตรง
   const checkWatchlistAlerts = async (currentWatchlist) => {
-    if (!currentWatchlist || currentWatchlist.length === 0) return;
+    if (!currentWatchlist || currentWatchlist.length === 0) return currentWatchlist;
     try {
       const response = await fetch('https://portfolio-price-backend.vercel.app/api/prices');
       const data = await response.json();
@@ -42,6 +42,8 @@ export default function MoonAssistantChat() {
       }
 
       let triggeredAlerts = [];
+      let stateChanged = false;
+
       const updatedWatchlist = currentWatchlist.map(item => {
         const itemName = String(item.name || '').trim().toUpperCase();
         const currentPrice = priceMap[itemName] || 0;
@@ -59,6 +61,7 @@ export default function MoonAssistantChat() {
 
           if (isConditionMet && !item.alerted) {
             triggeredAlerts.push(`🚨 แจ้งเตือน Watchlist: สินทรัพย์ [${item.name}] ราคาปัจจุบันอยู่ที่ ${currentPrice} (${condition} ${targetPrice}) ${item.reason ? `เหตุผล: ${item.reason}` : ''}`);
+            stateChanged = true;
             return { ...item, alerted: true };
           }
         }
@@ -73,8 +76,9 @@ export default function MoonAssistantChat() {
         setWatchlist(updatedWatchlist);
         localStorage.setItem('moon_watchlist', JSON.stringify(updatedWatchlist));
       }
+      return updatedWatchlist;
     } catch (err) {
-      // ป้องกัน Error เงียบๆ ไม่ให้เว็บพัง
+      return currentWatchlist;
     }
   };
 
@@ -109,6 +113,18 @@ export default function MoonAssistantChat() {
       checkWatchlistAlerts(currentWL);
     }
   }, [isOpen]);
+
+  // ระบบตั้งเวลาตรวจสอบราคาอัตโนมัติทุกๆ 30 วินาที (ทำงานตลอดเวลาที่คอมโพเนนต์ถูกเรนเดอร์)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const currentWL = JSON.parse(localStorage.getItem('moon_watchlist') || '[]');
+      if (currentWL.length > 0) {
+        checkWatchlistAlerts(currentWL);
+      }
+    }, 30000); // ทุก 30 วินาที
+
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     let startX = 0;
