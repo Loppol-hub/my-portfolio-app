@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-export default function ChatWatchlistManager() {
+export default function MoonAssistantChat() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
@@ -21,75 +21,83 @@ export default function ChatWatchlistManager() {
   const fileInputRef = useRef(null);
   const importFileRef = useRef(null);
 
-  // ฟังก์ชันตรวจสอบราคา Watchlist เทียบกับพอร์ตอัตโนมัติ
-  const checkWatchlistAlerts = (holdingsList, currentWatchlist) => {
-    if (!holdingsList || holdingsList.length === 0 || !currentWatchlist || currentWatchlist.length === 0) return;
+  // ฟังก์ชันตรวจสอบราคา Watchlist โดยดึงจาก API ภายนอกโดยตรง
+  const checkWatchlistAlerts = async (currentWatchlist) => {
+    if (!currentWatchlist || currentWatchlist.length === 0) return;
+    try {
+      const response = await fetch('https://portfolio-price-backend.vercel.app/api/prices');
+      const data = await response.json();
+      
+      let priceMap = {};
+      if (Array.isArray(data)) {
+        data.forEach(item => {
+          const key = String(item.symbol || item.ticker || item.name || '').trim().toUpperCase();
+          const val = parseFloat(item.price || item.currentPrice || 0);
+          if (key) priceMap[key] = val;
+        });
+      } else if (data && typeof data === 'object') {
+        Object.keys(data).forEach(k => {
+          priceMap[k.trim().toUpperCase()] = parseFloat(data[k]);
+        });
+      }
 
-    let triggeredAlerts = [];
-    const updatedWatchlist = currentWatchlist.map(item => {
-      // ค้นหาสินทรัพย์ในพอร์ตที่ชื่อหรือ Ticker ตรงกัน
-      const matchedHolding = holdingsList.find(h => {
-        const hName = String(h.name || '').trim().toUpperCase();
-        const hTicker = String(h.ticker || '').trim().toUpperCase();
+      let triggeredAlerts = [];
+      const updatedWatchlist = currentWatchlist.map(item => {
         const itemName = String(item.name || '').trim().toUpperCase();
-        return hName === itemName || hTicker === itemName;
+        const currentPrice = priceMap[itemName] || 0;
+        
+        if (currentPrice > 0) {
+          const targetPrice = parseFloat(item.price || 0);
+          const condition = item.condition || '<=';
+
+          let isConditionMet = false;
+          if (condition === '<=' && currentPrice <= targetPrice) {
+            isConditionMet = true;
+          } else if (condition === '>=' && currentPrice >= targetPrice) {
+            isConditionMet = true;
+          }
+
+          if (isConditionMet && !item.alerted) {
+            triggeredAlerts.push(`🚨 แจ้งเตือน Watchlist: สินทรัพย์ [${item.name}] ราคาปัจจุบันอยู่ที่ ${currentPrice} (${condition} ${targetPrice}) ${item.reason ? `เหตุผล: ${item.reason}` : ''}`);
+            return { ...item, alerted: true };
+          }
+        }
+        return item;
       });
 
-      if (matchedHolding) {
-        const currentPrice = parseFloat(matchedHolding.currentPrice || matchedHolding.price || 0);
-        const targetPrice = parseFloat(item.price || 0);
-        const condition = item.condition || '<=';
-
-        let isConditionMet = false;
-        if (condition === '<=' && currentPrice > 0 && currentPrice <= targetPrice) {
-          isConditionMet = true;
-        } else if (condition === '>=' && currentPrice >= targetPrice) {
-          isConditionMet = true;
-        }
-
-        if (isConditionMet && !item.alerted) {
-          triggeredAlerts.push(`🚨 แจ้งเตือน Watchlist: สินทรัพย์ [${item.name}] ราคาปัจจุบันอยู่ที่ ${currentPrice} (${condition} ${targetPrice}) ${item.reason ? `เหตุผล: ${item.reason}` : ''}`);
-          return { ...item, alerted: true }; // ทำเครื่องหมายว่าแจ้งเตือนแล้วเพื่อไม่ให้แจ้งซ้ำรัวๆ
-        }
+      if (triggeredAlerts.length > 0) {
+        setMessages(prev => [
+          ...prev,
+          ...triggeredAlerts.map(alertText => ({ sender: 'ai', text: alertText }))
+        ]);
+        setWatchlist(updatedWatchlist);
+        localStorage.setItem('moon_watchlist', JSON.stringify(updatedWatchlist));
       }
-      return item;
-    });
-
-    if (triggeredAlerts.length > 0) {
-      setMessages(prev => [
-        ...prev,
-        ...triggeredAlerts.map(alertText => ({ sender: 'ai', text: alertText }))
-      ]);
-      setWatchlist(updatedWatchlist);
-      localStorage.setItem('moon_watchlist', JSON.stringify(updatedWatchlist));
+    } catch (err) {
+      // ป้องกัน Error เงียบๆ ไม่ให้เว็บพัง
     }
   };
 
   useEffect(() => {
     const fetchHoldingsAsync = async () => {
       try {
-        let holdings = [];
         if (window.storage && typeof window.storage.get === 'function') {
           const r = await window.storage.get('holdings', false);
           if (r && r.value) {
             const parsed = JSON.parse(r.value);
-            if (Array.isArray(parsed)) holdings = parsed;
+            if (Array.isArray(parsed)) {
+              setPortfolioHoldings(parsed);
+              return;
+            }
           }
         }
-        if (holdings.length === 0) {
-          const stored = localStorage.getItem('holdings');
-          if (stored) {
-            const parsed = JSON.parse(stored);
-            if (Array.isArray(parsed)) holdings = parsed;
+        const stored = localStorage.getItem('holdings');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            setPortfolioHoldings(parsed);
           }
         }
-
-        setPortfolioHoldings(holdings);
-
-        // ตรวจสอบเงื่อนไขราคา Watchlist ทันทีที่ดึงข้อมูลพอร์ตสำเร็จ
-        const currentWL = JSON.parse(localStorage.getItem('moon_watchlist') || '[]');
-        checkWatchlistAlerts(holdings, currentWL);
-
       } catch (e) {
         // ignore
       }
@@ -97,6 +105,8 @@ export default function ChatWatchlistManager() {
 
     if (isOpen) {
       fetchHoldingsAsync();
+      const currentWL = JSON.parse(localStorage.getItem('moon_watchlist') || '[]');
+      checkWatchlistAlerts(currentWL);
     }
   }, [isOpen]);
 
@@ -277,7 +287,7 @@ export default function ChatWatchlistManager() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `chat-watchlist-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `moon-assistant-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
