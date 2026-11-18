@@ -12,12 +12,9 @@ export default function MoonAssistantChat() {
   const [portfolioHoldings, setPortfolioHoldings] = useState([]);
 
   const [watchlist, setWatchlist] = useState([]);
-  const [newAsset, setNewAsset] = useState({ name: '', market: 'th', condition: '<=', price: '', reason: '' });
+  const [newAsset, setNewAsset] = useState({ name: '', condition: '<=', price: '', reason: '' });
   const [customPrompt, setCustomPrompt] = useState('');
   
-  const [apiEndpoint, setApiEndpoint] = useState('https://portfolio-price-backend.vercel.app/api/prices');
-  const [apiKeyInput, setApiKeyInput] = useState('da5u6l1r01qg0j89hjm0da5u6l1r01qg0j89hjmg');
-
   const [uploadedFileName, setUploadedFileName] = useState('');
   const [fileContent, setFileContent] = useState('');
 
@@ -25,168 +22,111 @@ export default function MoonAssistantChat() {
   const fileInputRef = useRef(null);
   const importFileRef = useRef(null);
 
-  useEffect(() => {
-    const savedEndpoint = localStorage.getItem('moon_api_endpoint') || localStorage.getItem('backend-url');
-    if (savedEndpoint) setApiEndpoint(savedEndpoint);
+  // ฟังก์ชันตรวจสอบราคา Watchlist เทียบกับข้อมูลในพอร์ต
+  const checkWatchlistAlerts = (holdingsList, currentWatchlist) => {
+    if (!holdingsList || holdingsList.length === 0 || !currentWatchlist || currentWatchlist.length === 0) return currentWatchlist;
+    
+    let newMessages = [];
+    let stateChanged = false;
 
-    const savedKey = localStorage.getItem('moon_api_key') || localStorage.getItem('api_key');
-    if (savedKey) setApiKeyInput(savedKey);
-  }, []);
-
-  const getApiConfig = () => {
-    return {
-      endpoint: apiEndpoint || 'https://portfolio-price-backend.vercel.app/api/prices',
-      apiKey: apiKeyInput || 'da5u6l1r01qg0j89hjm0da5u6l1r01qg0j89hjmg'
-    };
-  };
-
-  // ฟังก์ชันตรวจสอบราคา Watchlist แบบ POST พร้อมส่ง items ไปยัง Backend
-  const checkWatchlistAlerts = async (currentWatchlist) => {
-    if (!currentWatchlist || currentWatchlist.length === 0) return currentWatchlist;
-    try {
-      const { endpoint, apiKey } = getApiConfig();
-      let targetUrl = endpoint.trim();
-      if (targetUrl.startsWith('/')) {
-        targetUrl = window.location.origin + targetUrl;
-      }
-
-      // เตรียมรายการสินค้าส่งให้ Backend ตามโครงสร้างพอร์ตหลัก
-      const payloadItems = currentWatchlist.map(item => ({
-        id: item.name,
-        ticker: item.name,
-        market: item.market || 'th'
-      }));
-
-      const headers = {
-        'Content-Type': 'application/json'
-      };
-      if (apiKey) {
-        headers['x-api-key'] = apiKey;
-        headers['Authorization'] = `Bearer ${apiKey}`;
-      }
-
-      const response = await fetch(targetUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ items: payloadItems })
-      });
-      const data = await response.json();
-      
-      let priceMap = {};
-      const results = data.results || data.prices || (Array.isArray(data) ? data : []);
-      if (Array.isArray(results)) {
-        results.forEach(item => {
-          const key = String(item.id || item.symbol || item.ticker || '').trim().toUpperCase();
-          const val = parseFloat(item.price || item.currentPrice || item.close || item.lastPrice || 0);
-          if (key) priceMap[key] = val;
-        });
-      }
-
-      let newMessages = [];
-      let stateChanged = false;
-
-      const updatedWatchlist = currentWatchlist.map(item => {
+    const updatedWatchlist = currentWatchlist.map(item => {
+      const matchedHolding = holdingsList.find(h => {
+        const hName = String(h.name || '').trim().toUpperCase();
+        const hTicker = String(h.ticker || '').trim().toUpperCase();
         const itemName = String(item.name || '').trim().toUpperCase();
-        const currentPrice = priceMap[itemName] || 0;
-        
-        if (currentPrice > 0) {
-          const targetPrice = parseFloat(item.price || 0);
-          const condition = item.condition || '<=';
-
-          let isConditionMet = false;
-          if (condition === '<=' && currentPrice <= targetPrice) {
-            isConditionMet = true;
-          } else if (condition === '>=' && currentPrice >= targetPrice) {
-            isConditionMet = true;
-          }
-
-          if (isConditionMet) {
-            if (!item.triggered) {
-              stateChanged = true;
-              item = { ...item, triggered: true };
-            }
-            if (!item.alerted) {
-              newMessages.push(`🚨 แจ้งเตือน Watchlist: สินทรัพย์ [${item.name}] ราคาปัจจุบันอยู่ที่ ${currentPrice} (${condition} ${targetPrice}) ${item.reason ? `เหตุผล: ${item.reason}` : ''}`);
-              item = { ...item, alerted: true };
-              stateChanged = true;
-            }
-          } else {
-            if (item.alerted) {
-              item = { ...item, alerted: false };
-              stateChanged = true;
-            }
-          }
-        }
-        return item;
+        return hName === itemName || hTicker === itemName || hName.includes(itemName) || hTicker.includes(itemName);
       });
 
-      if (newMessages.length > 0) {
-        setMessages(prev => [
-          ...prev,
-          ...newMessages.map(alertText => ({ sender: 'ai', text: alertText }))
-        ]);
-      }
+      if (matchedHolding) {
+        const currentPrice = parseFloat(matchedHolding.currentPrice || matchedHolding.price || 0);
+        const targetPrice = parseFloat(item.price || 0);
+        const condition = item.condition || '<=';
 
-      if (stateChanged || newMessages.length > 0) {
-        setWatchlist(updatedWatchlist);
-        localStorage.setItem('moon_watchlist', JSON.stringify(updatedWatchlist));
-      }
-      return updatedWatchlist;
-    } catch (err) {
-      console.error('[Watchlist Error]', err);
-      return currentWatchlist;
-    }
-  };
+        let isConditionMet = false;
+        if (condition === '<=' && currentPrice > 0 && currentPrice <= targetPrice) {
+          isConditionMet = true;
+        } else if (condition === '>=' && currentPrice >= targetPrice) {
+          isConditionMet = true;
+        }
 
-  useEffect(() => {
-    const savedWatchlist = localStorage.getItem('moon_watchlist');
-    if (savedWatchlist) {
-      const parsed = JSON.parse(savedWatchlist);
-      setWatchlist(parsed);
-      checkWatchlistAlerts(parsed);
-    }
-  }, []);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const currentWL = JSON.parse(localStorage.getItem('moon_watchlist') || '[]');
-      if (currentWL.length > 0) {
-        checkWatchlistAlerts(currentWL);
-      }
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, [apiEndpoint, apiKeyInput]);
-
-  useEffect(() => {
-    const fetchHoldingsAsync = async () => {
-      try {
-        if (window.storage && typeof window.storage.get === 'function') {
-          const r = await window.storage.get('holdings', false);
-          if (r && r.value) {
-            const parsed = JSON.parse(r.value);
-            if (Array.isArray(parsed)) {
-              setPortfolioHoldings(parsed);
-              return;
-            }
+        if (isConditionMet) {
+          if (!item.triggered) {
+            stateChanged = true;
+            item = { ...item, triggered: true };
+          }
+          if (!item.alerted) {
+            newMessages.push(`🚨 แจ้งเตือน Watchlist: สินทรัพย์ [${item.name}] ราคาปัจจุบันอยู่ที่ ${currentPrice} (${condition} ${targetPrice}) ${item.reason ? `เหตุผล: ${item.reason}` : ''}`);
+            item = { ...item, alerted: true };
+            stateChanged = true;
+          }
+        } else {
+          if (item.alerted) {
+            item = { ...item, alerted: false };
+            stateChanged = true;
           }
         }
+      }
+      return item;
+    });
+
+    if (newMessages.length > 0) {
+      setMessages(prev => [
+        ...prev,
+        ...newMessages.map(alertText => ({ sender: 'ai', text: alertText }))
+      ]);
+    }
+
+    if (stateChanged || newMessages.length > 0) {
+      setWatchlist(updatedWatchlist);
+      localStorage.setItem('moon_watchlist', JSON.stringify(updatedWatchlist));
+    }
+    return updatedWatchlist;
+  };
+
+  // ดึงข้อมูลพอร์ตและเช็ก Watchlist
+  const fetchHoldingsAndCheck = () => {
+    try {
+      let holdings = [];
+      if (window.storage && typeof window.storage.get === 'function') {
+        const r = window.storage.get('holdings', false);
+        if (r && r.value) {
+          const parsed = JSON.parse(r.value);
+          if (Array.isArray(parsed)) holdings = parsed;
+        }
+      }
+      if (holdings.length === 0) {
         const stored = localStorage.getItem('holdings');
         if (stored) {
           const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed)) {
-            setPortfolioHoldings(parsed);
-          }
+          if (Array.isArray(parsed)) holdings = parsed;
         }
-      } catch (e) {
-        // ignore
       }
-    };
+      setPortfolioHoldings(holdings);
 
-    if (isOpen) {
-      fetchHoldingsAsync();
+      const currentWL = JSON.parse(localStorage.getItem('moon_watchlist') || '[]');
+      if (currentWL.length > 0 && holdings.length > 0) {
+        checkWatchlistAlerts(holdings, currentWL);
+      }
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    fetchHoldingsAndCheck();
+    const savedWatchlist = localStorage.getItem('moon_watchlist');
+    if (savedWatchlist) {
+      setWatchlist(JSON.parse(savedWatchlist));
     }
   }, [isOpen]);
+
+  // ตั้งเวลาตรวจสอบซ้ำทุก 10 วินาที
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchHoldingsAndCheck();
+    }, 10000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     let startX = 0;
@@ -278,8 +218,7 @@ export default function MoonAssistantChat() {
   const triggerBackendAction = async (actionType, customText = '') => {
     setLoading(true);
     const portfolio = getPortfolioData();
-    const { endpoint } = getApiConfig();
-    const backendUrl = endpoint.includes('/prices') ? endpoint.replace('/prices', '/apianalyze') : (endpoint + '/apianalyze');
+    const backendUrl = (window.storage && window.storage.get('backend-url')) || '/api/apianalyze';
 
     try {
       const response = await fetch(backendUrl, {
@@ -346,7 +285,7 @@ export default function MoonAssistantChat() {
     const updated = [...watchlist, { ...newAsset, name: newAsset.name.toUpperCase(), alerted: false, triggered: false }];
     setWatchlist(updated);
     localStorage.setItem('moon_watchlist', JSON.stringify(updated));
-    setNewAsset({ name: '', market: 'th', condition: '<=', price: '', reason: '' });
+    setNewAsset({ name: '', condition: '<=', price: '', reason: '' });
     setMessages((prev) => [
       ...prev,
       { sender: 'ai', text: `🎯 ตั้งระบบเรดาร์ติดตามราคา ${newAsset.name.toUpperCase()} (${newAsset.condition} ${newAsset.price}) เรียบร้อยครับ!` }
@@ -753,17 +692,6 @@ export default function MoonAssistantChat() {
               
               <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
                 <select 
-                  value={newAsset.market} 
-                  onChange={(e) => setNewAsset({...newAsset, market: e.target.value})}
-                  style={{ padding: '10px 8px', backgroundColor: '#030712', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fbbf24', fontSize: '13px' }}
-                >
-                  <option value="th">หุ้นไทย (TH)</option>
-                  <option value="us">หุ้นนอก (US)</option>
-                  <option value="crypto">คริปโต (Crypto)</option>
-                  <option value="gold">ทองคำ (Gold)</option>
-                </select>
-
-                <select 
                   value={newAsset.condition} 
                   onChange={(e) => setNewAsset({...newAsset, condition: e.target.value})}
                   style={{ padding: '10px 8px', backgroundColor: '#030712', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fbbf24', fontSize: '13px' }}
@@ -771,7 +699,6 @@ export default function MoonAssistantChat() {
                   <option value="<=">&le; (น้อยกว่า/เท่ากับ)</option>
                   <option value=">=">&ge; (มากกว่า/เท่ากับ)</option>
                 </select>
-
                 <input 
                   type="number" 
                   placeholder="ราคาเป้าหมาย" 
@@ -799,7 +726,6 @@ export default function MoonAssistantChat() {
                   <div style={{ fontSize: '12.5px', color: '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
                     {item.triggered && <span style={{ fontSize: '14px' }} title="แจ้งเตือนราคาถึงเป้าหมาย">🔔</span>}
                     <span style={{ fontWeight: 600, color: '#fde047' }}>{item.name}</span>
-                    <span style={{ color: '#94a3b8' }}>({item.market?.toUpperCase() || 'TH'})</span>
                     <span style={{ color: '#94a3b8' }}>({item.condition || '<='} {item.price})</span>
                     {item.reason && <span style={{ color: '#94a3b8' }}>- {item.reason}</span>}
                   </div>
@@ -816,42 +742,12 @@ export default function MoonAssistantChat() {
 
         {activeTab === 'settings' && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '10px', width: '100%', maxWidth: '500px' }}>
-            <h4 style={{ color: '#fbbf24', fontSize: '14px', fontWeight: 500 }}>ตั้งค่าระบบ</h4>
-            
-            <div style={{ padding: '12px', width: '100%', backgroundColor: 'transparent', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }}>
-              <span style={{ color: '#cbd5e1', fontSize: '12.5px' }}>Backend API Endpoint:</span>
-              <input 
-                type="text" 
-                value={apiEndpoint} 
-                onChange={(e) => {
-                  setApiEndpoint(e.target.value);
-                  localStorage.setItem('moon_api_endpoint', e.target.value);
-                }} 
-                placeholder="https://.../api/prices" 
-                style={{ padding: '8px 10px', backgroundColor: '#030712', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#fff', fontSize: '12.5px', width: '100%' }} 
-              />
-            </div>
-
-            <div style={{ padding: '12px', width: '100%', backgroundColor: 'transparent', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }}>
-              <span style={{ color: '#cbd5e1', fontSize: '12.5px' }}>API Key:</span>
-              <input 
-                type="text" 
-                value={apiKeyInput} 
-                onChange={(e) => {
-                  setApiKeyInput(e.target.value);
-                  localStorage.setItem('moon_api_key', e.target.value);
-                }} 
-                placeholder="กรอก API Key..." 
-                style={{ padding: '8px 10px', backgroundColor: '#030712', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#fff', fontSize: '12.5px', width: '100%' }} 
-              />
-            </div>
-
+            <h4 style={{ color: '#fbbf24', fontSize: '14px', fontWeight: 500 }}>ตั้งค่า</h4>
             <div style={{ padding: '12px', width: '100%', backgroundColor: 'transparent', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }}>
               <span style={{ color: '#cbd5e1', fontSize: '12.5px' }}>อัปโหลดไฟล์ข้อมูล:</span>
               <input type="file" onChange={handleFileSelect} style={{ color: '#94a3b8', fontSize: '12px' }} />
               {uploadedFileName && <p style={{ color: '#4ade80', fontSize: '12px', margin: 0 }}>{uploadedFileName}</p>}
             </div>
-
             <div style={{ padding: '12px', width: '100%', backgroundColor: 'transparent', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }}>
               <span style={{ color: '#cbd5e1', fontSize: '12.5px' }}>Custom Prompt:</span>
               <textarea rows="3" placeholder="ระบุสไตล์การตอบ..." value={customPrompt} onChange={(e) => { setCustomPrompt(e.target.value); localStorage.setItem('moon_custom_prompt', e.target.value); }} style={{ padding: '10px', backgroundColor: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff', fontSize: '13px', width: '100%' }} />
@@ -872,7 +768,7 @@ export default function MoonAssistantChat() {
               localStorage.removeItem('moon_watchlist');
               setMessages([]); 
               setWatchlist([]);
-              alert('เคลียร์ประวัติแชทและ Watchlist เรียบร้อยแล้ว!'); 
+              alert('เคลียร์ประวัติแชทและ Watchlist เรียบร้อยแล้วค่ะ!'); 
             }} style={{ padding: '10px 14px', backgroundColor: 'transparent', color: '#fca5a5', border: '1px solid rgba(239, 68, 68, 0.4)', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', width: '100%' }}>
               เคลียร์ประวัติแชททั้งหมด
             </button>
@@ -922,7 +818,7 @@ export default function MoonAssistantChat() {
               type="text" 
               value={inputMessage} 
               onChange={(e) => setInputMessage(e.target.value)} 
-              placeholder={uploadedFileName ? `แนบไฟล์ (${uploadedFileName})แล้ว...` : "พิมพ์ข้อความ..."} 
+              placeholder={uploadedFileName ? `แนบไฟล์ (${uploadedFileName}) แล้ว...` : "พิมพ์ข้อความ..."} 
               style={{
                 flex: 1,
                 backgroundColor: '#030712',
