@@ -22,31 +22,65 @@ export default function MoonAssistantChat() {
   const fileInputRef = useRef(null);
   const importFileRef = useRef(null);
 
-  // ฟังก์ชันจัดการจุดแจ้งเตือน (Badge) ที่ตัวนักบินอวกาศหน้าพอร์ต
+  // ฉีด CSS Animation สำหรับกระดิ่งสั่น
   useEffect(() => {
-    const hasTriggered = watchlist.some(item => item.triggered);
+    if (!document.getElementById('bell-shake-animation')) {
+      const style = document.createElement('style');
+      style.id = 'bell-shake-animation';
+      style.innerHTML = `
+        @keyframes bellRing {
+          0% { transform: rotate(0deg); }
+          15% { transform: rotate(14deg); }
+          30% { transform: rotate(-14deg); }
+          45% { transform: rotate(10deg); }
+          60% { transform: rotate(-10deg); }
+          75% { transform: rotate(6deg); }
+          90% { transform: rotate(-6deg); }
+          100% { transform: rotate(0deg); }
+        }
+        .shaking-bell {
+          display: inline-block;
+          animation: bellRing 1.2s infinite ease-in-out;
+          transform-origin: top center;
+          color: #fbbf24;
+          filter: drop-shadow(0 0 5px rgba(251, 191, 36, 0.9));
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }, []);
+
+  // ฟังก์ชันจัดการป้ายแจ้งเตือน (Badge กระดิ่งสีทองพร้อมตัวเลข) ที่ตัวนักบินอวกาศ
+  useEffect(() => {
+    const triggeredCount = watchlist.filter(item => item.triggered).length;
     const astronautEl = document.querySelector('.moon-float');
     if (astronautEl) {
-      let badge = astronautEl.querySelector('.moon-badge-dot');
-      if (hasTriggered) {
+      let badge = astronautEl.querySelector('.moon-badge-container');
+      if (triggeredCount > 0) {
         if (!badge) {
           badge = document.createElement('div');
-          badge.className = 'moon-badge-dot';
+          badge.className = 'moon-badge-container';
           badge.style.position = 'absolute';
-          badge.style.top = '2px';
-          badge.style.right = '2px';
-          badge.style.width = '14px';
-          badge.style.height = '14px';
-          badge.style.backgroundColor = '#ef4444';
-          badge.style.borderRadius = '50%';
-          badge.style.border = '2px solid #030712';
+          badge.style.top = '-4px';
+          badge.style.right = '-4px';
+          badge.style.display = 'flex';
+          badge.style.alignItems = 'center';
+          badge.style.justifyContent = 'center';
           badge.style.zIndex = '100000';
-          badge.style.boxShadow = '0 0 8px #ef4444';
           if (window.getComputedStyle(astronautEl).position === 'static') {
             astronautEl.style.position = 'relative';
           }
           astronautEl.appendChild(badge);
         }
+        badge.innerHTML = `
+          <div style="position: relative; display: inline-flex; align-items: center; justify-content: center;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.8));">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            </svg>
+            <span style="position: absolute; top: -6px; right: -8px; background-color: #ef4444; color: #fff; font-size: 10px; font-weight: bold; width: 16px; height: 16px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1px solid #030712; box-shadow: 0 0 6px #ef4444;">${triggeredCount}</span>
+          </div>
+        `;
       } else {
         if (badge) badge.remove();
       }
@@ -775,7 +809,14 @@ export default function MoonAssistantChat() {
               {sortedWatchlist.length === 0 ? <p style={{ color: '#64748b', fontSize: '12px' }}>ยังไม่มีรายการ</p> : sortedWatchlist.map((item, idx) => (
                 <div key={idx} style={{ padding: '10px 12px', backgroundColor: item.triggered ? 'rgba(251, 191, 36, 0.08)' : 'transparent', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid rgba(255,255,255,0.08)', width: '100%', gap: '8px' }}>
                   <div style={{ fontSize: '12.5px', color: '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    {item.triggered && <span style={{ fontSize: '14px' }} title="แจ้งเตือนราคาถึงเป้าหมาย">🔔</span>}
+                    {item.triggered && (
+                      <span className="shaking-bell" title="แจ้งเตือนราคาถึงเป้าหมาย">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                        </svg>
+                      </span>
+                    )}
                     <span style={{ fontWeight: 600, color: '#fde047' }}>{item.name}</span>
                     <span style={{ color: '#94a3b8' }}>({item.condition || '<='} {item.price})</span>
                     {item.reason && <span style={{ color: '#94a3b8' }}>- {item.reason}</span>}
