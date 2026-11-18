@@ -21,11 +21,17 @@ export default function MoonAssistantChat() {
   const fileInputRef = useRef(null);
   const importFileRef = useRef(null);
 
-  // ฟังก์ชันตรวจสอบราคา Watchlist พร้อมระบบจับคู่ยืดหยุ่น (รองรับ .BK และตัวพิมพ์ใหญ่/เล็ก)
+  // ฟังก์ชันตรวจสอบราคา Watchlist โดยแนบ API Key เพื่อดึงข้อมูลจาก Backend
   const checkWatchlistAlerts = async (currentWatchlist) => {
     if (!currentWatchlist || currentWatchlist.length === 0) return currentWatchlist;
     try {
-      const response = await fetch('https://portfolio-price-backend.vercel.app/api/prices');
+      const apiKey = 'da5u6l1r01qg0j89hjm0da5u6l1r01qg0j89hjmg';
+      const response = await fetch(`https://portfolio-price-backend.vercel.app/api/prices?key=${apiKey}`, {
+        headers: {
+          'x-api-key': apiKey,
+          'Authorization': `Bearer ${apiKey}`
+        }
+      });
       const data = await response.json();
       
       let priceMap = {};
