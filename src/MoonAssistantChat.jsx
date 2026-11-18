@@ -22,6 +22,41 @@ export default function MoonAssistantChat() {
   const fileInputRef = useRef(null);
   const importFileRef = useRef(null);
 
+  // ฟังก์ชันโหลดข้อมูลพอร์ตอย่างมีประสิทธิภาพ
+  const loadPortfolioHoldings = async () => {
+    try {
+      let holdings = [];
+      if (window.storage && typeof window.storage.get === 'function') {
+        const r = await window.storage.get('holdings', false);
+        if (r && r.value) {
+          const parsed = JSON.parse(r.value);
+          if (Array.isArray(parsed)) holdings = parsed;
+        }
+      }
+      if (holdings.length === 0) {
+        const stored = localStorage.getItem('holdings');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) holdings = parsed;
+        }
+      }
+      setPortfolioHoldings(holdings);
+      return holdings;
+    } catch (e) {
+      const stored = localStorage.getItem('holdings');
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            setPortfolioHoldings(parsed);
+            return parsed;
+          }
+        } catch (err) {}
+      }
+      return [];
+    }
+  };
+
   // ฟังก์ชันตรวจสอบราคา Watchlist เทียบกับข้อมูลในพอร์ต
   const checkWatchlistAlerts = (holdingsList, currentWatchlist) => {
     if (!holdingsList || holdingsList.length === 0 || !currentWatchlist || currentWatchlist.length === 0) return currentWatchlist;
@@ -30,15 +65,16 @@ export default function MoonAssistantChat() {
     let stateChanged = false;
 
     const updatedWatchlist = currentWatchlist.map(item => {
+      const itemName = String(item.name || '').trim().toUpperCase();
+
       const matchedHolding = holdingsList.find(h => {
         const hName = String(h.name || '').trim().toUpperCase();
         const hTicker = String(h.ticker || '').trim().toUpperCase();
-        const itemName = String(item.name || '').trim().toUpperCase();
         return hName === itemName || hTicker === itemName || hName.includes(itemName) || hTicker.includes(itemName);
       });
 
       if (matchedHolding) {
-        const currentPrice = parseFloat(matchedHolding.currentPrice || matchedHolding.price || 0);
+        const currentPrice = parseFloat(matchedHolding.currentPrice || matchedHolding.price || matchedHolding.close || 0);
         const targetPrice = parseFloat(item.price || 0);
         const condition = item.condition || '<=';
 
@@ -83,47 +119,31 @@ export default function MoonAssistantChat() {
     return updatedWatchlist;
   };
 
-  // ดึงข้อมูลพอร์ตและเช็ก Watchlist
-  const fetchHoldingsAndCheck = () => {
-    try {
-      let holdings = [];
-      if (window.storage && typeof window.storage.get === 'function') {
-        const r = window.storage.get('holdings', false);
-        if (r && r.value) {
-          const parsed = JSON.parse(r.value);
-          if (Array.isArray(parsed)) holdings = parsed;
-        }
-      }
-      if (holdings.length === 0) {
-        const stored = localStorage.getItem('holdings');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed)) holdings = parsed;
-        }
-      }
-      setPortfolioHoldings(holdings);
-
-      const currentWL = JSON.parse(localStorage.getItem('moon_watchlist') || '[]');
-      if (currentWL.length > 0 && holdings.length > 0) {
-        checkWatchlistAlerts(holdings, currentWL);
-      }
-    } catch (e) {
-      // ignore
-    }
-  };
-
+  // โหลดข้อมูลเมื่อเปิดหน้าต่างแอป
   useEffect(() => {
-    fetchHoldingsAndCheck();
+    loadHoldingsAsync();
     const savedWatchlist = localStorage.getItem('moon_watchlist');
     if (savedWatchlist) {
       setWatchlist(JSON.parse(savedWatchlist));
     }
   }, [isOpen]);
 
-  // ตั้งเวลาตรวจสอบซ้ำทุก 10 วินาที
+  const loadHoldingsAsync = async () => {
+    const holdings = await loadPortfolioHoldings();
+    const currentWL = JSON.parse(localStorage.getItem('moon_watchlist') || '[]');
+    if (currentWL.length > 0 && holdings.length > 0) {
+      checkWatchlistAlerts(holdings, currentWL);
+    }
+  };
+
+  // ตรวจสอบราคาอัตโนมัติทุก 10 วินาที
   useEffect(() => {
-    const interval = setInterval(() => {
-      fetchHoldingsAndCheck();
+    const interval = setInterval(async () => {
+      const holdings = await loadPortfolioHoldings();
+      const currentWL = JSON.parse(localStorage.getItem('moon_watchlist') || '[]');
+      if (currentWL.length > 0 && holdings.length > 0) {
+        checkWatchlistAlerts(holdings, currentWL);
+      }
     }, 10000);
     return () => clearInterval(interval);
   }, []);
