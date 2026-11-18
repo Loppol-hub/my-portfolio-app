@@ -300,10 +300,12 @@ export default function MoonAssistantChat() {
     }
   };
 
-  const triggerBackendAction = async (actionType, customText = '') => {
+    const triggerBackendAction = async (actionType, customText = '') => {
     setLoading(true);
     const portfolio = getPortfolioData();
-    const backendUrl = (window.storage && window.storage.get('backend-url')) || '/api/apianalyze';
+    
+    // แก้ไขจุดที่ผิดพลาด: กำหนด URL ไปที่ Backend บน Vercel ให้ถูกต้องโดยตรง
+    const backendUrl = 'https://portfolio-price-backend.vercel.app/api/apianalyze';
 
     try {
       const response = await fetch(backendUrl, {
@@ -336,7 +338,6 @@ export default function MoonAssistantChat() {
       setInputMessage('');
     }
   };
-
   const handleSendMessage = (e) => {
     e.preventDefault();
     if (!inputMessage.trim() && !fileContent) return;
