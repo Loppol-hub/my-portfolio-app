@@ -21,12 +21,44 @@ export default function MoonAssistantChat() {
   const fileInputRef = useRef(null);
   const importFileRef = useRef(null);
 
-  // ฟังก์ชันตรวจสอบราคา Watchlist โดยแนบ API Key เพื่อดึงข้อมูลจาก Backend
+  // ฟังก์ชันดึง Endpoint และ API Key ตามที่ตั้งค่าไว้ในระบบ
+  const getApiConfig = () => {
+    let endpoint = 'https://portfolio-price-backend.vercel.app/api/prices';
+    let apiKey = 'da5u6l1r01qg0j89hjm0da5u6l1r01qg0j89hjmg';
+
+    try {
+      if (window.storage && typeof window.storage.get === 'function') {
+        const storedUrl = window.storage.get('backend-url');
+        if (storedUrl) endpoint = storedUrl;
+      }
+      const lsUrl = localStorage.getItem('backend-url') || localStorage.getItem('api_endpoint');
+      if (lsUrl) endpoint = lsUrl;
+
+      const lsKey = localStorage.getItem('api_key') || localStorage.getItem('backend_key');
+      if (lsKey) apiKey = lsKey;
+    } catch (e) {
+      // fallback
+    }
+    return { endpoint, apiKey };
+  };
+
+  // ฟังก์ชันตรวจสอบราคา Watchlist โดยอิงตาม Endpoint ของระบบ
   const checkWatchlistAlerts = async (currentWatchlist) => {
     if (!currentWatchlist || currentWatchlist.length === 0) return currentWatchlist;
     try {
-      const apiKey = 'da5u6l1r01qg0j89hjm0da5u6l1r01qg0j89hjmg';
-      const response = await fetch(`https://portfolio-price-backend.vercel.app/api/prices?key=${apiKey}`, {
+      const { endpoint, apiKey } = getApiConfig();
+      // จัดการ URL ให้ถูกต้อง (ถ้าใส่มาแค่ /api/prices ให้ใช้โดเมนหลัก)
+      let targetUrl = endpoint;
+      if (targetUrl.startsWith('/')) {
+        targetUrl = window.location.origin + targetUrl;
+      }
+      if (!targetUrl.includes('?')) {
+        targetUrl += `?key=${apiKey}`;
+      } else {
+        targetUrl += `&key=${apiKey}`;
+      }
+
+      const response = await fetch(targetUrl, {
         headers: {
           'x-api-key': apiKey,
           'Authorization': `Bearer ${apiKey}`
@@ -35,8 +67,9 @@ export default function MoonAssistantChat() {
       const data = await response.json();
       
       let priceMap = {};
-      if (Array.isArray(data)) {
-        data.forEach(item => {
+      const itemsList = Array.isArray(data) ? data : (data.prices || data.data || Object.values(data));
+      if (Array.isArray(itemsList)) {
+        itemsList.forEach(item => {
           const key = String(item.symbol || item.ticker || item.name || item.code || '').trim().toUpperCase();
           const val = parseFloat(item.price || item.currentPrice || item.close || item.lastPrice || 0);
           if (key) priceMap[key] = val;
@@ -53,7 +86,6 @@ export default function MoonAssistantChat() {
       const updatedWatchlist = currentWatchlist.map(item => {
         const itemName = String(item.name || '').trim().toUpperCase();
         
-        // ค้นหาราคาแบบยืดหยุ่น (รองรับกรณีมีหรือไม่มี .BK ต่อท้าย)
         let currentPrice = 0;
         if (priceMap[itemName] !== undefined) {
           currentPrice = priceMap[itemName];
@@ -260,7 +292,8 @@ export default function MoonAssistantChat() {
   const triggerBackendAction = async (actionType, customText = '') => {
     setLoading(true);
     const portfolio = getPortfolioData();
-    const backendUrl = (window.storage && window.storage.get('backend-url')) || '/api/apianalyze';
+    const { endpoint } = getApiConfig();
+    const backendUrl = endpoint.replace('/prices', '/apianalyze') || '/api/apianalyze';
 
     try {
       const response = await fetch(backendUrl, {
@@ -339,7 +372,6 @@ export default function MoonAssistantChat() {
     setMenuOpen(false);
     setAssetSubView(null);
 
-    // หากกดเข้าไปหน้าแชท ให้ถือว่ารับทราบการแจ้งเตือนแล้ว (เคลียร์สถานะกระดิ่ง/จัดลำดับ)
     if (tabKey === 'chat') {
       const cleared = watchlist.map(item => ({ ...item, triggered: false }));
       setWatchlist(cleared);
@@ -395,7 +427,6 @@ export default function MoonAssistantChat() {
   const globalStocks = portfolioHoldings.filter(h => h && (h.type === 'foreign_stock' || h.instrumentType === 'dr'));
   const cryptoStocks = portfolioHoldings.filter(h => h && h.type === 'crypto');
 
-  // จัดเรียง Watchlist: รายการที่แจ้งเตือน (triggered) จะถูกดันขึ้นมาอยู่ด้านบนสุด
   const sortedWatchlist = [...watchlist].sort((a, b) => {
     if (a.triggered && !b.triggered) return -1;
     if (!a.triggered && b.triggered) return 1;
