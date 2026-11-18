@@ -22,6 +22,37 @@ export default function MoonAssistantChat() {
   const fileInputRef = useRef(null);
   const importFileRef = useRef(null);
 
+  // ฟังก์ชันจัดการจุดแจ้งเตือน (Badge) ที่ตัวนักบินอวกาศหน้าพอร์ต
+  useEffect(() => {
+    const hasTriggered = watchlist.some(item => item.triggered);
+    const astronautEl = document.querySelector('.moon-float');
+    if (astronautEl) {
+      let badge = astronautEl.querySelector('.moon-badge-dot');
+      if (hasTriggered) {
+        if (!badge) {
+          badge = document.createElement('div');
+          badge.className = 'moon-badge-dot';
+          badge.style.position = 'absolute';
+          badge.style.top = '2px';
+          badge.style.right = '2px';
+          badge.style.width = '14px';
+          badge.style.height = '14px';
+          badge.style.backgroundColor = '#ef4444';
+          badge.style.borderRadius = '50%';
+          badge.style.border = '2px solid #030712';
+          badge.style.zIndex = '100000';
+          badge.style.boxShadow = '0 0 8px #ef4444';
+          if (window.getComputedStyle(astronautEl).position === 'static') {
+            astronautEl.style.position = 'relative';
+          }
+          astronautEl.appendChild(badge);
+        }
+      } else {
+        if (badge) badge.remove();
+      }
+    }
+  }, [watchlist]);
+
   // ฟังก์ชันโหลดข้อมูลพอร์ตอย่างมีประสิทธิภาพ
   const loadPortfolioHoldings = async () => {
     try {
