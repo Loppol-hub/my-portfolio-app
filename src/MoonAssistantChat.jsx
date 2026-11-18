@@ -31,8 +31,8 @@ export default function MoonAssistantChat() {
       let priceMap = {};
       if (Array.isArray(data)) {
         data.forEach(item => {
-          const key = String(item.symbol || item.ticker || item.name || '').trim().toUpperCase();
-          const val = parseFloat(item.price || item.currentPrice || 0);
+          const key = String(item.symbol || item.ticker || item.name || item.code || '').trim().toUpperCase();
+          const val = parseFloat(item.price || item.currentPrice || item.close || item.lastPrice || 0);
           if (key) priceMap[key] = val;
         });
       } else if (data && typeof data === 'object') {
@@ -41,7 +41,7 @@ export default function MoonAssistantChat() {
         });
       }
 
-      let triggeredAlerts = [];
+      let newMessages = [];
       let stateChanged = false;
 
       const updatedWatchlist = currentWatchlist.map(item => {
@@ -59,20 +59,34 @@ export default function MoonAssistantChat() {
             isConditionMet = true;
           }
 
-          if (isConditionMet && !item.alerted) {
-            triggeredAlerts.push(`🚨 แจ้งเตือน Watchlist: สินทรัพย์ [${item.name}] ราคาปัจจุบันอยู่ที่ ${currentPrice} (${condition} ${targetPrice}) ${item.reason ? `เหตุผล: ${item.reason}` : ''}`);
-            stateChanged = true;
-            return { ...item, alerted: true };
+          if (isConditionMet) {
+            if (!item.triggered) {
+              stateChanged = true;
+              item = { ...item, triggered: true };
+            }
+            if (!item.alerted) {
+              newMessages.push(`🚨 แจ้งเตือน Watchlist: สินทรัพย์ [${item.name}] ราคาปัจจุบันอยู่ที่ ${currentPrice} (${condition} ${targetPrice}) ${item.reason ? `เหตุผล: ${item.reason}` : ''}`);
+              item = { ...item, alerted: true };
+              stateChanged = true;
+            }
+          } else {
+            if (item.alerted) {
+              item = { ...item, alerted: false };
+              stateChanged = true;
+            }
           }
         }
         return item;
       });
 
-      if (triggeredAlerts.length > 0) {
+      if (newMessages.length > 0) {
         setMessages(prev => [
           ...prev,
-          ...triggeredAlerts.map(alertText => ({ sender: 'ai', text: alertText }))
+          ...newMessages.map(alertText => ({ sender: 'ai', text: alertText }))
         ]);
+      }
+
+      if (stateChanged || newMessages.length > 0) {
         setWatchlist(updatedWatchlist);
         localStorage.setItem('moon_watchlist', JSON.stringify(updatedWatchlist));
       }
@@ -81,6 +95,28 @@ export default function MoonAssistantChat() {
       return currentWatchlist;
     }
   };
+
+  // ตรวจสอบทันทีที่เปิดแอปหรือรีเฟรชหน้าเว็บ
+  useEffect(() => {
+    const savedWatchlist = localStorage.getItem('moon_watchlist');
+    if (savedWatchlist) {
+      const parsed = JSON.parse(savedWatchlist);
+      setWatchlist(parsed);
+      checkWatchlistAlerts(parsed);
+    }
+  }, []);
+
+  // ระบบตั้งเวลาตรวจสอบราคาอัตโนมัติทุกๆ 30 วินาที
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const currentWL = JSON.parse(localStorage.getItem('moon_watchlist') || '[]');
+      if (currentWL.length > 0) {
+        checkWatchlistAlerts(currentWL);
+      }
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const fetchHoldingsAsync = async () => {
@@ -109,22 +145,8 @@ export default function MoonAssistantChat() {
 
     if (isOpen) {
       fetchHoldingsAsync();
-      const currentWL = JSON.parse(localStorage.getItem('moon_watchlist') || '[]');
-      checkWatchlistAlerts(currentWL);
     }
   }, [isOpen]);
-
-  // ระบบตั้งเวลาตรวจสอบราคาอัตโนมัติทุกๆ 30 วินาที (ทำงานตลอดเวลาที่คอมโพเนนต์ถูกเรนเดอร์)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const currentWL = JSON.parse(localStorage.getItem('moon_watchlist') || '[]');
-      if (currentWL.length > 0) {
-        checkWatchlistAlerts(currentWL);
-      }
-    }, 30000); // ทุก 30 วินาที
-
-    return () => clearInterval(interval);
-  }, []);
 
   useEffect(() => {
     let startX = 0;
@@ -177,9 +199,6 @@ export default function MoonAssistantChat() {
         localStorage.removeItem('moon_chat_timestamp');
       }
     }
-
-    const savedWatchlist = localStorage.getItem('moon_watchlist');
-    if (savedWatchlist) setWatchlist(JSON.parse(savedWatchlist));
 
     const savedPrompt = localStorage.getItem('moon_custom_prompt');
     if (savedPrompt) setCustomPrompt(savedPrompt);
@@ -283,7 +302,7 @@ export default function MoonAssistantChat() {
   const handleAddWatchlist = (e) => {
     e.preventDefault();
     if (!newAsset.name || !newAsset.price) return;
-    const updated = [...watchlist, { ...newAsset, name: newAsset.name.toUpperCase(), alerted: false }];
+    const updated = [...watchlist, { ...newAsset, name: newAsset.name.toUpperCase(), alerted: false, triggered: false }];
     setWatchlist(updated);
     localStorage.setItem('moon_watchlist', JSON.stringify(updated));
     setNewAsset({ name: '', condition: '<=', price: '', reason: '' });
@@ -291,6 +310,19 @@ export default function MoonAssistantChat() {
       ...prev,
       { sender: 'ai', text: `🎯 ตั้งระบบเรดาร์ติดตามราคา ${newAsset.name.toUpperCase()} (${newAsset.condition} ${newAsset.price}) เรียบร้อยครับ!` }
     ]);
+  };
+
+  const handleTabChange = (tabKey) => {
+    setActiveTab(tabKey);
+    setMenuOpen(false);
+    setAssetSubView(null);
+
+    // หากกดเข้าไปหน้าแชท ให้ถือว่ารับทราบการแจ้งเตือนแล้ว (เคลียร์สถานะกระดิ่ง/จัดลำดับ)
+    if (tabKey === 'chat') {
+      const cleared = watchlist.map(item => ({ ...item, triggered: false }));
+      setWatchlist(cleared);
+      localStorage.setItem('moon_watchlist', JSON.stringify(cleared));
+    }
   };
 
   const handleExportData = () => {
@@ -340,6 +372,13 @@ export default function MoonAssistantChat() {
   const thStocks = portfolioHoldings.filter(h => h && h.type === 'th_stock' && h.instrumentType !== 'dr');
   const globalStocks = portfolioHoldings.filter(h => h && (h.type === 'foreign_stock' || h.instrumentType === 'dr'));
   const cryptoStocks = portfolioHoldings.filter(h => h && h.type === 'crypto');
+
+  // จัดเรียง Watchlist: รายการที่แจ้งเตือน (triggered) จะถูกดันขึ้นมาอยู่ด้านบนสุด
+  const sortedWatchlist = [...watchlist].sort((a, b) => {
+    if (a.triggered && !b.triggered) return -1;
+    if (!a.triggered && b.triggered) return 1;
+    return 0;
+  });
 
   const formatStockLabel = (stock) => {
     const name = String(stock.name || '').trim();
@@ -467,7 +506,7 @@ export default function MoonAssistantChat() {
             ].map((tab) => (
               <button
                 key={tab.key}
-                onClick={() => { setActiveTab(tab.key); setMenuOpen(false); setAssetSubView(null); }}
+                onClick={() => handleTabChange(tab.key)}
                 style={{
                   textAlign: 'left',
                   padding: '8px 12px',
@@ -535,10 +574,10 @@ export default function MoonAssistantChat() {
         {activeTab === 'health' && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '8px', width: '100%', maxWidth: '500px' }}>
             <h4 style={{ color: '#fbbf24', fontSize: '14px', fontWeight: 500, marginBottom: '4px' }}>สุขภาพพอร์ต</h4>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('deep_analysis', 'วิเคราะห์พอร์ตการลงทุนเชิงลึกให้หน่อยครับ'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
+            <button onClick={() => { handleTabChange('chat'); triggerBackendAction('deep_analysis', 'วิเคราะห์พอร์ตการลงทุนเชิงลึกให้หน่อยครับ'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
               วิเคราะห์พอร์ตเชิงลึก
             </button>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('portfolio_summary', 'สรุปภาพรวมพอร์ตในเดือนนี้ให้หน่อยครับ'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
+            <button onClick={() => { handleTabChange('chat'); triggerBackendAction('portfolio_summary', 'สรุปภาพรวมพอร์ตในเดือนนี้ให้หน่อยครับ'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
               สรุปภาพรวมประจำเดือน
             </button>
           </div>
@@ -563,7 +602,7 @@ export default function MoonAssistantChat() {
                       <button 
                         key={stock.id || idx} 
                         onClick={() => { 
-                          setActiveTab('chat'); 
+                          handleTabChange('chat'); 
                           setAssetSubView(null);
                           triggerBackendAction('asset_analysis', `วิเคราะห์หุ้นไทย ${labelText} ในพอร์ตให้หน่อยครับ`); 
                         }} 
@@ -590,7 +629,7 @@ export default function MoonAssistantChat() {
                       <button 
                         key={stock.id || idx} 
                         onClick={() => { 
-                          setActiveTab('chat'); 
+                          handleTabChange('chat'); 
                           setAssetSubView(null);
                           triggerBackendAction('asset_analysis', `วิเคราะห์หุ้นต่างประเทศหรือ DR ${labelText} ในพอร์ตให้หน่อยครับ`); 
                         }} 
@@ -617,7 +656,7 @@ export default function MoonAssistantChat() {
                       <button 
                         key={stock.id || idx} 
                         onClick={() => { 
-                          setActiveTab('chat'); 
+                          handleTabChange('chat'); 
                           setAssetSubView(null);
                           triggerBackendAction('asset_analysis', `วิเคราะห์คริปโต ${labelText} ในพอร์ตให้หน่อยครับ`); 
                         }} 
@@ -640,7 +679,7 @@ export default function MoonAssistantChat() {
                 <button onClick={() => setAssetSubView('crypto')} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
                   คริปโตเคอร์เรนซี ({cryptoStocks.length})
                 </button>
-                <button onClick={() => { setActiveTab('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์ทิศทางราคาทองคำ'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
+                <button onClick={() => { handleTabChange('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์ทิศทางราคาทองคำ'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
                   ทองคำ
                 </button>
               </>
@@ -651,10 +690,10 @@ export default function MoonAssistantChat() {
         {activeTab === 'news' && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '8px', width: '100%', maxWidth: '500px' }}>
             <h4 style={{ color: '#fbbf24', fontSize: '14px', fontWeight: 500, marginBottom: '4px' }}>ข่าวสารพอร์ต</h4>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์ภูมิรัฐศาสตร์โลกที่มีผลต่อพอร์ต'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
+            <button onClick={() => { handleTabChange('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์ภูมิรัฐศาสตร์โลกที่มีผลต่อพอร์ต'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
               ภูมิรัฐศาสตร์โลก
             </button>
-            <button onClick={() => { setActiveTab('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์เศรษฐกิจมหภาค โลก-ไทย'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
+            <button onClick={() => { handleTabChange('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์เศรษฐกิจมหภาค โลก-ไทย'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
               เศรษฐกิจมหภาค
             </button>
           </div>
@@ -704,15 +743,16 @@ export default function MoonAssistantChat() {
 
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px', width: '100%', marginTop: '6px' }}>
               <span style={{ color: '#94a3b8', fontSize: '12px' }}>รายการเฝ้าระวัง:</span>
-              {watchlist.length === 0 ? <p style={{ color: '#64748b', fontSize: '12px' }}>ยังไม่มีรายการ</p> : watchlist.map((item, idx) => (
-                <div key={idx} style={{ padding: '10px 12px', backgroundColor: 'transparent', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid rgba(255,255,255,0.08)', width: '100%', gap: '8px' }}>
-                  <div style={{ fontSize: '12.5px', color: '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+              {sortedWatchlist.length === 0 ? <p style={{ color: '#64748b', fontSize: '12px' }}>ยังไม่มีรายการ</p> : sortedWatchlist.map((item, idx) => (
+                <div key={idx} style={{ padding: '10px 12px', backgroundColor: item.triggered ? 'rgba(251, 191, 36, 0.08)' : 'transparent', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid rgba(255,255,255,0.08)', width: '100%', gap: '8px' }}>
+                  <div style={{ fontSize: '12.5px', color: '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {item.triggered && <span style={{ fontSize: '14px' }} title="แจ้งเตือนราคาถึงเป้าหมาย">🔔</span>}
                     <span style={{ fontWeight: 600, color: '#fde047' }}>{item.name}</span>
-                    <span style={{ color: '#94a3b8', marginLeft: '6px' }}>({item.condition || '<='} {item.price})</span>
-                    {item.reason && <span style={{ color: '#94a3b8', marginLeft: '6px' }}>- {item.reason}</span>}
+                    <span style={{ color: '#94a3b8' }}>({item.condition || '<='} {item.price})</span>
+                    {item.reason && <span style={{ color: '#94a3b8' }}>- {item.reason}</span>}
                   </div>
                   <button onClick={() => {
-                    const filtered = watchlist.filter((_, i) => i !== idx);
+                    const filtered = watchlist.filter(w => w.name !== item.name);
                     setWatchlist(filtered);
                     localStorage.setItem('moon_watchlist', JSON.stringify(filtered));
                   }} style={{ color: '#fca5a5', background: 'transparent', border: 'none', fontSize: '12px', cursor: 'pointer', flexShrink: 0 }}>ลบ</button>
