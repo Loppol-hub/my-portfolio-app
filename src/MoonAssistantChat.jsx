@@ -14,6 +14,11 @@ export default function MoonAssistantChat() {
   const [watchlist, setWatchlist] = useState([]);
   const [newAsset, setNewAsset] = useState({ name: '', condition: '<=', price: '', reason: '' });
   const [customPrompt, setCustomPrompt] = useState('');
+  
+  // เพิ่ม State สำหรับตั้งค่า API Endpoint และ API Key ภายในแชท
+  const [apiEndpoint, setApiEndpoint] = useState('https://portfolio-price-backend.vercel.app/api/prices');
+  const [apiKeyInput, setApiKeyInput] = useState('da5u6l1r01qg0j89hjm0da5u6l1r01qg0j89hjmg');
+
   const [uploadedFileName, setUploadedFileName] = useState('');
   const [fileContent, setFileContent] = useState('');
 
@@ -21,49 +26,47 @@ export default function MoonAssistantChat() {
   const fileInputRef = useRef(null);
   const importFileRef = useRef(null);
 
-  // ฟังก์ชันดึง Endpoint และ API Key ตามที่ตั้งค่าไว้ในระบบ
+  // โหลดการตั้งค่า API จาก localStorage เมื่อเริ่มระบบ
+  useEffect(() => {
+    const savedEndpoint = localStorage.getItem('moon_api_endpoint') || localStorage.getItem('backend-url');
+    if (savedEndpoint) setApiEndpoint(savedEndpoint);
+
+    const savedKey = localStorage.getItem('moon_api_key') || localStorage.getItem('api_key');
+    if (savedKey) setApiKeyInput(savedKey);
+  }, []);
+
+  // ฟังก์ชันดึงค่า API Config
   const getApiConfig = () => {
-    let endpoint = 'https://portfolio-price-backend.vercel.app/api/prices';
-    let apiKey = 'da5u6l1r01qg0j89hjm0da5u6l1r01qg0j89hjmg';
-
-    try {
-      if (window.storage && typeof window.storage.get === 'function') {
-        const storedUrl = window.storage.get('backend-url');
-        if (storedUrl) endpoint = storedUrl;
-      }
-      const lsUrl = localStorage.getItem('backend-url') || localStorage.getItem('api_endpoint');
-      if (lsUrl) endpoint = lsUrl;
-
-      const lsKey = localStorage.getItem('api_key') || localStorage.getItem('backend_key');
-      if (lsKey) apiKey = lsKey;
-    } catch (e) {
-      // fallback
-    }
-    return { endpoint, apiKey };
+    return {
+      endpoint: apiEndpoint || 'https://portfolio-price-backend.vercel.app/api/prices',
+      apiKey: apiKeyInput || 'da5u6l1r01qg0j89hjm0da5u6l1r01qg0j89hjmg'
+    };
   };
 
-  // ฟังก์ชันตรวจสอบราคา Watchlist โดยอิงตาม Endpoint ของระบบ
+  // ฟังก์ชันตรวจสอบราคา Watchlist
   const checkWatchlistAlerts = async (currentWatchlist) => {
     if (!currentWatchlist || currentWatchlist.length === 0) return currentWatchlist;
     try {
       const { endpoint, apiKey } = getApiConfig();
-      // จัดการ URL ให้ถูกต้อง (ถ้าใส่มาแค่ /api/prices ให้ใช้โดเมนหลัก)
-      let targetUrl = endpoint;
+      let targetUrl = endpoint.trim();
       if (targetUrl.startsWith('/')) {
         targetUrl = window.location.origin + targetUrl;
       }
-      if (!targetUrl.includes('?')) {
-        targetUrl += `?key=${apiKey}`;
-      } else {
-        targetUrl += `&key=${apiKey}`;
+      if (apiKey) {
+        if (!targetUrl.includes('?')) {
+          targetUrl += `?key=${apiKey}`;
+        } else if (!targetUrl.includes('key=')) {
+          targetUrl += `&key=${apiKey}`;
+        }
       }
 
-      const response = await fetch(targetUrl, {
-        headers: {
-          'x-api-key': apiKey,
-          'Authorization': `Bearer ${apiKey}`
-        }
-      });
+      const headers = {};
+      if (apiKey) {
+        headers['x-api-key'] = apiKey;
+        headers['Authorization'] = `Bearer ${apiKey}`;
+      }
+
+      const response = await fetch(targetUrl, { headers });
       const data = await response.json();
       
       let priceMap = {};
@@ -150,7 +153,7 @@ export default function MoonAssistantChat() {
     }
   };
 
-  // ตรวจสอบทันทีที่เปิดแอปหรือรีเฟรชหน้าเว็บ
+  // ตรวจสอบทันทีที่เปิดแอปหรือรีเฟรช
   useEffect(() => {
     const savedWatchlist = localStorage.getItem('moon_watchlist');
     if (savedWatchlist) {
@@ -170,7 +173,7 @@ export default function MoonAssistantChat() {
     }, 30000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [apiEndpoint, apiKeyInput]);
 
   useEffect(() => {
     const fetchHoldingsAsync = async () => {
@@ -293,7 +296,7 @@ export default function MoonAssistantChat() {
     setLoading(true);
     const portfolio = getPortfolioData();
     const { endpoint } = getApiConfig();
-    const backendUrl = endpoint.replace('/prices', '/apianalyze') || '/api/apianalyze';
+    const backendUrl = endpoint.includes('/prices') ? endpoint.replace('/prices', '/apianalyze') : (endpoint + '/apianalyze');
 
     try {
       const response = await fetch(backendUrl, {
@@ -817,12 +820,42 @@ export default function MoonAssistantChat() {
 
         {activeTab === 'settings' && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '10px', width: '100%', maxWidth: '500px' }}>
-            <h4 style={{ color: '#fbbf24', fontSize: '14px', fontWeight: 500 }}>ตั้งค่า</h4>
+            <h4 style={{ color: '#fbbf24', fontSize: '14px', fontWeight: 500 }}>ตั้งค่าระบบ</h4>
+            
+            <div style={{ padding: '12px', width: '100%', backgroundColor: 'transparent', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }}>
+              <span style={{ color: '#cbd5e1', fontSize: '12.5px' }}>Backend API Endpoint:</span>
+              <input 
+                type="text" 
+                value={apiEndpoint} 
+                onChange={(e) => {
+                  setApiEndpoint(e.target.value);
+                  localStorage.setItem('moon_api_endpoint', e.target.value);
+                }} 
+                placeholder="https://.../api/prices" 
+                style={{ padding: '8px 10px', backgroundColor: '#030712', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#fff', fontSize: '12.5px', width: '100%' }} 
+              />
+            </div>
+
+            <div style={{ padding: '12px', width: '100%', backgroundColor: 'transparent', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }}>
+              <span style={{ color: '#cbd5e1', fontSize: '12.5px' }}>API Key:</span>
+              <input 
+                type="text" 
+                value={apiKeyInput} 
+                onChange={(e) => {
+                  setApiKeyInput(e.target.value);
+                  localStorage.setItem('moon_api_key', e.target.value);
+                }} 
+                placeholder="กรอก API Key..." 
+                style={{ padding: '8px 10px', backgroundColor: '#030712', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#fff', fontSize: '12.5px', width: '100%' }} 
+              />
+            </div>
+
             <div style={{ padding: '12px', width: '100%', backgroundColor: 'transparent', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }}>
               <span style={{ color: '#cbd5e1', fontSize: '12.5px' }}>อัปโหลดไฟล์ข้อมูล:</span>
               <input type="file" onChange={handleFileSelect} style={{ color: '#94a3b8', fontSize: '12px' }} />
               {uploadedFileName && <p style={{ color: '#4ade80', fontSize: '12px', margin: 0 }}>{uploadedFileName}</p>}
             </div>
+
             <div style={{ padding: '12px', width: '100%', backgroundColor: 'transparent', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }}>
               <span style={{ color: '#cbd5e1', fontSize: '12.5px' }}>Custom Prompt:</span>
               <textarea rows="3" placeholder="ระบุสไตล์การตอบ..." value={customPrompt} onChange={(e) => { setCustomPrompt(e.target.value); localStorage.setItem('moon_custom_prompt', e.target.value); }} style={{ padding: '10px', backgroundColor: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff', fontSize: '13px', width: '100%' }} />
