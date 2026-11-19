@@ -3359,9 +3359,11 @@ export default function PortfolioApp() {
                   let displayPnl = log.pnlThb !== undefined ? log.pnlThb : ((log.pnl !== undefined) ? (isUsdAsset ? (log.pnl * logFx) : log.pnl) : undefined);
                   const effInst = getEffectiveInstrumentType(log.assetType, log.instrumentType);
                   const excludeFee = isFeeExcludedFromAssetCost(log.assetType, effInst);
-                  if (!isBuy && displayPnl !== undefined && excludeFee && log.feeThbRecord) {
-                    displayPnl -= log.feeThbRecord;
-                  }
+      
+                  // ยกเว้นหุ้นนอก (foreign_stock) ไม่ให้เอาค่าธรรมเนียมมาหักลบออกจากกำไรสุทธิ
+                  if (!isBuy && displayPnl !== undefined && excludeFee && log.feeThbRecord && log.assetType !== 'foreign_stock') {
+                  displayPnl -= log.feeThbRecord;
+                }
 
                   return (
                     <div key={log.id} style={{ background: 'var(--surface-alt)', border: '1px solid var(--divider)', borderRadius: '10px', padding: '10px 12px', fontSize: '13px' }}>
