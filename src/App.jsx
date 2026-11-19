@@ -605,7 +605,7 @@ export default function PortfolioApp() {
   const capitalReduceTotal = useMemo(() => (ledger || []).filter((e) => e && e.type === 'capital_reduce').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0), [ledger]);
   const capitalAdjTotal = useMemo(() => capitalAddTotal - capitalReduceTotal, [capitalAddTotal, capitalReduceTotal]);
 
-  const combinedLedger = useMemo(() => {
+    const combinedLedger = useMemo(() => {
     let list = Array.isArray(ledger) ? ledger.filter(e => e) : [];
     (tradeLogs || []).forEach((log) => {
       if (log && log.action === 'sell' && log.pnl !== undefined) {
@@ -614,7 +614,9 @@ export default function PortfolioApp() {
         
         const effInst = getEffectiveInstrumentType(log.assetType, log.instrumentType);
         const excludeFee = isFeeExcludedFromAssetCost(log.assetType, effInst);
-        if (excludeFee && log.feeThbRecord) {
+        
+        // ยกเว้นหุ้นนอกและทองคำ ไม่ให้เอาค่าธรรมเนียมมาหักออกจากกำไรในระบบบัญชีเงินสด
+        if (excludeFee && log.feeThbRecord && log.assetType !== 'foreign_stock' && log.assetType !== 'gold') {
           pnlThb -= log.feeThbRecord;
         }
 
