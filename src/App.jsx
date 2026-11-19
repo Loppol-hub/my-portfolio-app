@@ -270,14 +270,17 @@ const thaiDateAD = (iso) => {
 
 const calcDaysAgo = (dateStr) => {
   if (!dateStr) return 0;
+  // ตัดเวลา (ถ้ามี) ออกให้เหลือเฉพาะ YYYY-MM-DD
   const cleanIso = String(dateStr).split('T')[0];
   const parts = cleanIso.split('-');
   if (parts.length !== 3) return 0;
+  
   const [y, m, d] = parts.map(Number);
   const targetDate = new Date(y, m - 1, d);
   if (isNaN(targetDate.getTime())) return 0;
 
   const now = new Date();
+  // เคลียร์ชั่วโมง นาที วินาที ของวันปัจจุบันเพื่อให้คำนวณจำนวนวันได้แม่นยำ
   const nowDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
   const diffTime = nowDate - targetDate;
