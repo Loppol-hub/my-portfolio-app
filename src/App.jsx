@@ -1115,6 +1115,7 @@ export default function PortfolioApp() {
         currentAvg = newAvg;
         currentQty = newQty;
         currentTotalCostThb = currentTotalCostThb + addTotalCostThb;
+        currentPrice = addPrice;
 
         const feeEntryId = Date.now().toString() + '_fee';
         if (excludeFeeFromCost && feeThb > 0) {
@@ -1198,6 +1199,7 @@ export default function PortfolioApp() {
 
         currentTotalCostThb = currentTotalCostThb - costThbSold;
         if (currentQty === 0) currentTotalCostThb = 0;
+        currentPrice = sellPrice;
 
         newLogs.unshift({
           id: Date.now().toString(),
@@ -1253,7 +1255,7 @@ export default function PortfolioApp() {
           type: form.type, 
           quantity: currentQty, 
           avgCost: Number(currentAvg), 
-          currentPrice: price, 
+          currentPrice: currentPrice, 
           currency, 
           industry, 
           instrumentType,
@@ -1278,7 +1280,7 @@ export default function PortfolioApp() {
       let feeThb = 0;
       let recordFeeForDisplay = 0;
 
-      if (!isCash && !isFeeHiddenForType) {
+      if (!isCash) {
         if (isDirectFee) {
           if (isUsdAsset) {
             if (form.feeCurrency === 'THB') {
@@ -1308,7 +1310,7 @@ export default function PortfolioApp() {
 
       let newLedger = [...ledger];
       const feeEntryId = Date.now().toString() + '_fee';
-      if (!isCash && excludeFeeFromCost && feeThb > 0 && !isFeeHiddenForType) {
+      if (!isCash && excludeFeeFromCost && feeThb > 0) {
         newLedger.push({
           id: feeEntryId,
           type: 'fee',
@@ -1348,7 +1350,7 @@ export default function PortfolioApp() {
         price: avg,
         fee: recordFeeForDisplay,
         feeThbRecord: feeThb,
-        ledgerFeeId: excludeFeeFromCost && feeThb > 0 && !isFeeHiddenForType ? feeEntryId : null,
+        ledgerFeeId: excludeFeeFromCost && feeThb > 0 ? feeEntryId : null,
         currency: currency,
         tradeFx: customFx,
         date: form.tradeDate || todayStr(),
@@ -1750,7 +1752,6 @@ export default function PortfolioApp() {
   }, [tradeLogs, fxRate, tradeSearchQuery]);
 
   const isDirectFeeType = checkIsDirectFee(form.type, form.instrumentType);
-  const isFeeHiddenForType = form.type === 'crypto';
   const showTradeFxField = form.type === 'foreign_stock' || form.type === 'gold' || form.instrumentType === 'etf';
 
   return (
@@ -2983,26 +2984,24 @@ export default function PortfolioApp() {
 
                     {!editingId && (
                       <>
-                        {!isFeeHiddenForType && (
-                          <div className="pf-row2">
-                            <div className="pf-field">
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                                <label className="pf-label" style={{ margin: 0 }}>ค่าธรรมเนียม {isDirectFeeType ? '' : '(%)'}</label>
-                                {isDirectFeeType && (
-                                  <div style={{ display: 'flex', gap: '4px' }}>
-                                    <button type="button" className={form.feeCurrency !== 'USD' ? 'pf-year-pill-active' : 'pf-year-pill'} style={{ padding: '1px 6px', fontSize: '10px' }} onClick={() => setForm({ ...form, feeCurrency: 'THB' })}>บาท</button>
-                                    <button type="button" className={form.feeCurrency === 'USD' ? 'pf-year-pill-active' : 'pf-year-pill'} style={{ padding: '1px 6px', fontSize: '10px' }} onClick={() => setForm({ ...form, feeCurrency: 'USD' })}>USD</button>
-                                  </div>
-                                )}
-                              </div>
-                              <input className="pf-input pf-mono" inputMode="decimal" value={form.feePct} onChange={(e) => setForm({ ...form, feePct: e.target.value })} placeholder="0" />
+                        <div className="pf-row2">
+                          <div className="pf-field">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                              <label className="pf-label" style={{ margin: 0 }}>ค่าธรรมเนียม {isDirectFeeType ? '' : '(%)'}</label>
+                              {isDirectFeeType && (
+                                <div style={{ display: 'flex', gap: '4px' }}>
+                                  <button type="button" className={form.feeCurrency !== 'USD' ? 'pf-year-pill-active' : 'pf-year-pill'} style={{ padding: '1px 6px', fontSize: '10px' }} onClick={() => setForm({ ...form, feeCurrency: 'THB' })}>บาท</button>
+                                  <button type="button" className={form.feeCurrency === 'USD' ? 'pf-year-pill-active' : 'pf-year-pill'} style={{ padding: '1px 6px', fontSize: '10px' }} onClick={() => setForm({ ...form, feeCurrency: 'USD' })}>USD</button>
+                                </div>
+                              )}
                             </div>
-                            <div className="pf-field">
-                              <label className="pf-label">วันที่ทำรายการ</label>
-                              <input className="pf-input pf-mono" type="date" value={form.tradeDate} onChange={(e) => setForm({ ...form, tradeDate: e.target.value })} />
-                            </div>
+                            <input className="pf-input pf-mono" inputMode="decimal" value={form.feePct} onChange={(e) => setForm({ ...form, feePct: e.target.value })} placeholder="0" />
                           </div>
-                        )}
+                          <div className="pf-field">
+                            <label className="pf-label">วันที่ทำรายการ</label>
+                            <input className="pf-input pf-mono" type="date" value={form.tradeDate} onChange={(e) => setForm({ ...form, tradeDate: e.target.value })} />
+                          </div>
+                        </div>
                         <div className="pf-field">
                           <label className="pf-label">หมายเหตุการซื้อ</label>
                           <input className="pf-input" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="เช่น ซื้อครั้งแรก" />
@@ -3469,7 +3468,6 @@ export default function PortfolioApp() {
 
       {toast && <div className="pf-toast">{toast}</div>}
 
-      {/* เพิ่มคอมโพเนนต์แชทผู้ช่วย AI ตรงนี้เพื่อดักจับคลิกนักบินอวกาศ */}
       <MoonAssistantChat />
     </div>
   );
