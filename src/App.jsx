@@ -1402,12 +1402,9 @@ export default function PortfolioApp() {
     const feeVal = !isNaN(inputFee) ? inputFee : (editingLog.fee || 0);
     const pnlVal = !isNaN(inputPnl) ? inputPnl : (editingLog.pnl || 0);
     
-    const isUsdAsset = editingLog.currency === 'USD' && editingLog.instrumentType !== 'dr';
-    const logFx = isUsdAsset ? (parseFloat(editingLog.tradeFx) || fxRate) : 1;
-
-    // บันทึกค่าตามที่กรอกตรงๆ โดยไม่มีการคำนวณสูตรเปอร์เซ็นต์ซ้ำซ้อน
-    const updatedFeeThbRecord = isUsdAsset ? feeVal * logFx : feeVal;
-    const updatedPnlThb = isUsdAsset ? pnlVal * logFx : pnlVal;
+    // บันทึกค่าที่ผู้ใช้กรอกลงไปตรงๆ เป็นบาทโดยไม่เอาอัตราแลกเปลี่ยนมาคูณทับ
+    const updatedFeeThbRecord = feeVal;
+    const updatedPnlThb = pnlVal;
 
     const nextLogs = (tradeLogs || []).map(l => l && l.id === editingLog.id ? {
       ...l,
