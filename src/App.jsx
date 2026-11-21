@@ -34,9 +34,9 @@ const checkIsDirectFee = (type, instType) => {
 const isFeeExcludedFromAssetCost = (type, instrumentType) => {
   const effInst = getEffectiveInstrumentType(type, instrumentType);
   if (type === 'th_stock' && effInst === 'stock') return false;
-  if (type === 'crypto') return false;
   return true;
 };
+
 
 const sanitizeAndPruneHistory = (histList) => {
   if (!Array.isArray(histList)) return [];
