@@ -18,9 +18,101 @@ export default function MoonAssistantChat() {
   const [uploadedFileName, setUploadedFileName] = useState('');
   const [fileContent, setFileContent] = useState('');
 
+  const [copiedIndex, setCopiedIndex] = useState(null);
+
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const importFileRef = useRef(null);
+
+  // ฟังก์ชันสำหรับคัดลอกข้อความ
+  const handleCopyText = (text, index) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedIndex(index);
+      setTimeout(() => setCopiedIndex(null), 2000);
+    }).catch(() => {});
+  };
+
+  // ฟังก์ชัน render ข้อความ AI ตามรูปแบบที่กำหนด
+  const renderMessageText = (text) => {
+    if (!text) return null;
+    const lines = text.split('\n');
+    return lines.map((line, idx) => {
+      const trimmed = line.trim();
+
+      if (trimmed === '') {
+        return <div key={idx} style={{ height: '6px' }} />;
+      }
+
+      // บรรทัดสรุปสั้นๆ
+      if (trimmed.startsWith('สรุปสั้นๆ:')) {
+        return (
+          <div key={idx} style={{
+            backgroundColor: 'rgba(251,191,36,0.1)',
+            borderLeft: '3px solid #fbbf24',
+            padding: '8px 12px',
+            borderRadius: '8px',
+            margin: '6px 0',
+            fontWeight: 500,
+            color: '#fde047'
+          }}>
+            {trimmed}
+          </div>
+        );
+      }
+
+      // หัวข้อ (เช่น "1. ภาพรวมพอร์ต")
+      if (/^\d+\.\s/.test(trimmed)) {
+        return (
+          <div key={idx} style={{
+            color: '#fbbf24',
+            fontWeight: 600,
+            fontSize: '15.5px',
+            marginTop: '10px',
+            marginBottom: '4px'
+          }}>
+            {trimmed}
+          </div>
+        );
+      }
+
+      // รายการย่อย (ขึ้นต้นด้วย "- ")
+      if (trimmed.startsWith('- ')) {
+        return (
+          <div key={idx} style={{
+            marginLeft: '12px',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '6px',
+            margin: '3px 0 3px 12px'
+          }}>
+            <span>•</span>
+            <span style={{ flex: 1 }}>{trimmed.slice(2)}</span>
+          </div>
+        );
+      }
+
+      // แหล่งข้อมูล หรือ ข้อมูลที่ยังไม่ครบ
+      if (trimmed.startsWith('แหล่งข้อมูล:') || trimmed.startsWith('ข้อมูลที่ยังไม่ครบ:')) {
+        return (
+          <div key={idx} style={{ color: '#94a3b8', fontSize: '13px', marginTop: '6px' }}>
+            {trimmed}
+          </div>
+        );
+      }
+
+      // ข้อมูลปฏิเสธความรับผิดชอบ
+      if (trimmed.startsWith('ข้อมูลนี้เพื่อประกอบการตัดสินใจ')) {
+        return (
+          <div key={idx} style={{ color: '#64748b', fontSize: '12px', fontStyle: 'italic', marginTop: '6px' }}>
+            {trimmed}
+          </div>
+        );
+      }
+
+      // ข้อความปกติทั่วไป
+      return <div key={idx} style={{ margin: '2px 0' }}>{trimmed}</div>;
+    });
+  };
 
   // ฉีด CSS Animation สำหรับกระดิ่งสั่น
   useEffect(() => {
@@ -173,7 +265,7 @@ export default function MoonAssistantChat() {
     if (newMessages.length > 0) {
       setMessages(prev => [
         ...prev,
-        ...newMessages.map(alertText => ({ sender: 'ai', text: alertText }))
+        ...newMessages.map(alertText => ({ sender: 'ai', text: alertText, sources: [] }))
       ]);
     }
 
@@ -300,11 +392,9 @@ export default function MoonAssistantChat() {
     }
   };
 
-    const triggerBackendAction = async (actionType, customText = '') => {
+  const triggerBackendAction = async (actionType, customText = '') => {
     setLoading(true);
     const portfolio = getPortfolioData();
-    
-    // แก้ไขจุดที่ผิดพลาด: กำหนด URL ไปที่ Backend บน Vercel ให้ถูกต้องโดยตรง
     const backendUrl = 'https://portfolio-price-backend.vercel.app/api/apianalyze';
 
     try {
@@ -322,22 +412,24 @@ export default function MoonAssistantChat() {
 
       const data = await response.json();
       const aiReply = data.analysis || 'สัญญาณขาดหาย ไม่ได้รับข้อมูลจากฐานทัพครับ';
+      const aiSources = Array.isArray(data.sources) ? data.sources.slice(0, 5) : [];
 
       setMessages((prev) => [
         ...prev,
         { sender: 'user', text: customText || inputMessage || `[เรียกใช้งานหมวด: ${actionType}]` },
-        { sender: 'ai', text: aiReply }
+        { sender: 'ai', text: aiReply, sources: aiSources }
       ]);
     } catch (err) {
       setMessages((prev) => [
         ...prev,
-        { sender: 'ai', text: '⚠️ เกิดข้อผิดพลาดในการเชื่อมต่อกับระบบ AI หลังบ้านครับ' }
+        { sender: 'ai', text: '⚠️ เกิดข้อผิดพลาดในการเชื่อมต่อกับระบบ AI หลังบ้านครับ', sources: [] }
       ]);
     } finally {
       setLoading(false);
       setInputMessage('');
     }
   };
+
   const handleSendMessage = (e) => {
     e.preventDefault();
     if (!inputMessage.trim() && !fileContent) return;
@@ -354,7 +446,7 @@ export default function MoonAssistantChat() {
       setFileContent(event.target.result);
       setMessages((prev) => [
         ...prev,
-        { sender: 'ai', text: `📁 แนบไฟล์/รูปภาพ "${file.name}" เรียบร้อยแล้ว พิมพ์ข้อความสั่งการต่อได้เลยครับ!` }
+        { sender: 'ai', text: `📁 แนบไฟล์/รูปภาพ "${file.name}" เรียบร้อยแล้ว พิมพ์ข้อความสั่งการต่อได้เลยครับ!`, sources: [] }
       ]);
     };
 
@@ -374,7 +466,7 @@ export default function MoonAssistantChat() {
     setNewAsset({ name: '', condition: '<=', price: '', reason: '' });
     setMessages((prev) => [
       ...prev,
-      { sender: 'ai', text: `🎯 ตั้งระบบเรดาร์ติดตามราคา ${newAsset.name.toUpperCase()} (${newAsset.condition} ${newAsset.price}) เรียบร้อยครับ!` }
+      { sender: 'ai', text: `🎯 ตั้งระบบเรดาร์ติดตามราคา ${newAsset.name.toUpperCase()} (${newAsset.condition} ${newAsset.price}) เรียบร้อยครับ!`, sources: [] }
     ]);
   };
 
@@ -608,11 +700,13 @@ export default function MoonAssistantChat() {
             {messages.map((msg, index) => (
               <div key={index} style={{ display: 'flex', justifyContent: msg.sender === 'user' ? 'flex-end' : 'flex-start' }}>
                 <div style={{
-                  maxWidth: '85%',
-                  padding: '12px 16px',
+                  maxWidth: msg.sender === 'user' ? '85%' : '92%',
+                  padding: '14px 18px',
                   borderRadius: '14px',
-                  fontSize: '13.5px',
-                  lineHeight: 1.5,
+                  fontSize: '15px',
+                  lineHeight: 1.7,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
                   backgroundColor: msg.sender === 'user' ? '#d97706' : '#111827',
                   color: '#fff',
                   borderBottomRightRadius: msg.sender === 'user' ? '4px' : '14px',
@@ -620,13 +714,53 @@ export default function MoonAssistantChat() {
                   border: msg.sender === 'ai' ? '1px solid rgba(255, 255, 255, 0.06)' : 'none',
                   boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
                 }}>
-                  {msg.text}
+                  {msg.sender === 'ai' ? renderMessageText(msg.text) : msg.text}
+
+                  {/* ส่วนแสดงแหล่งอ้างอิง (Sources) สำหรับข้อความ AI */}
+                  {msg.sender === 'ai' && Array.isArray(msg.sources) && msg.sources.length > 0 && (
+                    <div style={{ marginTop: '12px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 600, color: '#94a3b8', marginBottom: '4px' }}>แหล่งอ้างอิง</div>
+                      {msg.sources.slice(0, 5).map((src, sIdx) => (
+                        <div key={sIdx} style={{ margin: '2px 0' }}>
+                          <a 
+                            href={src.url} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            style={{ color: '#38bdf8', fontSize: '12.5px', textDecoration: 'underline', wordBreak: 'break-all' }}
+                          >
+                            {src.title || src.url}
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* ปุ่มคัดลอกใต้ข้อความ AI */}
+                  {msg.sender === 'ai' && (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+                      <button
+                        onClick={() => handleCopyText(msg.text, index)}
+                        style={{
+                          background: 'rgba(255,255,255,0.06)',
+                          border: '1px solid rgba(255,255,255,0.1)',
+                          borderRadius: '6px',
+                          color: copiedIndex === index ? '#34d399' : '#94a3b8',
+                          fontSize: '11.5px',
+                          padding: '3px 8px',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        {copiedIndex === index ? 'คัดลอกแล้ว' : 'คัดลอก'}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
             {loading && (
               <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                <div style={{ backgroundColor: '#111827', color: '#fbbf24', padding: '10px 14px', borderRadius: '12px', fontSize: '13px', border: '1px solid rgba(255, 255, 255, 0.06)' }}>
+                <div style={{ backgroundColor: '#111827', color: '#fbbf24', padding: '14px 18px', borderRadius: '12px', fontSize: '15px', border: '1px solid rgba(255, 255, 255, 0.06)' }}>
                   กำลังประมวลผล...
                 </div>
               </div>
