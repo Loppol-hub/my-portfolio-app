@@ -933,17 +933,43 @@ export default function PortfolioApp() {
     }));
   };
 
-  const getAssetLots = (assetId, currentQty, currentPrice, assetCurrency, assetType, instrumentType) => {
+    const getAssetLots = (assetId, currentQty, currentPrice, assetCurrency, assetType, instrumentType) => {
     try {
       const targetHolding = (holdings || []).find(h => h && h.id === assetId);
       if (!targetHolding) return [];
+
+      // ดึงประวัติการซื้อ (buy) ของสินทรัพย์นี้จาก tradeLogs เพื่อใช้วันที่จริงที่บันทึกไว้
+      const assetLogs = (tradeLogs || []).filter(l => l && l.assetId === assetId && l.action === 'buy');
+      const isDr = instrumentType === 'dr';
+      const isUsd = assetCurrency === 'USD' && !isDr;
+
+      if (assetLogs.length > 0) {
+        return assetLogs.map(log => {
+          const logQty = parseFloat(log.quantity) || 0;
+          const logPrice = parseFloat(log.price) || 0;
+          const logFx = (log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (parseFloat(log.tradeFx) || fxRate) : 1;
+          const logCostThb = log.totalCostThb !== undefined ? log.totalCostThb : (logQty * logPrice * logFx);
+          const gainPct = logCostThb > 0 ? ((logQty * currentPrice * (isUsd ? getEffectiveRate(assetType, fxRate) : 1) - logCostThb) / logCostThb) * 100 : 0;
+
+          return {
+            date: log.date || todayStr(),
+            qty: logQty,
+            price: logPrice,
+            currency: log.currency,
+            tradeFx: log.tradeFx || fxRate,
+            instrumentType: log.instrumentType,
+            days: calcDaysAgo(log.date || todayStr()),
+            gainPct,
+            isUsd
+          };
+        });
+      }
+
+      // กรณีสำรองถ้าไม่มีประวัติใน tradeLogs
       const hQty = parseFloat(targetHolding.quantity) || 0;
       const hCostThb = targetHolding.totalCostThb !== undefined && targetHolding.totalCostThb !== null 
         ? targetHolding.totalCostThb 
         : (hQty * (parseFloat(targetHolding.avgCost) || 0) * (targetHolding.currency === 'USD' && targetHolding.instrumentType !== 'dr' ? (targetHolding.createdFxRate || fxRate) : 1));
-      
-      const isDr = instrumentType === 'dr';
-      const isUsd = assetCurrency === 'USD' && !isDr;
       
       return [{
         date: targetHolding.lastUpdated || todayStr(),
