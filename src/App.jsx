@@ -28,8 +28,9 @@ const getEffectiveInstrumentType = (type, instType) => {
 
 const checkIsDirectFee = (type, instType) => {
   const effInst = getEffectiveInstrumentType(type, instType);
-  return ['foreign_stock', 'gold'].includes(type) || ['dr', 'etf'].includes(effInst);
+  return ['foreign_stock', 'gold', 'crypto'].includes(type) || ['dr', 'etf'].includes(effInst);
 };
+
 
 const isFeeExcludedFromAssetCost = (type, instrumentType) => {
   const effInst = getEffectiveInstrumentType(type, instrumentType);
