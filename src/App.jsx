@@ -1782,7 +1782,73 @@ export default function PortfolioApp() {
 
   const isDirectFeeType = checkIsDirectFee(form.type, form.instrumentType);
   const showTradeFxField = form.type === 'foreign_stock' || form.type === 'gold' || form.instrumentType === 'etf';
+  // วาง useEffect นี้ลงในไฟล์ PortfolioApp.jsx เดิมของคุณ (เพื่อสร้างและอัปเดต Snapshot อัตโนมัติทุกครั้งที่ข้อมูลเปลี่ยน)
+  useEffect(() => {
+    if (loading) return;
+    const timer = setTimeout(() => {
+      const fullTotalAssetValue = totalInvestedValue + computedCash;
+      const snapshot = {
+        snapshotAt: new Date().toISOString(),
+        fxRate,
+        initialCapital,
+        totalCapital,
+        totalAssetValue: fullTotalAssetValue,
+        totalInvestedValue,
+        totalInvestedCost,
+        unrealizedGain: totalGain,
+        unrealizedGainPct: totalGainPct,
+        cash: computedCash,
+        cashRatioPct: cashRatio,
+        realizedPerformance: performanceTotal,
+        dividendTotal: totalDividendAmount,
+        rebalanceTotal,
+        heroProfitAmount,
+        heroProfitPct,
+        byType: (byType || []).map(t => ({
+          key: t.key,
+          label: t.label,
+          value: t.value,
+          pctOfTotal: fullTotalAssetValue > 0 ? (t.value / fullTotalAssetValue) * 100 : 0
+        })),
+        holdings: (enriched || []).map(h => ({
+          name: h.name,
+          ticker: h.ticker,
+          type: h.type,
+          instrumentType: h.instrumentType,
+          industry: h.industry,
+          currency: h.currency,
+          qty: h.qty,
+          avg: h.avg,
+          price: h.price,
+          marketValue: h.marketValue,
+          costValue: h.costValue,
+          gain: h.gain,
+          gainPct: h.gainPct,
+          pctOfTotal: fullTotalAssetValue > 0 ? (h.marketValue / fullTotalAssetValue) * 100 : 0
+        })),
+        realizedPnLByType,
+        tradeLogs: (tradeLogs || []).filter(l => {
+          if (!l || !l.date) return false;
+          const logDate = new Date(l.date);
+          const twelveMonthsAgo = new Date();
+          twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+          return logDate >= twelveMonthsAgo;
+        }),
+        cashLedger: ledger,
+        history,
+        yearlyHistory,
+        lastPriceUpdate: lastUpdated
+      };
 
+      const jsonStr = JSON.stringify(snapshot);
+      localStorage.setItem('portfolio-snapshot', jsonStr);
+      if (window.storage && typeof window.storage.set === 'function') {
+        window.storage.set('portfolio-snapshot', jsonStr, false).catch(() => {});
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [loading, holdings, ledger, tradeLogs, history, yearlyHistory, fxRate, initialCapital, computedCash, totalInvestedValue, totalInvestedCost, totalGain, totalGainPct, cashRatio, performanceTotal, totalDividendAmount, rebalanceTotal, heroProfitAmount, heroProfitPct, byType, enriched, realizedPnLByType, lastUpdated]);
   return (
     <div className="pf-root">
       <style>{`
