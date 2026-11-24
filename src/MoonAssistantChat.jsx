@@ -397,15 +397,27 @@ export default function MoonAssistantChat() {
     }
   };
 
-  const getPortfolioData = () => {
+    const getPortfolioData = () => {
     try {
-      const holdings = portfolioHoldings.length > 0 ? portfolioHoldings : (localStorage.getItem('holdings') ? JSON.parse(localStorage.getItem('holdings')) : null);
-      const tradeLogs = localStorage.getItem('trade-logs') ? JSON.parse(localStorage.getItem('trade-logs')) : null;
-      const cashLedger = localStorage.getItem('cash-ledger') ? JSON.parse(localStorage.getItem('cash-ledger')) : null;
-      const cashBalance = localStorage.getItem('cash-balance') ? JSON.parse(localStorage.getItem('cash-balance')) : null;
-      return { holdings, tradeLogs, cashLedger, cashBalance };
+      const holdings = portfolioHoldings.length > 0 ? portfolioHoldings : (localStorage.getItem('holdings') ? JSON.parse(localStorage.getItem('holdings')) : []);
+      const tradeLogs = localStorage.getItem('trade-logs') ? JSON.parse(localStorage.getItem('trade-logs')) : [];
+      const cashLedger = localStorage.getItem('cash-ledger') ? JSON.parse(localStorage.getItem('cash-ledger')) : [];
+      
+      // ดึงค่าเงินสดและทุนเริ่มต้นจาก LocalStorage ของแอปหลักให้ครอบคลุมทุกคีย์
+      const rawCash = localStorage.getItem('cashBalance') || localStorage.getItem('cash-balance') || localStorage.getItem('cash') || '0';
+      const rawCapital = localStorage.getItem('initialCapital') || localStorage.getItem('initial-capital') || localStorage.getItem('capital') || '100000';
+      const rawFx = localStorage.getItem('fxRate') || localStorage.getItem('fx-rate') || '36.5';
+
+      return {
+        holdings,
+        tradeLogs,
+        cashLedger,
+        cashBalance: parseFloat(rawCash) || 0,
+        initialCapital: parseFloat(rawCapital) || 100000,
+        fxRate: parseFloat(rawFx) || 36.5
+      };
     } catch (e) {
-      return { note: 'ไม่สามารถดึงข้อมูล Storage โดยตรงได้' };
+      return { holdings: [], cashBalance: 0, initialCapital: 100000 };
     }
   };
 
