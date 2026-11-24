@@ -20,9 +20,22 @@ export default function MoonAssistantChat() {
 
   const [copiedIndex, setCopiedIndex] = useState(null);
 
+  const chatContainerRef = useRef(null);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const importFileRef = useRef(null);
+
+  // เลื่อนหน้าจอไปยังข้อความล่าสุดทันทีเมื่อเปิดแอป
+  useEffect(() => {
+    if (isOpen) {
+      setTimeout(() => {
+        if (chatContainerRef.current) {
+          chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+        }
+        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+      }, 100);
+    }
+  }, [isOpen]);
 
   // ฟังก์ชันสำหรับคัดลอกข้อความ
   const handleCopyText = (text, index) => {
@@ -368,6 +381,9 @@ export default function MoonAssistantChat() {
       localStorage.setItem('moon_chat_history', JSON.stringify(messages));
       localStorage.setItem('moon_chat_timestamp', new Date().getTime().toString());
     }
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
@@ -386,7 +402,8 @@ export default function MoonAssistantChat() {
       const holdings = portfolioHoldings.length > 0 ? portfolioHoldings : (localStorage.getItem('holdings') ? JSON.parse(localStorage.getItem('holdings')) : null);
       const tradeLogs = localStorage.getItem('trade-logs') ? JSON.parse(localStorage.getItem('trade-logs')) : null;
       const cashLedger = localStorage.getItem('cash-ledger') ? JSON.parse(localStorage.getItem('cash-ledger')) : null;
-      return { holdings, tradeLogs, cashLedger };
+      const cashBalance = localStorage.getItem('cash-balance') ? JSON.parse(localStorage.getItem('cash-balance')) : null;
+      return { holdings, tradeLogs, cashLedger, cashBalance };
     } catch (e) {
       return { note: 'ไม่สามารถดึงข้อมูล Storage โดยตรงได้' };
     }
@@ -527,7 +544,6 @@ export default function MoonAssistantChat() {
   if (!isOpen) return null;
 
   const thStocks = portfolioHoldings.filter(h => h && h.type === 'th_stock' && h.instrumentType !== 'dr');
-  // กรองเฉพาะหุ้นนอกและ DR โดยตัด ETF ออก
   const globalStocks = portfolioHoldings.filter(h => h && (h.type === 'foreign_stock' || h.instrumentType === 'dr') && h.instrumentType !== 'etf');
   const cryptoStocks = portfolioHoldings.filter(h => h && h.type === 'crypto');
 
@@ -683,19 +699,22 @@ export default function MoonAssistantChat() {
         )}
       </div>
 
-      {/* เนื้อหาภายในแท็บ */}
-      <div style={{
-        flex: 1,
-        minHeight: 0,
-        overflowY: 'auto',
-        padding: '20px 16px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '14px',
-        maxWidth: '700px',
-        width: '100%',
-        margin: '0 auto'
-      }}>
+      {/* เนื้อหาภายในแท็บ พร้อมผูก ref สำหรับเลื่อนลงล่างสุด */}
+      <div 
+        ref={chatContainerRef}
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          padding: '20px 16px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '14px',
+          maxWidth: '700px',
+          width: '100%',
+          margin: '0 auto'
+        }}
+      >
         {activeTab === 'chat' && (
           <>
             {messages.map((msg, index) => (
@@ -830,7 +849,6 @@ export default function MoonAssistantChat() {
                         onClick={() => { 
                           handleTabChange('chat'); 
                           setAssetSubView(null);
-                          // เปลี่ยนข้อความให้กระชับ ไม่ให้มีคำว่าหุ้นต่างประเทศหรือ DR
                           triggerBackendAction('asset_analysis', `วิเคราะห์หุ้น ${labelText} ในพอร์ตให้หน่อยครับ`); 
                         }} 
                         style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}
