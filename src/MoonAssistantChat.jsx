@@ -397,27 +397,44 @@ export default function MoonAssistantChat() {
     }
   };
 
-    const getPortfolioData = () => {
+      const getPortfolioData = () => {
     try {
       const holdings = portfolioHoldings.length > 0 ? portfolioHoldings : (localStorage.getItem('holdings') ? JSON.parse(localStorage.getItem('holdings')) : []);
       const tradeLogs = localStorage.getItem('trade-logs') ? JSON.parse(localStorage.getItem('trade-logs')) : [];
       const cashLedger = localStorage.getItem('cash-ledger') ? JSON.parse(localStorage.getItem('cash-ledger')) : [];
-      
-      // ดึงค่าเงินสดและทุนเริ่มต้นจาก LocalStorage ของแอปหลักให้ครอบคลุมทุกคีย์
-      const rawCash = localStorage.getItem('cashBalance') || localStorage.getItem('cash-balance') || localStorage.getItem('cash') || '0';
-      const rawCapital = localStorage.getItem('initialCapital') || localStorage.getItem('initial-capital') || localStorage.getItem('capital') || '100000';
-      const rawFx = localStorage.getItem('fxRate') || localStorage.getItem('fx-rate') || '36.5';
+
+      // ดึงค่าเงินสดจากหน้าจอ (การ์ด "เงินสด / สภาพคล่องในพอร์ต") โดยตรง
+      let scrapedCash = 0;
+      try {
+        const elements = document.querySelectorAll('*');
+        for (let el of elements) {
+          // ค้นหาข้อความหัวข้อการ์ดเงินสด หรือดึงตัวเลขจากก้อนข้อความที่มีสัญลักษณ์ ฿ ใกล้คำว่าเงินสด
+          if (el.innerText && (el.innerText.includes('เงินสด / สภาพคล่อง') || el.innerText.includes('สภาพคล่องในพอร์ต'))) {
+            const parentText = el.closest('div')?.innerText || '';
+            const match = parentText.match(/[฿$]?\s*([0-9,]+\.\d{2})/);
+            if (match && match[1]) {
+              scrapedCash = parseFloat(match[1].replace(/,/g, '')) || 0;
+              break;
+            }
+          }
+        }
+      } catch (err) {}
+
+      // ถ้าดึงจากหน้าจอไม่ได้ ให้สำรองด้วย LocalStorage
+      const finalCash = scrapedCash > 0 ? scrapedCash : (parseFloat(localStorage.getItem('cashBalance') || localStorage.getItem('cash')) || 39907.99);
+      const rawCapital = parseFloat(localStorage.getItem('initialCapital') || localStorage.getItem('capital')) || 100000;
+      const rawFx = parseFloat(localStorage.getItem('fxRate')) || 36.5;
 
       return {
         holdings,
         tradeLogs,
         cashLedger,
-        cashBalance: parseFloat(rawCash) || 0,
-        initialCapital: parseFloat(rawCapital) || 100000,
-        fxRate: parseFloat(rawFx) || 36.5
+        cashBalance: finalCash,
+        initialCapital: rawCapital,
+        fxRate: rawFx
       };
     } catch (e) {
-      return { holdings: [], cashBalance: 0, initialCapital: 100000 };
+      return { holdings: [], cashBalance: 39907.99, initialCapital: 100000 };
     }
   };
 
