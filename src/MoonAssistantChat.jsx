@@ -397,93 +397,40 @@ export default function MoonAssistantChat() {
     }
   };
 
-        const getPortfolioData = () => {
+  // อ่าน Snapshot จาก Storage โดยตรง (Single Source of Truth)
+  const getPortfolioData = async () => {
     try {
-      const holdings = portfolioHoldings.length > 0 ? portfolioHoldings : (localStorage.getItem('holdings') ? JSON.parse(localStorage.getItem('holdings')) : []);
-      const tradeLogs = localStorage.getItem('trade-logs') ? JSON.parse(localStorage.getItem('trade-logs')) : [];
-      const cashLedger = localStorage.getItem('cash-ledger') ? JSON.parse(localStorage.getItem('cash-ledger')) : [];
-
-      // ดึงค่าตัวเลขจากหน้าจอตามป้ายกำกับ
-      const getStatByLabel = (label) => {
+      let snapshotStr = null;
+      if (window.storage && typeof window.storage.get === 'function') {
         try {
-          const elements = document.querySelectorAll('div, span, p');
-          for (let el of elements) {
-            if (el.innerText && el.innerText.trim() === label) {
-              // ค้นหาตัวเลขในElementแม่หรือใกล้เคียง
-              const container = el.closest('div') || el.parentElement;
-              if (container) {
-                const match = container.innerText.match(/[฿$]\s*([0-9,]+\.\d{2})/);
-                if (match && match[1]) {
-                  return parseFloat(match[1].replace(/[฿$,\s]/g, '')) || 0;
-                }
-              }
-            }
-          }
+          const res = await window.storage.get('portfolio-snapshot', false);
+          if (res && res.value) snapshotStr = res.value;
         } catch (e) {}
-        return 0;
-      };
-
-      // ดึงจากภาพรวมการ์ดหลัก
-      const cashBalance = getStatByLabel('เงินสด / สภาพคล่องในพอร์ต');
-      const totalAssetValue = getStatByLabel('มูลค่าสินทรัพย์ทั้งหมด');
-
-      // ดึงตัวเลขเจาะจงจากหน้าการ์ดสัดส่วนสินทรัพย์รวม (รูปที่ 2)
-      let breakdown = { cash: cashBalance, th_stock: 0, foreign_stock: 0, crypto: 0, gold: 0, fund: 0 };
-      try {
-        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
-        while (walker.nextNode()) {
-          const t = walker.nodeValue.trim();
-          if (t === 'เงินสด' || t.includes('เงินสด')) {
-            const parent = walker.currentNode.parentElement;
-            const m = parent?.innerText?.match(/[฿$]\s*([0-9,]+\.\d{2})/);
-            if (m) breakdown.cash = parseFloat(m[1].replace(/,/g, '')) || cashBalance;
-          }
-          if (t === 'หุ้นไทย') {
-            const parent = walker.currentNode.parentElement;
-            const m = parent?.innerText?.match(/[฿$]\s*([0-9,]+\.\d{2})/);
-            if (m) breakdown.th_stock = parseFloat(m[1].replace(/,/g, '')) || 0;
-          }
-          if (t === 'หุ้นนอก') {
-            const parent = walker.currentNode.parentElement;
-            const m = parent?.innerText?.match(/[฿$]\s*([0-9,]+\.\d{2})/);
-            if (m) breakdown.foreign_stock = parseFloat(m[1].replace(/,/g, '')) || 0;
-          }
-          if (t === 'คริปโต') {
-            const parent = walker.currentNode.parentElement;
-            const m = parent?.innerText?.match(/[฿$]\s*([0-9,]+\.\d{2})/);
-            if (m) breakdown.crypto = parseFloat(m[1].replace(/,/g, '')) || 0;
-          }
-          if (t === 'ทองคำ') {
-            const parent = walker.currentNode.parentElement;
-            const m = parent?.innerText?.match(/[฿$]\s*([0-9,]+\.\d{2})/);
-            if (m) breakdown.gold = parseFloat(m[1].replace(/,/g, '')) || 0;
-          }
-          if (t === 'กองทุน') {
-            const parent = walker.currentNode.parentElement;
-            const m = parent?.innerText?.match(/[฿$]\s*([0-9,]+\.\d{2})/);
-            if (m) breakdown.fund = parseFloat(m[1].replace(/,/g, '')) || 0;
-          }
-        }
-      } catch (err) {}
-
-      return {
-        holdings,
-        tradeLogs,
-        cashLedger,
-        uiScrapedSummary: {
-          cashBalance: breakdown.cash,
-          totalAssetValue: totalAssetValue > 0 ? totalAssetValue : (breakdown.cash + breakdown.th_stock + breakdown.foreign_stock + breakdown.crypto + breakdown.gold + breakdown.fund),
-          breakdown
-        }
-      };
+      }
+      if (!snapshotStr) {
+        snapshotStr = localStorage.getItem('portfolio-snapshot');
+      }
+      if (!snapshotStr) return null;
+      return JSON.parse(snapshotStr);
     } catch (e) {
-      return { holdings: [], cashBalance: 0 };
+      return null;
     }
   };
 
-  const triggerBackendAction = async (actionType, customText = '') => {
+  const triggerBackendAction = async (actionType, customText = '', extraParams = {}) => {
+    if (loading) return; // ป้องกันกดรัวขณะโหลด
     setLoading(true);
-    const portfolio = getPortfolioData();
+
+    const snapshot = await getPortfolioData();
+    if (!snapshot) {
+      setMessages((prev) => [
+        ...prev,
+        { sender: 'ai', text: 'ยังไม่ได้รับข้อมูลพอร์ตล่าสุด กรุณาเปิดหน้าพอร์ตรวมสักครั้งแล้วลองใหม่', sources: [] }
+      ]);
+      setLoading(false);
+      return;
+    }
+
     const backendUrl = 'https://portfolio-price-backend.vercel.app/api/apianalyze';
 
     try {
@@ -492,10 +439,11 @@ export default function MoonAssistantChat() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: actionType,
-          portfolio,
+          portfolio: { snapshot },
           userMessage: customText || inputMessage,
           customPrompt,
-          fileContent
+          fileContent,
+          ...extraParams
         }),
       });
 
@@ -894,7 +842,9 @@ export default function MoonAssistantChat() {
                         onClick={() => { 
                           handleTabChange('chat'); 
                           setAssetSubView(null);
-                          triggerBackendAction('asset_analysis', `วิเคราะห์หุ้นไทย ${labelText} ในพอร์ตให้หน่อยครับ`); 
+                          triggerBackendAction('asset_analysis', `วิเคราะห์หุ้นไทย ${labelText} ในพอร์ตให้หน่อยครับ`, {
+                            assetContext: { name: stock.name, ticker: stock.ticker, type: 'th_stock', instrumentType: stock.instrumentType }
+                          }); 
                         }} 
                         style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}
                       >
@@ -921,7 +871,9 @@ export default function MoonAssistantChat() {
                         onClick={() => { 
                           handleTabChange('chat'); 
                           setAssetSubView(null);
-                          triggerBackendAction('asset_analysis', `วิเคราะห์หุ้น ${labelText} ในพอร์ตให้หน่อยครับ`); 
+                          triggerBackendAction('asset_analysis', `วิเคราะห์หุ้น ${labelText} ในพอร์ตให้หน่อยครับ`, {
+                            assetContext: { name: stock.name, ticker: stock.ticker, type: 'foreign_stock', instrumentType: stock.instrumentType }
+                          }); 
                         }} 
                         style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}
                       >
@@ -948,7 +900,9 @@ export default function MoonAssistantChat() {
                         onClick={() => { 
                           handleTabChange('chat'); 
                           setAssetSubView(null);
-                          triggerBackendAction('asset_analysis', `วิเคราะห์คริปโต ${labelText} ในพอร์ตให้หน่อยครับ`); 
+                          triggerBackendAction('asset_analysis', `วิเคราะห์คริปโต ${labelText} ในพอร์ตให้หน่อยครับ`, {
+                            assetContext: { name: stock.name, ticker: stock.ticker, type: 'crypto', instrumentType: stock.instrumentType }
+                          }); 
                         }} 
                         style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}
                       >
@@ -969,7 +923,7 @@ export default function MoonAssistantChat() {
                 <button onClick={() => setAssetSubView('crypto')} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
                   คริปโตเคอร์เรนซี ({cryptoStocks.length})
                 </button>
-                <button onClick={() => { handleTabChange('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์ทิศทางราคาทองคำ'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
+                <button onClick={() => { handleTabChange('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์ทิศทางราคาทองคำ', { assetContext: { name: 'ทองคำ', type: 'gold' } }); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
                   ทองคำ
                 </button>
               </>
@@ -980,10 +934,10 @@ export default function MoonAssistantChat() {
         {activeTab === 'news' && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '8px', width: '100%', maxWidth: '500px' }}>
             <h4 style={{ color: '#fbbf24', fontSize: '14px', fontWeight: 500, marginBottom: '4px' }}>ข่าวสารพอร์ต</h4>
-            <button onClick={() => { handleTabChange('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์ภูมิรัฐศาสตร์โลกที่มีผลต่อพอร์ต'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
+            <button onClick={() => { handleTabChange('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์ภูมิรัฐศาสตร์โลกที่มีผลต่อพอร์ต', { newsTopic: 'geopolitics' }); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
               ภูมิรัฐศาสตร์โลก
             </button>
-            <button onClick={() => { handleTabChange('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์เศรษฐกิจมหภาค โลก-ไทย'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
+            <button onClick={() => { handleTabChange('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์เศรษฐกิจมหภาค โลก-ไทย', { newsTopic: 'economy' }); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
               เศรษฐกิจมหภาค
             </button>
           </div>
