@@ -527,7 +527,8 @@ export default function MoonAssistantChat() {
   if (!isOpen) return null;
 
   const thStocks = portfolioHoldings.filter(h => h && h.type === 'th_stock' && h.instrumentType !== 'dr');
-  const globalStocks = portfolioHoldings.filter(h => h && (h.type === 'foreign_stock' || h.instrumentType === 'dr'));
+  // กรองเฉพาะหุ้นนอกและ DR โดยตัด ETF ออก
+  const globalStocks = portfolioHoldings.filter(h => h && (h.type === 'foreign_stock' || h.instrumentType === 'dr') && h.instrumentType !== 'etf');
   const cryptoStocks = portfolioHoldings.filter(h => h && h.type === 'crypto');
 
   const sortedWatchlist = [...watchlist].sort((a, b) => {
@@ -829,7 +830,8 @@ export default function MoonAssistantChat() {
                         onClick={() => { 
                           handleTabChange('chat'); 
                           setAssetSubView(null);
-                          triggerBackendAction('asset_analysis', `วิเคราะห์หุ้นต่างประเทศหรือ DR ${labelText} ในพอร์ตให้หน่อยครับ`); 
+                          // เปลี่ยนข้อความให้กระชับ ไม่ให้มีคำว่าหุ้นต่างประเทศหรือ DR
+                          triggerBackendAction('asset_analysis', `วิเคราะห์หุ้น ${labelText} ในพอร์ตให้หน่อยครับ`); 
                         }} 
                         style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}
                       >
@@ -992,10 +994,8 @@ export default function MoonAssistantChat() {
 
             <button onClick={() => { 
               localStorage.removeItem('moon_chat_history'); 
-              localStorage.removeItem('moon_watchlist');
               setMessages([]); 
-              setWatchlist([]);
-              alert('เคลียร์ประวัติแชทและ Watchlist เรียบร้อยแล้วค่ะ!'); 
+              alert('เคลียร์ประวัติแชทเรียบร้อยแล้วค่ะ!'); 
             }} style={{ padding: '10px 14px', backgroundColor: 'transparent', color: '#fca5a5', border: '1px solid rgba(239, 68, 68, 0.4)', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', width: '100%' }}>
               เคลียร์ประวัติแชททั้งหมด
             </button>
