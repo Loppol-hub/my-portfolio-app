@@ -397,24 +397,24 @@ export default function MoonAssistantChat() {
     }
   };
 
-       const getPortfolioData = () => {
+        const getPortfolioData = () => {
     try {
       const holdings = portfolioHoldings.length > 0 ? portfolioHoldings : (localStorage.getItem('holdings') ? JSON.parse(localStorage.getItem('holdings')) : []);
       const tradeLogs = localStorage.getItem('trade-logs') ? JSON.parse(localStorage.getItem('trade-logs')) : [];
       const cashLedger = localStorage.getItem('cash-ledger') ? JSON.parse(localStorage.getItem('cash-ledger')) : [];
 
-      // ฟังก์ชันดึงตัวเลขจากการ์ดบนหน้าจอ UI จริง
-      const getCardValue = (keyword) => {
+      // ดึงค่าตัวเลขจากหน้าจอตามป้ายกำกับ
+      const getStatByLabel = (label) => {
         try {
           const elements = document.querySelectorAll('div, span, p');
           for (let el of elements) {
-            if (el.innerText && el.innerText.trim() === keyword) {
+            if (el.innerText && el.innerText.trim() === label) {
+              // ค้นหาตัวเลขในElementแม่หรือใกล้เคียง
               const container = el.closest('div') || el.parentElement;
               if (container) {
-                const matches = container.innerText.match(/[฿$]\s*([0-9,]+\.\d{2})/g);
-                if (matches && matches.length > 0) {
-                  const cleanNum = matches[matches.length - 1].replace(/[฿$,\s]/g, '');
-                  return parseFloat(cleanNum) || 0;
+                const match = container.innerText.match(/[฿$]\s*([0-9,]+\.\d{2})/);
+                if (match && match[1]) {
+                  return parseFloat(match[1].replace(/[฿$,\s]/g, '')) || 0;
                 }
               }
             }
@@ -423,34 +423,57 @@ export default function MoonAssistantChat() {
         return 0;
       };
 
-      // ดึงค่าจำเพาะจากการ์ดหน้าจอหลัก
-      const cashBalance = getCardValue('เงินสด / สภาพคล่องในพอร์ต');
-      const totalAssetValue = getCardValue('มูลค่าสินทรัพย์ทั้งหมด');
+      // ดึงจากภาพรวมการ์ดหลัก
+      const cashBalance = getStatByLabel('เงินสด / สภาพคล่องในพอร์ต');
+      const totalAssetValue = getStatByLabel('มูลค่าสินทรัพย์ทั้งหมด');
 
-      // ดึงค่าทองคำและหุ้นนอกจากการ์ดหมวดหมู่
-      let goldValue = 0;
-      let foreignStockValue = 0;
-      document.querySelectorAll('div').forEach(div => {
-        const text = div.innerText || '';
-        if (text.includes('ทองคำ') && text.includes('฿') && !text.includes('ต้นทุน') && goldValue === 0) {
-          const m = text.match(/[฿$]\s*([0-9,]+\.\d{2})/);
-          if (m) goldValue = parseFloat(m[1].replace(/,/g, '')) || 0;
+      // ดึงตัวเลขเจาะจงจากหน้าการ์ดสัดส่วนสินทรัพย์รวม (รูปที่ 2)
+      let breakdown = { cash: cashBalance, th_stock: 0, foreign_stock: 0, crypto: 0, gold: 0, fund: 0 };
+      try {
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+        while (walker.nextNode()) {
+          const t = walker.nodeValue.trim();
+          if (t === 'เงินสด' || t.includes('เงินสด')) {
+            const parent = walker.currentNode.parentElement;
+            const m = parent?.innerText?.match(/[฿$]\s*([0-9,]+\.\d{2})/);
+            if (m) breakdown.cash = parseFloat(m[1].replace(/,/g, '')) || cashBalance;
+          }
+          if (t === 'หุ้นไทย') {
+            const parent = walker.currentNode.parentElement;
+            const m = parent?.innerText?.match(/[฿$]\s*([0-9,]+\.\d{2})/);
+            if (m) breakdown.th_stock = parseFloat(m[1].replace(/,/g, '')) || 0;
+          }
+          if (t === 'หุ้นนอก') {
+            const parent = walker.currentNode.parentElement;
+            const m = parent?.innerText?.match(/[฿$]\s*([0-9,]+\.\d{2})/);
+            if (m) breakdown.foreign_stock = parseFloat(m[1].replace(/,/g, '')) || 0;
+          }
+          if (t === 'คริปโต') {
+            const parent = walker.currentNode.parentElement;
+            const m = parent?.innerText?.match(/[฿$]\s*([0-9,]+\.\d{2})/);
+            if (m) breakdown.crypto = parseFloat(m[1].replace(/,/g, '')) || 0;
+          }
+          if (t === 'ทองคำ') {
+            const parent = walker.currentNode.parentElement;
+            const m = parent?.innerText?.match(/[฿$]\s*([0-9,]+\.\d{2})/);
+            if (m) breakdown.gold = parseFloat(m[1].replace(/,/g, '')) || 0;
+          }
+          if (t === 'กองทุน') {
+            const parent = walker.currentNode.parentElement;
+            const m = parent?.innerText?.match(/[฿$]\s*([0-9,]+\.\d{2})/);
+            if (m) breakdown.fund = parseFloat(m[1].replace(/,/g, '')) || 0;
+          }
         }
-        if (text.includes('หุ้นนอก') && text.includes('฿') && !text.includes('ต้นทุน') && foreignStockValue === 0) {
-          const m = text.match(/[฿$]\s*([0-9,]+\.\d{2})/);
-          if (m) foreignStockValue = parseFloat(m[1].replace(/,/g, '')) || 0;
-        }
-      });
+      } catch (err) {}
 
       return {
         holdings,
         tradeLogs,
         cashLedger,
         uiScrapedSummary: {
-          cashBalance,
-          totalAssetValue,
-          goldValue,
-          foreignStockValue
+          cashBalance: breakdown.cash,
+          totalAssetValue: totalAssetValue > 0 ? totalAssetValue : (breakdown.cash + breakdown.th_stock + breakdown.foreign_stock + breakdown.crypto + breakdown.gold + breakdown.fund),
+          breakdown
         }
       };
     } catch (e) {
