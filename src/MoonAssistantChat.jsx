@@ -812,10 +812,10 @@ export default function MoonAssistantChat() {
         {activeTab === 'health' && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '8px', width: '100%', maxWidth: '500px' }}>
             <h4 style={{ color: '#fbbf24', fontSize: '14px', fontWeight: 500, marginBottom: '4px' }}>สุขภาพพอร์ต</h4>
-            <button onClick={() => { handleTabChange('chat'); triggerBackendAction('deep_analysis', 'วิเคราะห์พอร์ตการลงทุนเชิงลึกให้หน่อยครับ'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
+            <button onClick={() => { handleTabChange('chat'); triggerBackendAction('deep_analysis', 'วิเคราะห์พอร์ตการลงทุน'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
               วิเคราะห์พอร์ตเชิงลึก
             </button>
-            <button onClick={() => { handleTabChange('chat'); triggerBackendAction('portfolio_summary', 'สรุปภาพรวมพอร์ตในเดือนนี้ให้หน่อยครับ'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
+            <button onClick={() => { handleTabChange('chat'); triggerBackendAction('portfolio_summary', 'สรุปภาพรวมพอร์ต'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
               สรุปภาพรวมประจำเดือน
             </button>
           </div>
@@ -842,7 +842,7 @@ export default function MoonAssistantChat() {
                         onClick={() => { 
                           handleTabChange('chat'); 
                           setAssetSubView(null);
-                          triggerBackendAction('asset_analysis', `วิเคราะห์หุ้นไทย ${labelText} ในพอร์ตให้หน่อยครับ`, {
+                          triggerBackendAction('asset_analysis', `วิเคราะห์หุ้น ${labelText} ในพอร์ต`, {
                             assetContext: { name: stock.name, ticker: stock.ticker, type: 'th_stock', instrumentType: stock.instrumentType }
                           }); 
                         }} 
@@ -871,7 +871,7 @@ export default function MoonAssistantChat() {
                         onClick={() => { 
                           handleTabChange('chat'); 
                           setAssetSubView(null);
-                          triggerBackendAction('asset_analysis', `วิเคราะห์หุ้น ${labelText} ในพอร์ตให้หน่อยครับ`, {
+                          triggerBackendAction('asset_analysis', `วิเคราะห์หุ้น ${labelText} ในพอร์ต`, {
                             assetContext: { name: stock.name, ticker: stock.ticker, type: 'foreign_stock', instrumentType: stock.instrumentType }
                           }); 
                         }} 
@@ -900,7 +900,7 @@ export default function MoonAssistantChat() {
                         onClick={() => { 
                           handleTabChange('chat'); 
                           setAssetSubView(null);
-                          triggerBackendAction('asset_analysis', `วิเคราะห์คริปโต ${labelText} ในพอร์ตให้หน่อยครับ`, {
+                          triggerBackendAction('asset_analysis', `วิเคราะห์ ${labelText} ในพอร์ต`, {
                             assetContext: { name: stock.name, ticker: stock.ticker, type: 'crypto', instrumentType: stock.instrumentType }
                           }); 
                         }} 
@@ -923,7 +923,7 @@ export default function MoonAssistantChat() {
                 <button onClick={() => setAssetSubView('crypto')} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
                   คริปโตเคอร์เรนซี ({cryptoStocks.length})
                 </button>
-                <button onClick={() => { handleTabChange('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์ทิศทางราคาทองคำ', { assetContext: { name: 'ทองคำ', type: 'gold' } }); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
+                <button onClick={() => { handleTabChange('chat'); triggerBackendAction('asset_analysis', 'วิเคราะห์ทองคำในพอร์ต', { assetContext: { name: 'ทองคำ', type: 'gold' } }); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
                   ทองคำ
                 </button>
               </>
@@ -934,10 +934,10 @@ export default function MoonAssistantChat() {
         {activeTab === 'news' && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '8px', width: '100%', maxWidth: '500px' }}>
             <h4 style={{ color: '#fbbf24', fontSize: '14px', fontWeight: 500, marginBottom: '4px' }}>ข่าวสารพอร์ต</h4>
-            <button onClick={() => { handleTabChange('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์ภูมิรัฐศาสตร์โลกที่มีผลต่อพอร์ต', { newsTopic: 'geopolitics' }); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
+            <button onClick={() => { handleTabChange('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์ภูมิรัฐศาสตร์โลกที่มีผลต่อพร์อต', { newsTopic: 'geopolitics' }); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
               ภูมิรัฐศาสตร์โลก
             </button>
-            <button onClick={() => { handleTabChange('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์เศรษฐกิจมหภาค โลก-ไทย', { newsTopic: 'economy' }); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
+            <button onClick={() => { handleTabChange('chat'); triggerBackendAction('news_analysis', 'วิเคราะห์เศรษฐกิจมหภาคที่มีผลต่อพอร์ต', { newsTopic: 'economy' }); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
               เศรษฐกิจมหภาค
             </button>
           </div>
