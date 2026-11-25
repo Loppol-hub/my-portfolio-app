@@ -813,10 +813,10 @@ export default function MoonAssistantChat() {
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '8px', width: '100%', maxWidth: '500px' }}>
             <h4 style={{ color: '#fbbf24', fontSize: '14px', fontWeight: 500, marginBottom: '4px' }}>สุขภาพพอร์ต</h4>
             <button onClick={() => { handleTabChange('chat'); triggerBackendAction('deep_analysis', 'วิเคราะห์พอร์ตการลงทุน'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
-              วิเคราะห์พอร์ตเชิงลึก
+              วิเคราะห์พอร์ต
             </button>
             <button onClick={() => { handleTabChange('chat'); triggerBackendAction('portfolio_summary', 'สรุปภาพรวมพอร์ต'); }} style={{ textAlign: 'left', width: '100%', padding: '12px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>
-              สรุปภาพรวมประจำเดือน
+              สรุปภาพรวมพอร์ต
             </button>
           </div>
         )}
