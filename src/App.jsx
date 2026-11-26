@@ -333,7 +333,7 @@ export default function PortfolioApp() {
   const [importError, setImportError] = useState('');
   const fileInputRef = useRef(null);
   const [chartModeByType, setChartModeByType] = useState({});
-
+  const cashCtxRef = useRef({ totalCapital: 0, cashAdjTotal: 0 });
   const [tradeModalOpen, setTradeModalOpen] = useState(false);
   const [tradeFilterType, setTradeFilterType] = useState('all');
   const [showCatMenu, setShowCatMenu] = useState(false);
@@ -657,7 +657,7 @@ export default function PortfolioApp() {
 
   const totalCapital = initialCapital + capitalAdjTotal;
   const computedCash = (totalCapital - totalInvestedCost + cashAdjTotal);
-
+  cashCtxRef.current = { totalCapital, cashAdjTotal };
   const cashRatio = useMemo(() => {
     const invVal = totalInvestedValue;
     if (invVal <= 0) return 0;
@@ -1534,7 +1534,9 @@ export default function PortfolioApp() {
           return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.avgCost) || 0) * fr;
         }, 0);
 
-        const currentComputedCash = totalCapital - investedCostForCash + cashAdjTotal;
+        const { totalCapital: tc, cashAdjTotal: ca } = cashCtxRef.current;
+
+        const currentComputedCash = tc - investedCostForCash + ca;
         const totalAssetVal = investedVal + currentComputedCash;
 
         const existing = (historyRef.current || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-30');
@@ -1557,7 +1559,9 @@ export default function PortfolioApp() {
           const fr = (cur === 'USD' && !dr) ? (h.createdFxRate || rate) : 1;
           return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.avgCost) || 0) * fr;
         }, 0);
-        const currentComputedCash = totalCapital - investedCostForCash + cashAdjTotal;
+        const { totalCapital: tc2, cashAdjTotal: ca2 } = cashCtxRef.current;
+
+        const currentComputedCash = tc2 - investedCostForCash + ca2;
         const totalAssetVal = investedVal + currentComputedCash;
 
         const existingY = (yearlyHistoryRef.current || []).filter((p) => p && p.date !== yearEndSlot);
