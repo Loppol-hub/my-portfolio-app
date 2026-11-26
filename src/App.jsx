@@ -1418,7 +1418,7 @@ export default function PortfolioApp() {
     showToast('ลบประวัติซื้อขายสำเร็จ');
   };
 
-    const submitEditLog = () => {
+      const submitEditLog = () => {
     if (!editingLog) return;
     const qty = parseFloat(tradeLogForm.quantity);
     const price = parseFloat(tradeLogForm.price);
@@ -1430,26 +1430,44 @@ export default function PortfolioApp() {
       return;
     }
 
-    const feeVal = !isNaN(inputFee) ? inputFee : (editingLog.fee || 0);
-    const pnlVal = !isNaN(inputPnl) ? inputPnl : (editingLog.pnl || 0);
-    
-    // บันทึกค่าที่ผู้ใช้กรอกลงไปตรงๆ เป็นบาทโดยไม่เอาอัตราแลกเปลี่ยนมาคูณทับ
-    const updatedFeeThbRecord = feeVal;
-    const updatedPnlThb = pnlVal;
+    const isUsdLog = editingLog.currency === 'USD' && editingLog.assetType !== 'th_stock' && editingLog.instrumentType !== 'dr';
+    const fx = parseFloat(editingLog.tradeFx) || fxRate;
 
-    const nextLogs = (tradeLogs || []).map(l => l && l.id === editingLog.id ? {
-      ...l,
+    // คำนวณค่าธรรมเนียมในหน่วยบาทและหน่วยดอลลาร์
+    const feeThb = !isNaN(inputFee) ? inputFee : (editingLog.feeThbRecord || 0);
+    const feeVal = isUsdLog && fx > 0 ? feeThb / fx : feeThb;
+
+    const patch = {
       quantity: qty,
       price: price,
       fee: feeVal,
-      feeThbRecord: updatedFeeThbRecord,
-      pnl: pnlVal,
-      pnlThb: updatedPnlThb,
+      feeThbRecord: feeThb,
       date: tradeLogForm.date,
       note: tradeLogForm.note.trim()
-    } : l);
+    };
 
+    if (editingLog.action === 'sell' && !isNaN(inputPnl)) {
+      patch.pnlThb = inputPnl;
+      patch.pnl = isUsdLog && fx > 0 ? inputPnl / fx : inputPnl;
+    }
+
+    // อัปเดตประวัติการซื้อขาย
+    const nextLogs = (tradeLogs || []).map(l => l && l.id === editingLog.id ? {
+      ...l,
+      ...patch
+    } : l);
     saveTradeLogs(nextLogs);
+
+    // ถ้ามีรายการค่าธรรมเนียมเชื่อมกับ Ledger อยู่ให้อัปเดตยอดเงินตามไปด้วย
+    if (editingLog.ledgerFeeId) {
+      const nextLedger = (ledger || []).map(e => e && e.id === editingLog.ledgerFeeId ? {
+        ...e,
+        amount: feeThb,
+        date: tradeLogForm.date
+      } : e);
+      saveLedger(nextLedger);
+    }
+
     setEditingLog(null);
     showToast('แก้ไขประวัติซื้อขายสำเร็จ');
   };
@@ -3479,13 +3497,14 @@ export default function PortfolioApp() {
                           <button style={{ background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: '2px' }} onClick={() => {
                             setEditingLog(log);
                             setTradeLogForm({
-                              quantity: String(log.quantity ?? ''),
-                              price: String(log.price ?? ''),
-                              fee: String(log.fee ?? ''),
-                              pnl: String(log.pnl ?? ''),
-                              date: log.date || todayStr(),
-                              note: log.note || ''
+                                quantity: String(log.quantity ?? ''),
+                                price: String(log.price ?? ''),
+                                fee: String(log.feeThbRecord ?? log.fee ?? ''),   
+                                pnl: String(log.pnlThb ?? log.pnl ?? ''),         
+                                date: log.date || todayStr(),
+                                note: log.note || ''
                             });
+
                           }} title="แก้ไขประวัติ"><Pencil size={14} /></button>
                           <button style={{ background: 'transparent', border: 'none', color: 'var(--neg)', cursor: 'pointer', padding: '2px' }} onClick={() => requestDelete('tradelog', log.id, log.assetName)} title="ลบประวัติ"><Trash2 size={14} /></button>
                         </div>
