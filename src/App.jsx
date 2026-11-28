@@ -1277,8 +1277,6 @@ export default function PortfolioApp() {
           totalCostThb: costThbSold
         });
       } else {
-        const qty = parseFloat(form.quantity);
-        const avg = isCash ? 1 : parseFloat(form.avgCost);
         const price = isCash ? 1 : parseFloat(form.currentPrice);
         if (isNaN(qty) || qty <= 0) { setFormError('จำนวนต้องเป็นตัวเลขมากกว่า 0'); return; }
         if (!isCash && (isNaN(avg) || avg < 0)) { setFormError('ราคาต้นทุน (ทุนเฉลี่ย) ไม่ถูกต้อง'); return; }
@@ -1288,7 +1286,6 @@ export default function PortfolioApp() {
         currentAvg = avg;
         currentPrice = price;
 
-        const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
       }
 
       saveLedger(newLedgerEntries);
