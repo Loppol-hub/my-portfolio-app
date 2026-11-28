@@ -1094,23 +1094,27 @@ export default function PortfolioApp() {
       const qty = parseFloat(form.quantity);
       const avg = isCash ? 1 : parseFloat(form.avgCost);
       let currentPrice = parseFloat(target.currentPrice) || parseFloat(form.currentPrice) || 0;
+
       let currentQty = parseFloat(target.quantity) || 0;
       let currentAvg = parseFloat(target.avgCost) || 0;
+      
       const oldQty = currentQty;
       const oldAvg = currentAvg;
       const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
-      
-      const unchanged = String(form.quantity).trim() === String(target.quantity).trim() && 
-                        String(form.avgCost).trim() === String(target.avgCost).trim();
+
+      // เช็กว่าจำนวนและทุนเฉลี่ยไม่ได้เปลี่ยน (เทียบด้วยตัวเลข)
+      const unchanged = Math.abs(qty - oldQty) < 1e-9 && Math.abs(avg - oldAvg) < 1e-9;
+
+      // ล็อกต้นทุนบาทเดิมไว้ถ้าไม่ได้แก้จำนวน/ทุน
       let currentTotalCostThb = 0;
       if (isCash) {
         currentTotalCostThb = 0;
       } else if (unchanged && target.totalCostThb != null) {
-        currentTotalCostThb = target.totalCostThb; // ล็อกค่าเดิมไว้เป๊ะๆ ไม่สนเรทวันนี้
+        currentTotalCostThb = Number(target.totalCostThb); // ล็อกค่าเดิมเป๊ะๆ ไม่เอาเรทวันนี้มาคิดทับ
       } else {
         const keepFx = (oldQty * oldAvg > 0 && target.totalCostThb != null)
           ? target.totalCostThb / (oldQty * oldAvg)
-          : (target.createdFxRate || customFx);
+          : (target.createdFxRate || fxRate);
         currentTotalCostThb = qty * avg * (isUsdAsset ? keepFx : 1);
       }
       let newLedgerEntries = [...ledger];
@@ -1285,7 +1289,6 @@ export default function PortfolioApp() {
         currentPrice = price;
 
         const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
-        currentTotalCostThb = isCash ? 0 : (qty * avg * (isUsdAsset ? customFx : 1));
       }
 
       saveLedger(newLedgerEntries);
