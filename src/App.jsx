@@ -1101,13 +1101,12 @@ export default function PortfolioApp() {
       const oldAvg = currentAvg;
       const unchanged = String(form.quantity).trim() === String(target.quantity).trim() && 
                         String(form.avgCost).trim() === String(target.avgCost).trim();
+      const existingTotalCost = target.totalCostThb != null 
+        ? target.totalCostThb 
+        : (oldQty * oldAvg * (isUsdAsset ? (target.createdFxRate || fxRate) : 1));
 
-      const keepFx = (oldQty * oldAvg > 0 && target.totalCostThb != null)
-        ? target.totalCostThb / (oldQty * oldAvg)
-        : (target.createdFxRate || customFx);
-      
       let currentTotalCostThb = isCash ? 0
-        : (unchanged && target.totalCostThb != null ? target.totalCostThb : qty * avg * (isUsdAsset ? keepFx : 1));
+        : (unchanged ? existingTotalCost : qty * avg * (isUsdAsset ? (target.createdFxRate || fxRate) : 1));
       let newLedgerEntries = [...ledger];
       let newLogs = [...tradeLogs];
 
