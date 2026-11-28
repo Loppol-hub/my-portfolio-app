@@ -651,10 +651,16 @@ export default function PortfolioApp() {
   const totalCapital = initialCapital + capitalAdjTotal;
   const computedCash = (totalCapital - totalInvestedCost + cashAdjTotal);
   cashCtxRef.current = { totalCapital, cashAdjTotal };
-  const cashRatio = useMemo(() => {
+    const cashRatio = useMemo(() => {
     const invVal = totalInvestedValue;
     if (invVal <= 0) return 0;
     return (computedCash / invVal) * 100;
+  }, [totalInvestedValue, computedCash]);
+
+  const cashPctOfTotal = useMemo(() => {
+    const totalVal = totalInvestedValue + computedCash;
+    if (totalVal <= 0) return 0;
+    return (computedCash / totalVal) * 100;
   }, [totalInvestedValue, computedCash]);
 
   const totalRealizedPnL = performanceTotal;
@@ -1831,6 +1837,7 @@ export default function PortfolioApp() {
         unrealizedGainPct: totalGainPct,
         cash: computedCash,
         cashRatioPct: cashRatio,
+        cashPctOfTotal: cashPctOfTotal,
         realizedPerformance: performanceTotal,
         dividendTotal: totalDividendAmount,
         rebalanceTotal,
