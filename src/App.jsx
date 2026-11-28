@@ -1087,26 +1087,32 @@ export default function PortfolioApp() {
     const enteredTradeFx = parseFloat(form.tradeFx);
     const customFx = isForeignOrGoldOrEtf && !isNaN(enteredTradeFx) && enteredTradeFx > 0 ? enteredTradeFx : fxRate;
 
-       if (editingId) {
+      if (editingId) {
       const target = (holdings || []).find((h) => h && h.id === editingId);
       if (!target) return;
 
       const qty = parseFloat(form.quantity);
       const avg = isCash ? 1 : parseFloat(form.avgCost);
       let currentPrice = parseFloat(target.currentPrice) || parseFloat(form.currentPrice) || 0;
-
       let currentQty = parseFloat(target.quantity) || 0;
       let currentAvg = parseFloat(target.avgCost) || 0;
       const oldQty = currentQty;
       const oldAvg = currentAvg;
+      const isUsdAsset = currency === 'USD' && instrumentType !== 'dr';
+      
       const unchanged = String(form.quantity).trim() === String(target.quantity).trim() && 
                         String(form.avgCost).trim() === String(target.avgCost).trim();
-      const existingTotalCost = target.totalCostThb != null 
-        ? target.totalCostThb 
-        : (oldQty * oldAvg * (isUsdAsset ? (target.createdFxRate || fxRate) : 1));
-
-      let currentTotalCostThb = isCash ? 0
-        : (unchanged ? existingTotalCost : qty * avg * (isUsdAsset ? (target.createdFxRate || fxRate) : 1));
+      let currentTotalCostThb = 0;
+      if (isCash) {
+        currentTotalCostThb = 0;
+      } else if (unchanged && target.totalCostThb != null) {
+        currentTotalCostThb = target.totalCostThb; // ล็อกค่าเดิมไว้เป๊ะๆ ไม่สนเรทวันนี้
+      } else {
+        const keepFx = (oldQty * oldAvg > 0 && target.totalCostThb != null)
+          ? target.totalCostThb / (oldQty * oldAvg)
+          : (target.createdFxRate || customFx);
+        currentTotalCostThb = qty * avg * (isUsdAsset ? keepFx : 1);
+      }
       let newLedgerEntries = [...ledger];
       let newLogs = [...tradeLogs];
 
