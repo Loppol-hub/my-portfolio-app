@@ -608,21 +608,14 @@ export default function PortfolioApp() {
   const capitalReduceTotal = useMemo(() => (ledger || []).filter((e) => e && e.type === 'capital_reduce').reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0), [ledger]);
   const capitalAdjTotal = useMemo(() => capitalAddTotal - capitalReduceTotal, [capitalAddTotal, capitalReduceTotal]);
 
-    const combinedLedger = useMemo(() => {
+      const combinedLedger = useMemo(() => {
     let list = Array.isArray(ledger) ? ledger.filter(e => e) : [];
     (tradeLogs || []).forEach((log) => {
       if (log && log.action === 'sell' && log.pnl !== undefined) {
         const logFx = (log.currency === 'USD' && log.assetType !== 'th_stock' && log.instrumentType !== 'dr') ? (parseFloat(log.tradeFx) || fxRate) : 1;
         let pnlThb = log.pnlThb !== undefined ? log.pnlThb : ((log.currency === 'USD' || log.assetType === 'foreign_stock') ? ((parseFloat(log.pnl) || 0) * logFx) : (parseFloat(log.pnl) || 0));
         
-        const effInst = getEffectiveInstrumentType(log.assetType, log.instrumentType);
-        const excludeFee = isFeeExcludedFromAssetCost(log.assetType, effInst);
-        
-        // ยกเว้นหุ้นนอกและทองคำ ไม่ให้เอาค่าธรรมเนียมมาหักออกจากกำไรในระบบบัญชีเงินสด
-        if (excludeFee && log.feeThbRecord && log.assetType !== 'foreign_stock' && log.assetType !== 'gold') {
-          pnlThb -= log.feeThbRecord;
-        }
-
+        // ดึงค่า pnlThb จาก log มาใช้ตรงๆ โดยไม่มีการหักค่าธรรมเนียมซ้ำซ้อนอีก
         if (!isNaN(pnlThb) && Math.abs(pnlThb) > 0.001) {
           list.push({
             id: 'log_pnl_' + log.id,
