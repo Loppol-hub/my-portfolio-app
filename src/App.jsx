@@ -1094,7 +1094,15 @@ export default function PortfolioApp() {
       let currentQty = parseFloat(target.quantity) || 0;
       let currentAvg = parseFloat(target.avgCost) || 0;
       let currentPrice = parseFloat(target.currentPrice) || parseFloat(form.currentPrice) || 0;
-      let currentTotalCostThb = target.totalCostThb !== undefined ? target.totalCostThb : (currentQty * currentAvg * (target.currency === 'USD' && target.instrumentType !== 'dr' ? (target.createdFxRate || fxRate) : 1));
+      const oldQty = currentQty;
+      const oldAvg = currentAvg;
+      const unchanged = Math.abs(qty - oldQty) < 1e-9 && Math.abs(avg - oldAvg) < 1e-9;
+      const keepFx = (oldQty * oldAvg > 0 && target.totalCostThb != null)
+      ? target.totalCostThb / (oldQty * oldAvg)
+      : (target.createdFxRate || customFx);
+  
+    let currentTotalCostThb = isCash ? 0
+    : (unchanged && target.totalCostThb != null ? target.totalCostThb : qty * avg * (isUsdAsset ? keepFx : 1));
       
       let newLedgerEntries = [...ledger];
       let newLogs = [...tradeLogs];
