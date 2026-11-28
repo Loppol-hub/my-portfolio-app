@@ -3,6 +3,28 @@ import { Plus, Pencil, Trash2, RefreshCw, X, TrendingUp, TrendingDown, Inbox, Za
 import { LineChart, Line, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, LabelList } from 'recharts';
 import MoonAssistantChat from './MoonAssistantChat';
 
+const calcAssetMarketValue = (h, fxRateVal) => {
+  if (!h || h.type === 'cash') return 0;
+  const qty = parseFloat(h.quantity) || 0;
+  const price = parseFloat(h.currentPrice) || 0;
+  const currency = h.currency === 'USD' ? 'USD' : 'THB';
+  const isDr = h.instrumentType === 'dr';
+  const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h.type, fxRateVal) : 1;
+  return qty * price * effRate;
+};
+const calcAssetCostValue = (h, fxRateVal) => {
+  if (!h || h.type === 'cash') return 0;
+  const qty = parseFloat(h.quantity) || 0;
+  const avg = parseFloat(h.avgCost) || 0;
+  const currency = h.currency === 'USD' ? 'USD' : 'THB';
+  const isDr = h.instrumentType === 'dr';
+  const fixedRate = (currency === 'USD' && !isDr) ? (h.createdFxRate || fxRateVal) : 1;
+
+  if (h.totalCostThb !== undefined && h.totalCostThb !== null) {
+    return Number(h.totalCostThb);
+  }
+  return qty * avg * fixedRate;
+};
 const ASSET_TYPES = [
   { key: 'th_stock', label: 'หุ้นไทย', color: '#C7A344', market: 'th', defaultCurrency: 'THB' },
   { key: 'foreign_stock', label: 'หุ้นนอก', color: '#38bdf8', market: 'us', defaultCurrency: 'USD' },
@@ -562,7 +584,7 @@ export default function PortfolioApp() {
     return parseFloat(rate) || 36.5;
   };
 
-  const enriched = useMemo(() => {
+    const enriched = useMemo(() => {
     const safeHoldings = Array.isArray(holdings) ? holdings : [];
     return safeHoldings.map((h) => {
       const qty = parseFloat(h?.quantity) || 0;
@@ -571,13 +593,9 @@ export default function PortfolioApp() {
       const currency = h?.currency === 'USD' ? 'USD' : 'THB';
       const isDr = h?.instrumentType === 'dr';
 
-      const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h?.type, fxRate) : 1;
-      const marketValue = qty * price * effRate;
-
-      const fixedRate = (currency === 'USD' && !isDr) ? (h?.createdFxRate || fxRate) : 1;
-      const costValue = h?.totalCostThb !== undefined && h.totalCostThb !== null 
-        ? h.totalCostThb 
-        : (qty * avg * fixedRate);
+      // เรียกใช้ Helper ที่เราเพิ่งประกาศไว้ด้านบน
+      const marketValue = calcAssetMarketValue(h, fxRate);
+      const costValue = calcAssetCostValue(h, fxRate);
 
       const gain = marketValue - costValue;
       const gainPct = costValue > 0 ? (gain / costValue) * 100 : 0;
@@ -1561,18 +1579,12 @@ export default function PortfolioApp() {
           return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0) * effRate;
         }, 0);
 
-        const investedCostForCash = nextHoldings.filter(h => h && h.type !== 'cash').reduce((s, h) => {
-          const cur = h.currency === 'USD' ? 'USD' : 'THB';
-          const dr = h.instrumentType === 'dr';
-          const fr = (cur === 'USD' && !dr) ? (h.createdFxRate || rate) : 1;
-          return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.avgCost) || 0) * fr;
-        }, 0);
-
+            const investedCostForCash = nextHoldings.filter(h => h && h.type !== 'cash').reduce((s, h) => {
+      return s + calcAssetCostValue(h, rate); 
+    }, 0);
         const { totalCapital: tc, cashAdjTotal: ca } = cashCtxRef.current;
-
         const currentComputedCash = tc - investedCostForCash + ca;
         const totalAssetVal = investedVal + currentComputedCash;
-
         const existing = (historyRef.current || []).filter((p) => p && p.date !== slotDate && p.date >= '2026-11-30');
         const histNext = sanitizeAndPruneHistory([...existing, { date: slotDate, value: totalAssetVal }]);
         await saveHistory(histNext);
@@ -1587,14 +1599,10 @@ export default function PortfolioApp() {
           const effRate = (currency === 'USD' && !isDr) ? getEffectiveRate(h.type, rate) : 1;
           return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0) * effRate;
         }, 0);
-        const investedCostForCash = nextHoldings.filter(h => h && h.type !== 'cash').reduce((s, h) => {
-          const cur = h.currency === 'USD' ? 'USD' : 'THB';
-          const dr = h.instrumentType === 'dr';
-          const fr = (cur === 'USD' && !dr) ? (h.createdFxRate || rate) : 1;
-          return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.avgCost) || 0) * fr;
-        }, 0);
+          const investedCostForCash = nextHoldings.filter(h => h && h.type !== 'cash').reduce((s, h) => {
+      return s + calcAssetCostValue(h, rate); 
+    }, 0);
         const { totalCapital: tc2, cashAdjTotal: ca2 } = cashCtxRef.current;
-
         const currentComputedCash = tc2 - investedCostForCash + ca2;
         const totalAssetVal = investedVal + currentComputedCash;
 
@@ -1638,11 +1646,8 @@ export default function PortfolioApp() {
       return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.currentPrice) || 0) * effRate;
     }, 0);
 
-    const investedCostForCash = next.filter(h => h && h.type !== 'cash').reduce((s, h) => {
-      const cur = h.currency === 'USD' ? 'USD' : 'THB';
-      const dr = h.instrumentType === 'dr';
-      const fr = (cur === 'USD' && !dr) ? (h.createdFxRate || rate) : 1;
-      return s + (parseFloat(h.quantity) || 0) * (parseFloat(h.avgCost) || 0) * fr;
+        const investedCostForCash = next.filter(h => h && h.type !== 'cash').reduce((s, h) => {
+      return s + calcAssetCostValue(h, rate); 
     }, 0);
 
     const currentComputedCash = totalCapital - investedCostForCash + cashAdjTotal;
