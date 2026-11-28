@@ -3496,7 +3496,6 @@ export default function PortfolioApp() {
                        let displayPnl = log.pnlThb !== undefined ? log.pnlThb : ((log.pnl !== undefined) ? (isUsdAsset ? (log.pnl * logFx) : log.pnl) : undefined);
                 const effInst = getEffectiveInstrumentType(log.assetType, log.instrumentType);
                 const excludeFee = isFeeExcludedFromAssetCost(log.assetType, effInst);
-              }
 
                   return (
                     <div key={log.id} style={{ background: 'var(--surface-alt)', border: '1px solid var(--divider)', borderRadius: '10px', padding: '10px 12px', fontSize: '13px' }}>
